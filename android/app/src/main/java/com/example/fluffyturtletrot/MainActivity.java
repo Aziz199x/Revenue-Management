@@ -1,4 +1,4 @@
-package com.example.fluffyturtletrot;
+package com.aziz.revenue;
 
 import com.getcapacitor.BridgeActivity;
 
