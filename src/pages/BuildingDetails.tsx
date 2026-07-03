@@ -29,7 +29,7 @@ import BuildingForm from "@/components/forms/BuildingForm";
 import UnitForm from "@/components/forms/UnitForm";
 import { useStore, genId } from "@/data/store";
 import { buildingStats, formatMoney, formatDate, todayISO } from "@/data/helpers";
-import { UNIT_STATUS_LABELS } from "@/data/labels";
+import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS } from "@/data/labels";
 import { showSuccess } from "@/utils/toast";
 
 export default function BuildingDetails() {
@@ -193,9 +193,7 @@ export default function BuildingDetails() {
                   <StatusBadge status={u.status} label={UNIT_STATUS_LABELS[u.status]} />
                   <p className="mt-1 text-xs font-semibold text-primary">
                     {formatMoney(u.rentAmount)}
-                    <span className="text-muted-foreground">
-                      {u.rentPeriod === "monthly" ? " / شهر" : " / سنة"}
-                    </span>
+                    <span className="text-muted-foreground"> / {RENT_PERIOD_LABELS[u.rentPeriod]}</span>
                   </p>
                 </div>
               </Link>

@@ -51,6 +51,7 @@ import {
   BILL_STATUS_LABELS,
   BILL_TYPE_LABELS,
   REPAIR_STATUS_LABELS,
+  RENT_PERIOD_LABELS,
 } from "@/data/labels";
 import { Payment, Contract, Bill, Repair, Tenant } from "@/data/types";
 import { showSuccess } from "@/utils/toast";
@@ -173,7 +174,8 @@ export default function UnitDetails() {
                 <p className="font-bold">
                   {formatMoney(unit.rentAmount)}
                   <span className="text-xs font-normal text-muted-foreground">
-                    {unit.rentPeriod === "monthly" ? " / شهري" : " / سنوي"}
+                    {" "}
+                    / {RENT_PERIOD_LABELS[unit.rentPeriod]}
                   </span>
                 </p>
                 <p className="text-xs text-muted-foreground">

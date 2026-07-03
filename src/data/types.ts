@@ -3,7 +3,7 @@ export type PaymentStatus = "paid" | "unpaid" | "partial" | "overdue";
 export type BillStatus = "paid" | "unpaid";
 export type RepairStatus = "pending" | "completed" | "cancelled";
 export type BillType = "electricity" | "water" | "other";
-export type RentPeriod = "monthly" | "yearly";
+export type RentPeriod = "monthly" | "quarterly" | "semi_annually" | "yearly" | "flexible";
 
 export interface Building {
   id: string;

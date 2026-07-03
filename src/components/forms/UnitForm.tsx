@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Unit, UnitStatus, RentPeriod } from "@/data/types";
-import { UNIT_TYPES, UNIT_STATUS_LABELS } from "@/data/labels";
+import { UNIT_TYPES, UNIT_STATUS_LABELS, RENT_PERIOD_LABELS } from "@/data/labels";
 
 export interface UnitFormValues {
   name: string;
@@ -111,8 +111,11 @@ export default function UnitForm({ initial, onSubmit }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="monthly">شهري</SelectItem>
-              <SelectItem value="yearly">سنوي</SelectItem>
+              {(Object.keys(RENT_PERIOD_LABELS) as RentPeriod[]).map((p) => (
+                <SelectItem key={p} value={p}>
+                  {RENT_PERIOD_LABELS[p]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

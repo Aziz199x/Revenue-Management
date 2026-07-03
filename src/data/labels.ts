@@ -4,6 +4,7 @@ import {
   RepairStatus,
   BillStatus,
   BillType,
+  RentPeriod,
 } from "./types";
 
 export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
@@ -34,6 +35,14 @@ export const BILL_TYPE_LABELS: Record<BillType, string> = {
   electricity: "كهرباء",
   water: "ماء",
   other: "أخرى",
+};
+
+export const RENT_PERIOD_LABELS: Record<RentPeriod, string> = {
+  monthly: "شهري",
+  quarterly: "ربع سنوي",
+  semi_annually: "نصف سنوي",
+  yearly: "سنوي",
+  flexible: "مرن (غير محدد)",
 };
 
 export const UNIT_TYPES = ["شقة", "محل", "غرفة", "مكتب", "مستودع", "أخرى"];
