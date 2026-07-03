@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.example.fluffyturtletrot"
+    namespace "com.aziz.revenue"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.example.fluffyturtletrot"
