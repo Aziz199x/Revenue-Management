@@ -36,7 +36,7 @@ import { exportJSON, exportCSV, parseBackup } from "@/utils/backup";
 import {
   notificationsSupported,
   requestNotificationPermission,
-  checkAndNotify,
+  syncScheduledNotifications,
 } from "@/utils/notifications";
 import { showSuccess, showError } from "@/utils/toast";
 
@@ -48,12 +48,18 @@ export default function SettingsPage() {
   const toggleNotifications = async (enabled: boolean) => {
     if (enabled) {
       if (!notificationsSupported()) {
-        showError("المتصفح لا يدعم الإشعارات المحلية");
+        showError("هذا الجهاز لا يدعم الإشعارات المحلية");
         return;
       }
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        showError("لم يتم منح إذن الإشعارات");
+      const result = await requestNotificationPermission();
+      if (result === "denied") {
+        showError(
+          "تم رفض إذن الإشعارات. الرجاء تفعيل الإشعارات لهذا التطبيق من إعدادات الهاتف.",
+        );
+        return;
+      }
+      if (result === "unsupported") {
+        showError("هذا الجهاز لا يدعم الإشعارات المحلية");
         return;
       }
       showSuccess("تم تفعيل الإشعارات المحلية");
@@ -62,12 +68,10 @@ export default function SettingsPage() {
       ...prev,
       settings: { ...prev.settings, notificationsEnabled: enabled },
     }));
-    if (enabled) {
-      checkAndNotify({
-        ...data,
-        settings: { ...data.settings, notificationsEnabled: true },
-      });
-    }
+    await syncScheduledNotifications({
+      ...data,
+      settings: { ...data.settings, notificationsEnabled: enabled },
+    });
   };
 
   const handleImport = async (file: File) => {

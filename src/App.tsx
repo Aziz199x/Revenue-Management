@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { StoreProvider, useStore } from "@/data/store";
-import { checkAndNotify } from "@/utils/notifications";
+import { syncScheduledNotifications } from "@/utils/notifications";
 import { setupStatusBar } from "@/utils/statusBar";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
@@ -22,9 +22,7 @@ const queryClient = new QueryClient();
 function NotificationChecker() {
   const { data } = useStore();
   useEffect(() => {
-    checkAndNotify(data);
-    const interval = setInterval(() => checkAndNotify(data), 60 * 60 * 1000);
-    return () => clearInterval(interval);
+    syncScheduledNotifications(data);
   }, [data]);
   return null;
 }
