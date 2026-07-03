@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { StoreProvider, useStore } from "@/data/store";
 import { checkAndNotify } from "@/utils/notifications";
+import { setupStatusBar } from "@/utils/statusBar";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Buildings from "./pages/Buildings";
@@ -28,7 +29,12 @@ function NotificationChecker() {
   return null;
 }
 
-const App = () => (
+const App = () => {
+  useEffect(() => {
+    setupStatusBar();
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -53,6 +59,7 @@ const App = () => (
       </StoreProvider>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

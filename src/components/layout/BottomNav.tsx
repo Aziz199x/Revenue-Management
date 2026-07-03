@@ -19,7 +19,7 @@ const items = [
 export default function BottomNav() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur">
-      <div className="grid grid-cols-5 pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="grid grid-cols-5 pb-safe-nav">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
