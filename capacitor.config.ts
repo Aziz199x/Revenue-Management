@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.aziz.revenue',
-  appName: 'fluffy-turtle-trot',
+  appName: 'Aziz Revenue',
   webDir: 'dist',
   server: {
     androidScheme: 'https'
