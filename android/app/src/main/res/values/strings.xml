@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">fluffy-turtle-trot</string>
-    <string name="title_activity_main">fluffy-turtle-trot</string>
-    <string name="package_name">com.example.fluffyturtletrot</string>
-    <string name="custom_url_scheme">com.example.fluffyturtletrot</string>
+    <string name="app_name">Aziz Revenue</string>
+    <string name="title_activity_main">Aziz Revenue</string>
+    <string name="package_name">com.example.Aziz Revenue</string>
+    <string name="custom_url_scheme">com.example.Aziz Revenue</string>
 </resources>
