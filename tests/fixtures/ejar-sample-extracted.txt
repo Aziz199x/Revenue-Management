@@ -1,0 +1,43 @@
+Contract Data
+Contract No. 1-0 / 10538984484
+Contract Sealing Date 2024-05-08
+Tenancy Start Date 2024-05-08
+2024-05-08
+Tenancy End Date 2025-05-07
+Lessor Data
+Name NimbusSans-Regular Font obj endobj
+ID No. 1074018894
+Mobile No. 966500000000
+National Address Ø§Ù„Ø±ÙŠØ§Ø¶
+Lessor Representative Data
+Name Representative
+Tenant Data
+Name NimbusSans-Regular Font obj endobj
+ID No. 1069691911
+Mobile No. +966546199994
+National Address Ø§Ù„Ø±ÙŠØ§Ø¶
+Tenant Representative Data
+Name Representative
+Brokerage Entity and Broker Data
+Broker Office Name NimbusSans-Regular Font obj endobj
+Broker Name NimbusSans-Regular Font obj endobj
+Ownership document Data
+Title Deed Number 123456789
+Property Data
+Property Address NimbusSans-Regular Font obj endobj
+Property Type NimbusSans-Regular
+Rental Units Data
+Unit Type NimbusSans-Regular
+Unit Number 12
+Financial Data
+Annual Rent 24000.00
+Regular Rent Payment 6000.00
+Payment Cycle ربعي
+Number of Payments 4
+Total Contract Value 24000.00
+Rent Payments Schedule
+1 2024-05-08 2024-05-23 1445-10-29 1445-11-14 6000.00
+2 2024-08-08 2024-08-23 1446-02-04 1446-02-19 6000.00
+3 2024-11-08 2024-11-23 1446-05-06 1446-05-21 6000.00
+4 2025-02-08 2025-02-23 1446-08-09 1446-08-24 6000.00
+Obligations by Parties

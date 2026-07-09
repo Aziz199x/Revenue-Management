@@ -88,4 +88,50 @@
   .pb-safe-nav {
     padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
   }
+
+  .toast-top {
+    top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .toast-bottom {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+:root {
+  --keyboard-height: 0px;
+}
+
+.keyboard-open .bottom-sheet-content {
+  max-height: 60vh;
+}
+
+@layer components {
+  .sheet-safe {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .drawer-safe {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .dialog-safe {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fixed-bottom-button {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .toast-safe {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .modal-safe {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .form-safe {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
 }

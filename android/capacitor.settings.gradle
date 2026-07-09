@@ -2,8 +2,26 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capacitor+android@7.4.4_@capacitor+core@7.4.4/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-app'
+project(':capacitor-app').projectDir = new File('../node_modules/.pnpm/@capacitor+app@8.1.0_@capacitor+core@7.4.4/node_modules/@capacitor/app/android')
+
+include ':capacitor-app-launcher'
+project(':capacitor-app-launcher').projectDir = new File('../node_modules/.pnpm/@capacitor+app-launcher@8.0.1_@capacitor+core@7.4.4/node_modules/@capacitor/app-launcher/android')
+
+include ':capacitor-filesystem'
+project(':capacitor-filesystem').projectDir = new File('../node_modules/.pnpm/@capacitor+filesystem@8.1.2_@capacitor+core@7.4.4/node_modules/@capacitor/filesystem/android')
+
+include ':capacitor-keyboard'
+project(':capacitor-keyboard').projectDir = new File('../node_modules/.pnpm/@capacitor+keyboard@7.0.0_@capacitor+core@7.4.4/node_modules/@capacitor/keyboard/android')
+
 include ':capacitor-local-notifications'
-project(':capacitor-local-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+local-notifications@8.2.0_@capacitor+core@7.4.4/node_modules/@capacitor/local-notifications/android')
+project(':capacitor-local-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+local-notifications@7.0.7_@capacitor+core@7.4.4/node_modules/@capacitor/local-notifications/android')
+
+include ':capacitor-share'
+project(':capacitor-share').projectDir = new File('../node_modules/.pnpm/@capacitor+share@8.0.1_@capacitor+core@7.4.4/node_modules/@capacitor/share/android')
 
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../node_modules/.pnpm/@capacitor+status-bar@8.0.2_@capacitor+core@7.4.4/node_modules/@capacitor/status-bar/android')
+
+include ':codetrix-studio-capacitor-google-auth'
+project(':codetrix-studio-capacitor-google-auth').projectDir = new File('../node_modules/.pnpm/@codetrix-studio+capacitor-_b36fb6974805a1156f864a5b5151b5d3/node_modules/@codetrix-studio/capacitor-google-auth/android')

@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   Building2,
   Wallet,
-  BarChart3,
+  ClipboardList,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ const items = [
   { to: "/", label: "الرئيسية", icon: LayoutDashboard },
   { to: "/buildings", label: "العقارات", icon: Building2 },
   { to: "/payments", label: "الدفعات", icon: Wallet },
-  { to: "/reports", label: "التقارير", icon: BarChart3 },
+  { to: "/requests", label: "الطلبات", icon: ClipboardList },
   { to: "/settings", label: "الإعدادات", icon: Settings },
 ];
 

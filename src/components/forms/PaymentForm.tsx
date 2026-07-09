@@ -10,16 +10,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Payment, PaymentStatus } from "@/data/types";
-import { PAYMENT_STATUS_LABELS } from "@/data/labels";
-import { todayISO } from "@/data/helpers";
+import { Payment, PaymentMethod, PaymentReceiveMethod, PaymentStatus } from "@/data/types";
+import { PAYMENT_RECEIVE_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/data/labels";
+import { isValidDate, todayISO } from "@/data/helpers";
+import { showError } from "@/utils/toast";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export interface PaymentFormValues {
   amount: number;
   paidAmount?: number;
+  receivedAmount?: number;
   paymentDate: string;
   nextDueDate?: string;
+  paymentDeadlineGregorian?: string;
   status: PaymentStatus;
+  receivedDate?: string;
+  paymentMethod?: PaymentMethod;
+  receiveMethod?: PaymentReceiveMethod;
   notes?: string;
 }
 
@@ -35,38 +42,60 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
   );
   const [paidAmount, setPaidAmount] = useState(initial?.paidAmount?.toString() ?? "");
   const [paymentDate, setPaymentDate] = useState(initial?.paymentDate ?? todayISO());
-  const [nextDueDate, setNextDueDate] = useState(initial?.nextDueDate ?? "");
+  const [deadline, setDeadline] = useState(initial?.paymentDeadlineGregorian ?? "");
   const [status, setStatus] = useState<PaymentStatus>(initial?.status ?? "unpaid");
+  const [receivedDate, setReceivedDate] = useState(initial?.receivedDate ?? todayISO());
+  const [paymentMethod, setPaymentMethod] = useState<PaymentReceiveMethod | "">(initial?.receiveMethod ?? initial?.paymentMethod ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [pendingValues, setPendingValues] = useState<PaymentFormValues | null>(null);
+
+  const buildValues = (): PaymentFormValues => ({
+    amount: Number(amount) || 0,
+    paidAmount: status === "partial" ? Number(paidAmount) || 0 : undefined,
+    receivedAmount: status === "paid" ? Number(amount) || 0 : status === "partial" ? Number(paidAmount) || 0 : undefined,
+    paymentDate,
+    nextDueDate: paymentDate,
+    paymentDeadlineGregorian: deadline || undefined,
+    status,
+    receivedDate: status === "paid" ? receivedDate : undefined,
+    paymentMethod: status === "paid" && paymentMethod !== "office_collection" ? paymentMethod || undefined : undefined,
+    receiveMethod: status === "paid" ? paymentMethod || undefined : undefined,
+    notes: notes.trim() || undefined,
+  });
+
+  const validate = (values: PaymentFormValues) => {
+    if (values.amount <= 0) return "يرجى إدخال مبلغ صحيح";
+    if (!isValidDate(values.paymentDate)) return "يرجى اختيار موعد سداد صحيح";
+    if (values.status === "paid" && !values.receivedDate) return "يرجى اختيار تاريخ الاستلام";
+    if (values.status === "paid" && !values.receiveMethod) return "يرجى اختيار طريقة الاستلام";
+    return null;
+  };
 
   return (
     <form
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({
-          amount: Number(amount) || 0,
-          paidAmount: status === "partial" ? Number(paidAmount) || 0 : undefined,
-          paymentDate,
-          nextDueDate: nextDueDate || undefined,
-          status,
-          notes: notes.trim() || undefined,
-        });
+        const values = buildValues();
+        const error = validate(values);
+        if (error) { showError(error); return; }
+        if (initial?.status === "paid" && status !== "paid") { setPendingValues(values); return; }
+        onSubmit(values);
       }}
     >
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label>مبلغ الإيجار *</Label>
+          <Label>مبلغ الدفعة *</Label>
           <Input type="number" inputMode="decimal" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} required className="rounded-xl" />
         </div>
         <div className="space-y-1.5">
-          <Label>حالة الدفع</Label>
+          <Label>حالة الدفعة</Label>
           <Select value={status} onValueChange={(v) => setStatus(v as PaymentStatus)}>
             <SelectTrigger className="rounded-xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentStatus[]).map((s) => (
+              {(["unpaid", "paid", "partial", "overdue"] as PaymentStatus[]).map((s) => (
                 <SelectItem key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</SelectItem>
               ))}
             </SelectContent>
@@ -81,14 +110,20 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
       )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label>تاريخ الدفعة</Label>
+          <Label>موعد السداد</Label>
           <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="rounded-xl" />
         </div>
         <div className="space-y-1.5">
-          <Label>تاريخ الاستحقاق القادم</Label>
-          <Input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} className="rounded-xl" />
+          <Label>نهاية مهلة السداد</Label>
+          <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="rounded-xl" />
         </div>
       </div>
+      {status === "paid" && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5"><Label>تاريخ الاستلام</Label><Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>طريقة الاستلام</Label><Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentReceiveMethod)}><SelectTrigger className="rounded-xl"><SelectValue placeholder="اختر الطريقة" /></SelectTrigger><SelectContent>{(["office_collection", "bank_transfer", "cash", "ejar_platform", "other"] as PaymentReceiveMethod[]).map((method) => <SelectItem key={method} value={method}>{PAYMENT_RECEIVE_METHOD_LABELS[method]}</SelectItem>)}</SelectContent></Select></div>
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label>ملاحظات</Label>
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-xl" />
@@ -96,6 +131,9 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
       <Button type="submit" className="w-full rounded-xl">
         {initial ? "حفظ التعديلات" : "تسجيل الدفعة"}
       </Button>
+      <AlertDialog open={!!pendingValues} onOpenChange={(open) => !open && setPendingValues(null)}>
+        <AlertDialogContent className="max-w-[90vw] rounded-3xl"><AlertDialogHeader><AlertDialogTitle className="text-right">إلغاء تسجيل الاستلام</AlertDialogTitle><AlertDialogDescription className="text-right">سيتم إلغاء تسجيل استلام هذه الدفعة ومسح بيانات الاستلام. هل تريد المتابعة؟</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel type="button">إلغاء</AlertDialogCancel><AlertDialogAction type="button" onClick={() => { if (pendingValues) onSubmit(pendingValues); setPendingValues(null); }}>تأكيد</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

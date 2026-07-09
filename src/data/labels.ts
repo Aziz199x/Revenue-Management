@@ -5,10 +5,19 @@ import {
   BillStatus,
   BillType,
   RentPeriod,
+  RentPeriodNew,
+  PaymentMethod,
+  PaymentReceiveMethod,
+  CollectionFeeStatus,
+  ContractDurationType,
+  RequestType,
+  RequestStatus,
+  RequestPriority,
 } from "./types";
 
 export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
   occupied: "مؤجرة",
+  rented_not_renewing: "مؤجرة - لا يرغب بالتجديد",
   vacant: "شاغرة",
   maintenance: "تحت الصيانة",
 };
@@ -37,12 +46,125 @@ export const BILL_TYPE_LABELS: Record<BillType, string> = {
   other: "أخرى",
 };
 
-export const RENT_PERIOD_LABELS: Record<RentPeriod, string> = {
+export const RENT_PERIOD_LABELS: Record<RentPeriod | RentPeriodNew, string> = {
   monthly: "شهري",
   quarterly: "ربع سنوي",
   semi_annually: "نصف سنوي",
+  semi_annual: "نصف سنوي",
   yearly: "سنوي",
+  annual: "سنوي",
   flexible: "مرن (غير محدد)",
+  custom: "مخصص",
+  imported_schedule: "حسب جدول العقد",
+};
+
+// Use canonical values in selectors. Legacy aliases remain in the label map so
+// old imported records still render correctly without creating duplicate rows.
+export const UNIT_RENT_PERIOD_OPTIONS: RentPeriod[] = [
+  "monthly",
+  "quarterly",
+  "semi_annually",
+  "yearly",
+  "flexible",
+];
+
+export const EJAR_PAYMENT_PERIOD_OPTIONS: (RentPeriod | RentPeriodNew)[] = [
+  "monthly",
+  "quarterly",
+  "semi_annually",
+  "yearly",
+  "flexible",
+  "custom",
+  "imported_schedule",
+];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  bank_transfer: "تحويل بنكي",
+  cash: "نقدا",
+  ejar_platform: "منصة إيجار",
+  other: "أخرى",
+};
+
+export const PAYMENT_RECEIVE_METHOD_LABELS: Record<PaymentReceiveMethod, string> = {
+  office_collection: "تحصيل المكتب",
+  bank_transfer: "تحويل بنكي",
+  cash: "نقدا",
+  ejar_platform: "منصة إيجار",
+  other: "أخرى",
+};
+
+export const COLLECTION_FEE_STATUS_LABELS: Record<CollectionFeeStatus, string> = {
+  collected: "محصلة",
+  uncollected: "مستحقة للمكتب وغير محصلة",
+  waived: "متنازل عنها",
+  settled: "تمت تسويتها",
+  partially_settled: "مسواة جزئيا",
+};
+
+export const CONTRACT_DURATION_LABELS: Record<ContractDurationType, string> = {
+  "6_months": "6 أشهر",
+  "1_year": "سنة",
+  "2_years": "سنتين",
+  custom: "مدة مخصصة",
+  manual_end: "تاريخ نهاية يدوي",
+};
+
+export const CONTRACT_DURATION_OPTIONS = [
+  { value: "6_months" as ContractDurationType, label: "6 أشهر" },
+  { value: "1_year" as ContractDurationType, label: "سنة" },
+  { value: "2_years" as ContractDurationType, label: "سنتين" },
+  { value: "custom" as ContractDurationType, label: "مدة مخصصة" },
+  { value: "manual_end" as ContractDurationType, label: "تاريخ نهاية يدوي" },
+];
+
+export const REMINDER_OPTIONS = [
+  { value: "7", label: "7 أيام" },
+  { value: "15", label: "15 يوم" },
+  { value: "30", label: "30 يوم" },
+  { value: "60", label: "60 يوم" },
+  { value: "80", label: "80 يوم" },
+  { value: "custom", label: "مدة مخصصة" },
+];
+
+export const AUTO_RENEWAL_LABEL = "تجديد تلقائي للعقد";
+
+export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
+  maintenance: "طلب صيانة",
+  plumbing: "مشكلة سباكة",
+  electrical: "مشكلة كهرباء",
+  ac: "مشكلة تكييف",
+  cleaning: "طلب نظافة",
+  complaint: "شكوى",
+  contract: "طلب متعلق بالعقد",
+  payment: "طلب متعلق بالدفع",
+  other: "أخرى",
+};
+
+export const REQUEST_TYPES = [
+  { value: "maintenance" as RequestType, label: "طلب صيانة" },
+  { value: "plumbing" as RequestType, label: "مشكلة سباكة" },
+  { value: "electrical" as RequestType, label: "مشكلة كهرباء" },
+  { value: "ac" as RequestType, label: "مشكلة تكييف" },
+  { value: "cleaning" as RequestType, label: "طلب نظافة" },
+  { value: "complaint" as RequestType, label: "شكوى" },
+  { value: "contract" as RequestType, label: "طلب متعلق بالعقد" },
+  { value: "payment" as RequestType, label: "طلب متعلق بالدفع" },
+  { value: "other" as RequestType, label: "أخرى" },
+];
+
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  new: "جديد",
+  pending: "معلق",
+  in_progress: "قيد التنفيذ",
+  completed: "مكتمل",
+  cancelled: "ملغي",
+};
+
+export const REQUEST_PRIORITY_LABELS: Record<RequestPriority, string> = {
+  low: "منخفضة",
+  medium: "متوسطة",
+  high: "عالية",
+  urgent: "عاجلة",
 };
 
 export const UNIT_TYPES = ["شقة", "محل", "غرفة", "مكتب", "مستودع", "أخرى"];
@@ -58,4 +180,10 @@ export const STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800",
   completed: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-slate-200 text-slate-500",
+  new: "bg-blue-100 text-blue-700",
+  in_progress: "bg-purple-100 text-purple-700",
+  low: "bg-slate-100 text-slate-600",
+  medium: "bg-amber-100 text-amber-800",
+  high: "bg-orange-100 text-orange-700",
+  urgent: "bg-red-100 text-red-700",
 };

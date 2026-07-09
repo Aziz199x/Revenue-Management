@@ -9,11 +9,19 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true
-  }
+  },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: "ic_notification",
+      iconColor: "#0F9D8A",
+    },
+    GoogleAuth: {
+      androidClientId: "777494765857-ebqhqcdvmvnevheq0qep52thgrgnq5qa.apps.googleusercontent.com",
+      serverClientId: "777494765857-lhndrn52q4ptemrekskbf0kgepei21mi.apps.googleusercontent.com",
+      forceCodeForRefreshToken: true,
+      scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
+    },
+  },
 };
-
-// Custom URL scheme for Google OAuth redirect
-// Must match REDIRECT_URI in src/utils/googleDrive.ts
-// Register this scheme in Google Cloud Console as an authorized redirect URI
 
 export default config;

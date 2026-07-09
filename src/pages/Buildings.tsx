@@ -74,8 +74,8 @@ export default function Buildings() {
                     {stats.unitsCount} وحدة
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-2xl bg-muted p-2">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
+                  <div className="col-span-2 rounded-2xl bg-muted p-2 sm:col-span-1">
                     <p className="text-[11px] text-muted-foreground">الدخل</p>
                     <p className="text-sm font-bold text-primary">
                       {formatMoney(stats.totalIncome)}
@@ -88,6 +88,14 @@ export default function Buildings() {
                   <div className="rounded-2xl bg-muted p-2">
                     <p className="text-[11px] text-muted-foreground">شاغرة</p>
                     <p className="text-sm font-bold text-slate-600">{stats.vacant}</p>
+                  </div>
+                  <div className="min-w-0 rounded-2xl bg-muted p-2">
+                    <p className="text-[11px] text-muted-foreground">رسوم التحصيل</p>
+                    <p className="break-words text-sm font-bold text-amber-700">{formatMoney(stats.totalCollectionFees)}</p>
+                  </div>
+                  <div className="min-w-0 rounded-2xl bg-muted p-2">
+                    <p className="text-[11px] text-muted-foreground">تكاليف الصيانة</p>
+                    <p className="break-words text-sm font-bold text-orange-700">{formatMoney(stats.maintenanceCost)}</p>
                   </div>
                 </div>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">

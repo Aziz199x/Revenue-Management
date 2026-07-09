@@ -12,6 +12,10 @@ export interface TenantFormValues {
   email?: string;
   notes?: string;
   extraInfo?: string;
+  electricityAccountName?: string;
+  electricityAccountNumber?: string;
+  electricityMeterNumber?: string;
+  electricityNotes?: string;
 }
 
 interface Props {
@@ -26,6 +30,18 @@ export default function TenantForm({ initial, onSubmit }: Props) {
   const [email, setEmail] = useState(initial?.email ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [extraInfo, setExtraInfo] = useState(initial?.extraInfo ?? "");
+  const [electricityAccountName, setElectricityAccountName] = useState(
+    initial?.electricityAccountName ?? "",
+  );
+  const [electricityAccountNumber, setElectricityAccountNumber] = useState(
+    initial?.electricityAccountNumber ?? "",
+  );
+  const [electricityMeterNumber, setElectricityMeterNumber] = useState(
+    initial?.electricityMeterNumber ?? "",
+  );
+  const [electricityNotes, setElectricityNotes] = useState(
+    initial?.electricityNotes ?? "",
+  );
 
   return (
     <form
@@ -40,6 +56,10 @@ export default function TenantForm({ initial, onSubmit }: Props) {
           email: email.trim() || undefined,
           notes: notes.trim() || undefined,
           extraInfo: extraInfo.trim() || undefined,
+          electricityAccountName: electricityAccountName.trim() || undefined,
+          electricityAccountNumber: electricityAccountNumber.trim() || undefined,
+          electricityMeterNumber: electricityMeterNumber.trim() || undefined,
+          electricityNotes: electricityNotes.trim() || undefined,
         });
       }}
     >
@@ -69,6 +89,28 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         <Label>معلومات إضافية</Label>
         <Textarea value={extraInfo} onChange={(e) => setExtraInfo(e.target.value)} placeholder="أي معلومات أخرى تريد حفظها" className="rounded-xl" />
       </div>
+
+      {/* Electricity Account Section */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <p className="font-bold text-sm">بيانات حساب الكهرباء</p>
+        <div className="space-y-1.5">
+          <Label>اسم صاحب حساب الكهرباء</Label>
+          <Input value={electricityAccountName} onChange={(e) => setElectricityAccountName(e.target.value)} className="rounded-xl" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>رقم حساب الكهرباء</Label>
+          <Input value={electricityAccountNumber} onChange={(e) => setElectricityAccountNumber(e.target.value)} inputMode="numeric" dir="ltr" className="rounded-xl text-right" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>رقم العداد</Label>
+          <Input value={electricityMeterNumber} onChange={(e) => setElectricityMeterNumber(e.target.value)} dir="ltr" className="rounded-xl text-right" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>ملاحظات حساب الكهرباء</Label>
+          <Textarea value={electricityNotes} onChange={(e) => setElectricityNotes(e.target.value)} className="rounded-xl" />
+        </div>
+      </div>
+
       <Button type="submit" className="w-full rounded-xl">
         {initial ? "حفظ التعديلات" : "إضافة المستأجر"}
       </Button>

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { BarChart3, Building2, Wallet, Wrench, TrendingUp } from "lucide-react";
+import { BarChart3, Building2, FileSpreadsheet, Wallet, Wrench, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import { useStore } from "@/data/store";
@@ -9,12 +10,16 @@ import {
   collectReminders,
   formatMoney,
   formatDate,
+  monthlyOfficeCollectionReport,
 } from "@/data/helpers";
+import { exportEventsExcel } from "@/utils/backup";
+import { showError, showSuccess } from "@/utils/toast";
 
 export default function Reports() {
   const { data } = useStore();
   const stats = globalStats(data);
   const reminders = collectReminders(data);
+  const monthlyOfficeRows = monthlyOfficeCollectionReport(data).slice(0, 12);
   const upcomingRents = reminders.filter((r) => r.kind === "rent" && r.days >= 0).slice(0, 5);
   const upcomingContracts = reminders.filter((r) => r.kind === "contract" && r.days >= 0).slice(0, 5);
 
@@ -25,20 +30,61 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="التقارير" subtitle="ملخص شامل لجميع العقارات" />
+      <PageHeader
+        title="التقارير"
+        subtitle="ملخص شامل لجميع العقارات"
+        action={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-full"
+            aria-label="تصدير تقرير Excel"
+            onClick={async () => {
+              try {
+                await exportEventsExcel(data);
+                showSuccess("تم تصدير تقرير Excel");
+              } catch (error) {
+                console.error("Excel export failed:", error);
+                showError("تعذر تصدير تقرير Excel");
+              }
+            }}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+          </Button>
+        }
+      />
       <div className="space-y-4 p-4">
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-3xl bg-primary p-4 text-primary-foreground">
             <TrendingUp className="mb-1 h-5 w-5 opacity-80" />
-            <p className="text-xs opacity-80">إجمالي الدخل</p>
+            <p className="text-xs opacity-80">صافي الدخل بعد رسوم التحصيل</p>
             <p className="text-lg font-bold">{formatMoney(stats.totalIncome)}</p>
           </div>
           <div className="rounded-3xl border border-border bg-card p-4">
             <Wallet className="mb-1 h-5 w-5 text-emerald-600" />
-            <p className="text-xs text-muted-foreground">إيجارات مدفوعة</p>
-            <p className="text-lg font-bold text-emerald-700">{formatMoney(stats.paidTotal)}</p>
+            <p className="text-xs text-muted-foreground">إجمالي الإيجار المحصل</p>
+            <p className="text-lg font-bold text-emerald-700">{formatMoney(stats.totalGrossIncome)}</p>
           </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">خصومات الصيانة</p>
+            <p className="text-lg font-bold text-amber-700">{formatMoney(stats.maintenanceDeductions)}</p>
+          </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">الصافي المحول للمالك</p>
+            <p className="text-lg font-bold text-emerald-700">{formatMoney(stats.netTransferred)}</p>
+          </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">مبالغ لم تحول للمالك</p>
+            <p className="text-lg font-bold text-red-600">{formatMoney(stats.pendingTransfer)}</p>
+          </div>
+          {stats.totalCollectionFees > 0 && (
+            <div className="rounded-3xl border border-border bg-card p-4">
+              <Wallet className="mb-1 h-5 w-5 text-amber-600" />
+              <p className="text-xs text-muted-foreground">رسوم التحصيل</p>
+              <p className="text-lg font-bold text-amber-700">{formatMoney(stats.totalCollectionFees)}</p>
+            </div>
+          )}
           <div className="rounded-3xl border border-border bg-card p-4">
             <Wallet className="mb-1 h-5 w-5 text-red-500" />
             <p className="text-xs text-muted-foreground">غير مدفوع / متأخر</p>
@@ -52,6 +98,35 @@ export default function Reports() {
             <p className="text-lg font-bold">{formatMoney(stats.maintenanceTotal)}</p>
           </div>
         </div>
+
+        {monthlyOfficeRows.length > 0 && (
+          <div>
+            <h2 className="mb-2 flex items-center gap-2 font-bold">
+              <Wallet className="h-4 w-4 text-primary" /> تقرير تحصيل المكتب الشهري
+            </h2>
+            <div className="space-y-2">
+              {monthlyOfficeRows.map((row) => (
+                <div key={row.key} className="rounded-3xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold">{row.propertyName}</p>
+                    <p className="text-xs font-semibold text-primary">{row.year}-{String(row.month).padStart(2, "0")}</p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                    <span>إجمالي المستحق: {formatMoney(row.totalDue)}</span>
+                    <span>إجمالي المحصل للمالك: {formatMoney(row.ownerCollected)}</span>
+                    <span>غير محصل من الإيجار: {formatMoney(row.rentUncollected)}</span>
+                    <span>مدفوعات منصة إيجار: {formatMoney(row.ejarPayments)}</span>
+                    <span>رسوم التحصيل المستحقة: {formatMoney(row.collectionFeeDue)}</span>
+                    <span className="text-emerald-700">رسوم التحصيل المحصلة: {formatMoney(row.collectionFeeCollected)}</span>
+                    <span className="text-orange-700">رسوم التحصيل غير المحصلة: {formatMoney(row.collectionFeeUncollected)}</span>
+                    <span>نسبة التحصيل من الإيجار: {row.rentCollectionRate}%</span>
+                    <span>نسبة تحصيل رسوم المكتب: {row.officeFeeCollectionRate}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Income per building */}
         <div>
@@ -73,7 +148,7 @@ export default function Reports() {
                   >
                     <div className="flex items-center justify-between">
                       <p className="font-bold">{b.name}</p>
-                      <p className="text-sm font-bold text-primary">{formatMoney(s.totalIncome)}</p>
+                      <p className="text-sm font-bold text-primary">{formatMoney(s.totalNetIncome)}</p>
                     </div>
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
                       <div
@@ -86,6 +161,12 @@ export default function Reports() {
                       <span className="text-emerald-700">{s.occupied} مؤجرة</span>
                       <span>{s.vacant} شاغرة</span>
                       <span className="text-amber-700">صيانة: {formatMoney(s.maintenanceCost)}</span>
+                    </div>
+                    <div className="mt-2 flex gap-3 text-[11px]">
+                      <span>إجمالي المحصل: {formatMoney(s.totalGrossIncome)}</span>
+                      {s.totalCollectionFees > 0 && (
+                        <span className="text-amber-600">الرسوم: {formatMoney(s.totalCollectionFees)}</span>
+                      )}
                     </div>
                   </Link>
                 );

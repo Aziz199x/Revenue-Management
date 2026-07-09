@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { showError } from "@/utils/toast";
 import {
   Select,
   SelectContent,
@@ -11,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Unit, UnitStatus, RentPeriod } from "@/data/types";
-import { UNIT_TYPES, UNIT_STATUS_LABELS, RENT_PERIOD_LABELS } from "@/data/labels";
+import { UNIT_TYPES, UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, UNIT_RENT_PERIOD_OPTIONS } from "@/data/labels";
 
 export interface UnitFormValues {
   name: string;
@@ -21,14 +23,17 @@ export interface UnitFormValues {
   rentPeriod: RentPeriod;
   status: UnitStatus;
   notes?: string;
+  collectionFeeOverrideEnabled: boolean;
+  collectionFeePercent: number | null;
 }
 
 interface Props {
   initial?: Unit;
+  hasActiveContract?: boolean;
   onSubmit: (values: UnitFormValues) => void;
 }
 
-export default function UnitForm({ initial, onSubmit }: Props) {
+export default function UnitForm({ initial, hasActiveContract = false, onSubmit }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [floor, setFloor] = useState(initial?.floor ?? "");
   const [type, setType] = useState(initial?.type ?? "شقة");
@@ -36,9 +41,18 @@ export default function UnitForm({ initial, onSubmit }: Props) {
     initial && !UNIT_TYPES.includes(initial.type) ? initial.type : "",
   );
   const [rentAmount, setRentAmount] = useState(initial?.rentAmount?.toString() ?? "");
-  const [rentPeriod, setRentPeriod] = useState<RentPeriod>(initial?.rentPeriod ?? "monthly");
-  const [status, setStatus] = useState<UnitStatus>(initial?.status ?? "vacant");
+  const initialRentPeriod = initial?.rentPeriod as string | undefined;
+  const [rentPeriod, setRentPeriod] = useState<RentPeriod>(
+    initialRentPeriod === "annual"
+      ? "yearly"
+      : initialRentPeriod === "semi_annual"
+        ? "semi_annually"
+        : initial?.rentPeriod ?? "monthly",
+  );
+  const [status, setStatus] = useState<UnitStatus>(initial?.manualStatus ?? (initial?.status === "maintenance" ? "maintenance" : "vacant"));
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [collectionFeeOverrideEnabled, setCollectionFeeOverrideEnabled] = useState(initial?.collectionFeeOverrideEnabled ?? false);
+  const [collectionFeePercent, setCollectionFeePercent] = useState(String(initial?.collectionFeePercent ?? 0));
 
   const effectiveType =
     initial && !UNIT_TYPES.includes(initial.type) && customType ? customType : type;
@@ -49,6 +63,11 @@ export default function UnitForm({ initial, onSubmit }: Props) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) return;
+        const fee = Number(collectionFeePercent || 0);
+        if (collectionFeeOverrideEnabled && (!Number.isFinite(fee) || fee < 0 || fee > 100)) {
+          showError("يرجى إدخال نسبة صحيحة بين 0 و 100");
+          return;
+        }
         onSubmit({
           name: name.trim(),
           floor: floor.trim() || undefined,
@@ -57,6 +76,8 @@ export default function UnitForm({ initial, onSubmit }: Props) {
           rentPeriod,
           status,
           notes: notes.trim() || undefined,
+          collectionFeeOverrideEnabled,
+          collectionFeePercent: collectionFeeOverrideEnabled ? fee : null,
         });
       }}
     >
@@ -111,7 +132,7 @@ export default function UnitForm({ initial, onSubmit }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(RENT_PERIOD_LABELS) as RentPeriod[]).map((p) => (
+              {UNIT_RENT_PERIOD_OPTIONS.map((p) => (
                 <SelectItem key={p} value={p}>
                   {RENT_PERIOD_LABELS[p]}
                 </SelectItem>
@@ -132,6 +153,20 @@ export default function UnitForm({ initial, onSubmit }: Props) {
             ))}
           </SelectContent>
         </Select>
+        {hasActiveContract && status !== "maintenance" && (
+          <p className="text-xs text-muted-foreground">
+            تم تحديد الحالة تلقائياً بسبب وجود عقد ساري
+          </p>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between rounded-xl border p-3">
+          <Label>تخصيص رسوم التحصيل لهذه الوحدة</Label>
+          <Switch checked={collectionFeeOverrideEnabled} onCheckedChange={setCollectionFeeOverrideEnabled} />
+        </div>
+        {collectionFeeOverrideEnabled ? (
+          <div className="space-y-1.5"><Label>نسبة رسوم التحصيل لهذه الوحدة</Label><Input type="number" inputMode="decimal" min={0} max={100} step={0.1} value={collectionFeePercent} onChange={(event) => setCollectionFeePercent(event.target.value)} placeholder="مثال: 5" className="rounded-xl" /></div>
+        ) : <p className="text-xs text-muted-foreground">سيتم استخدام نسبة العقار</p>}
       </div>
       <div className="space-y-1.5">
         <Label>ملاحظات</Label>
