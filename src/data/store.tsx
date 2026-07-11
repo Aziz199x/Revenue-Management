@@ -5,7 +5,6 @@ import React, {
   useCallback,
   useEffect,
 } from "react";
-<<<<<<< HEAD
 import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract } from "./types";
 import { withComputedUnitStatuses } from "./unitStatus";
 
@@ -117,15 +116,6 @@ function migrateContracts(contracts: Contract[]): Contract[] {
     return { ...contract, startDate: startDate ?? contract.startDate, endDate: endDate ?? contract.endDate };
   });
 }
-=======
-import {
-  AppData,
-  EMPTY_DATA,
-  DEFAULT_SETTINGS,
-  Payment,
-  Contract,
-} from "./types";
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
 const STORAGE_KEY = "aziz-revenue-data-v2";
 
@@ -178,7 +168,6 @@ function loadData(): AppData {
     if (!raw) raw = localStorage.getItem("rental-manager-data-v1");
     if (!raw) return EMPTY_DATA;
     const parsed = JSON.parse(raw);
-<<<<<<< HEAD
     const parsedSettings = parsed.settings || {};
     const legacyFee = Number(parsedSettings.defaultCollectionFeePercent) || 0;
     const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = parsedSettings;
@@ -208,9 +197,6 @@ function loadData(): AppData {
           ?? DEFAULT_SETTINGS.defaultContractExpiryReminderDays,
       },
     });
-=======
-    return migrateData(parsed);
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   } catch {
     return EMPTY_DATA;
   }
@@ -258,7 +244,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replaceAll = useCallback((newData: AppData) => {
-<<<<<<< HEAD
     const importedSettings = newData.settings as AppData["settings"] & { defaultCollectionFeePercent?: number };
     const legacyFee = Number(importedSettings.defaultCollectionFeePercent) || 0;
     const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = importedSettings;
@@ -279,10 +264,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })),
       settings: { ...DEFAULT_SETTINGS, ...settingsWithoutLegacyFee },
     }));
-=======
-    const migrated = migrateData(newData);
-    setData(migrated);
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   }, []);
 
   return (

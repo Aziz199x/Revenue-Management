@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useRef, useState } from "react";
 import {
-<<<<<<< HEAD
   Bell,
   Cloud,
   Download,
@@ -13,10 +12,6 @@ import {
   MessageCircle,
   RotateCcw,
   ChevronLeft,
-=======
-  Bell, Download, Upload, FileSpreadsheet, Trash2, ShieldCheck, Smartphone,
-  Cloud, LogOut, RefreshCw, Percent, MessageCircle,
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +27,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import PageHeader from "@/components/shared/PageHeader";
 import { useStore } from "@/data/store";
-<<<<<<< HEAD
 import { EMPTY_DATA, DEFAULT_WHATSAPP_TEMPLATES, NotificationSound } from "@/data/types";
 import { exportJSON, exportCSV, parseBackup } from "@/utils/backup";
 import {
@@ -41,11 +35,6 @@ import {
   syncScheduledNotifications,
   openSystemNotificationSoundSettings,
 } from "@/utils/notifications";
-=======
-import { EMPTY_DATA, WhatsappPref } from "@/data/types";
-import { exportJSON, exportCSV, parseBackup } from "@/utils/backup";
-import { notificationsSupported, requestNotificationPermission, syncScheduledNotifications } from "@/utils/notifications";
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 import { showSuccess, showError } from "@/utils/toast";
 
 const GDRIVE_EMAIL_KEY = "aziz-gdrive-email";
@@ -55,7 +44,6 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
-<<<<<<< HEAD
   const initialContractReminder = data.settings.defaultContractExpiryReminderDays;
   const [contractReminderChoice, setContractReminderChoice] = useState(
     [7, 15, 30, 60].includes(initialContractReminder) ? String(initialContractReminder) : "custom",
@@ -85,9 +73,6 @@ export default function SettingsPage() {
     }));
     showSuccess("تم حفظ إعدادات التذكير");
   };
-=======
-  const [gdriveEmail, setGdriveEmail] = useState<string>(() => localStorage.getItem(GDRIVE_EMAIL_KEY) || "");
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
   const toggleNotifications = async (enabled: boolean) => {
     if (enabled) {
@@ -158,7 +143,6 @@ export default function SettingsPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-<<<<<<< HEAD
               <Label className="text-xs">تذكير العقود قبل</Label>
               <Select
                 value={contractReminderChoice}
@@ -174,12 +158,6 @@ export default function SettingsPage() {
                   <SelectItem value="60">60 يوم</SelectItem>
                   <SelectItem value="custom">مدة مخصصة</SelectItem>
                 </SelectContent>
-=======
-              <Label className="text-xs">تذكير الإيجار قبل</Label>
-              <Select value={String(data.settings.rentReminderDays)} onValueChange={(v) => update((prev) => ({ ...prev, settings: { ...prev.settings, rentReminderDays: Number(v) } }))}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="3">3 أيام</SelectItem><SelectItem value="7">7 أيام</SelectItem><SelectItem value="15">15 يوم</SelectItem></SelectContent>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
               </Select>
               {contractReminderChoice === "custom" && (
                 <div className="space-y-1.5 pt-2">
@@ -466,7 +444,6 @@ export default function SettingsPage() {
             <div className="rounded-full bg-secondary p-2.5"><Smartphone className="h-5 w-5 text-primary" /></div>
             <div><p className="text-sm font-bold">النسخ الاحتياطي والنقل</p><p className="text-xs text-muted-foreground">صدّر أو انقل بياناتك</p></div>
           </div>
-<<<<<<< HEAD
           <Button
             variant="outline"
             className="w-full justify-start rounded-xl"
@@ -524,12 +501,6 @@ export default function SettingsPage() {
               if (f) handleImport(f);
             }}
           />
-=======
-          <Button variant="outline" className="w-full justify-start rounded-xl" onClick={() => exportJSON(data)}><Download className="ml-2 h-4 w-4" /> تصدير (JSON)</Button>
-          <Button variant="outline" className="w-full justify-start rounded-xl" onClick={() => exportCSV(data)}><FileSpreadsheet className="ml-2 h-4 w-4" /> تصدير تقرير (CSV / Excel)</Button>
-          <Button variant="outline" className="w-full justify-start rounded-xl" disabled={importing} onClick={() => fileRef.current?.click()}><Upload className="ml-2 h-4 w-4" /> استيراد (JSON)</Button>
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); }} />
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
         </div>
 
         {/* Danger zone */}

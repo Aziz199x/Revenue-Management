@@ -13,10 +13,7 @@ export interface TenantFormValues {
   nationalId?: string;
   email?: string;
   notes?: string;
-<<<<<<< HEAD
   extraInfo?: string;
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   electricityAccountName?: string;
   electricityAccountNumber?: string;
   electricityMeterNumber?: string;
@@ -34,7 +31,6 @@ export default function TenantForm({ initial, onSubmit }: Props) {
   const [nationalId, setNationalId] = useState(initial?.nationalId ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
-<<<<<<< HEAD
   const [extraInfo, setExtraInfo] = useState(initial?.extraInfo ?? "");
   const [electricityAccountName, setElectricityAccountName] = useState(
     initial?.electricityAccountName ?? "",
@@ -48,12 +44,6 @@ export default function TenantForm({ initial, onSubmit }: Props) {
   const [electricityNotes, setElectricityNotes] = useState(
     initial?.electricityNotes ?? "",
   );
-=======
-  const [electricityAccountName, setElectricityAccountName] = useState(initial?.electricityAccountName ?? "");
-  const [electricityAccountNumber, setElectricityAccountNumber] = useState(initial?.electricityAccountNumber ?? "");
-  const [electricityMeterNumber, setElectricityMeterNumber] = useState(initial?.electricityMeterNumber ?? "");
-  const [electricityNotes, setElectricityNotes] = useState(initial?.electricityNotes ?? "");
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
   return (
     <form
@@ -67,10 +57,7 @@ export default function TenantForm({ initial, onSubmit }: Props) {
           nationalId: nationalId.trim() || undefined,
           email: email.trim() || undefined,
           notes: notes.trim() || undefined,
-<<<<<<< HEAD
           extraInfo: extraInfo.trim() || undefined,
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
           electricityAccountName: electricityAccountName.trim() || undefined,
           electricityAccountNumber: electricityAccountNumber.trim() || undefined,
           electricityMeterNumber: electricityMeterNumber.trim() || undefined,
@@ -131,7 +118,6 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         <Label>ملاحظات</Label>
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-xl" />
       </div>
-<<<<<<< HEAD
       <div className="space-y-1.5">
         <Label>معلومات إضافية</Label>
         <Textarea value={extraInfo} onChange={(e) => setExtraInfo(e.target.value)} placeholder="أي معلومات أخرى تريد حفظها" className="rounded-xl" />
@@ -158,8 +144,6 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         </div>
       </div>
 
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
       <Button type="submit" className="w-full rounded-xl">
         {initial ? "حفظ التعديلات" : "إضافة المستأجر"}
       </Button>

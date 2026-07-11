@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import {
-<<<<<<< HEAD
   Building2,
   Wallet,
   AlertTriangle,
@@ -14,10 +13,6 @@ import {
   ClipboardList,
   MessageCircle,
   Gavel,
-=======
-  Building2, Wallet, AlertTriangle, Wrench, Bell, FileText, Zap,
-  ChevronLeft, Home, ClipboardList,
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -26,7 +21,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStore } from "@/data/store";
 import {
-<<<<<<< HEAD
   globalStats,
   collectReminders,
   collectPaymentCards,
@@ -52,14 +46,6 @@ const kindIcons = {
   bill: Zap,
   request: ClipboardList,
   eviction: Gavel,
-=======
-  globalStats, collectReminders, formatMoney, formatDate, effectiveStatus,
-  calculateUnitStatus,
-} from "@/data/helpers";
-
-const kindIcons: Record<string, any> = {
-  rent: Wallet, contract: FileText, maintenance: Wrench, bill: Zap, request: ClipboardList,
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 };
 const kindColors: Record<string, string> = {
   rent: "bg-secondary text-primary",
@@ -67,15 +53,11 @@ const kindColors: Record<string, string> = {
   maintenance: "bg-orange-100 text-orange-700",
   bill: "bg-sky-100 text-sky-700",
   request: "bg-purple-100 text-purple-700",
-<<<<<<< HEAD
   eviction: "bg-red-100 text-red-700",
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 };
 
 export default function Index() {
   const { data } = useStore();
-<<<<<<< HEAD
   const [selectedProperty, setSelectedProperty] = useState(() => localStorage.getItem(DASHBOARD_PROPERTY_KEY) || "all");
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
   const safeProperty = selectedProperty === "all" || data.buildings.some((b) => b.id === selectedProperty) ? selectedProperty : "all";
@@ -146,25 +128,11 @@ export default function Index() {
   const nearestAttentionContract = getNearestActiveContractNeedingAttention(dashboardData.contracts);
   const nearestAttentionEndDate = nearestAttentionContract ? getContractEndDate(nearestAttentionContract) : null;
   const nearestAttentionDays = getDaysUntilDate(nearestAttentionEndDate);
-=======
-  const stats = globalStats(data);
-  const reminders = collectReminders(data).slice(0, 8);
-  const occupiedUnits = data.units.filter((u) =>
-    ["occupied", "occupied_no_renewal", "expired_not_vacated"].includes(calculateUnitStatus(u, data.contracts)),
-  ).length;
-  const openRequests = data.tenantRequests.filter((r) => r.status !== "completed" && r.status !== "cancelled");
-  const urgentRequests = openRequests.filter((r) => r.priority === "urgent");
-  const upcomingPayments = data.payments
-    .filter((p) => p.status !== "paid" && effectiveStatus(p) !== "paid")
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    .slice(0, 4);
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
   return (
     <div>
       <PageHeader title="أزيز للعقارات" subtitle="لوحة التحكم الرئيسية" />
       <div className="space-y-4 p-4">
-<<<<<<< HEAD
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">فلترة حسب العقار</label>
           <Select value={safeProperty} onValueChange={(value) => { setSelectedProperty(value); localStorage.setItem(DASHBOARD_PROPERTY_KEY, value); }}>
@@ -191,10 +159,6 @@ export default function Index() {
             <Wallet className="h-4 w-4" />
             صافي الدخل بعد رسوم التحصيل
           </div>
-=======
-        <div className="animate-fade-up rounded-3xl bg-primary p-5 text-primary-foreground">
-          <div className="flex items-center gap-2 text-sm opacity-90"><Wallet className="h-4 w-4" /> إجمالي الدخل المحصّل</div>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
           <p className="mt-1 text-3xl font-extrabold">{formatMoney(stats.totalIncome)}</p>
           {stats.totalCollectionFees > 0 && (
             <div className="mt-2 flex gap-4 text-xs opacity-80">
@@ -226,7 +190,6 @@ export default function Index() {
           </Link>
         </div>
 
-<<<<<<< HEAD
         {/* Request Stats */}
         {(() => {
           const rs = requestStats(data);
@@ -269,11 +232,6 @@ export default function Index() {
             <div className="rounded-full bg-red-100 p-2.5">
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
-=======
-        {(urgentRequests.length > 0 || openRequests.length > 0) && (
-          <Link to="/requests" className="flex items-center gap-3 rounded-3xl border border-purple-200 bg-purple-50 p-4 animate-fade-up" style={{ animationDelay: "100ms" }}>
-            <div className="rounded-full bg-purple-100 p-2.5"><ClipboardList className="h-5 w-5 text-purple-600" /></div>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
             <div className="flex-1">
               <p className="text-sm font-bold text-purple-800">طلبات المستأجر</p>
               <p className="text-xs text-purple-600">{openRequests.length} طلب مفتوح{urgentRequests.length > 0 ? " · " + urgentRequests.length + " عاجل" : ""}</p>
@@ -290,7 +248,6 @@ export default function Index() {
           </Link>
         )}
 
-<<<<<<< HEAD
         <Tabs defaultValue="payments" dir="rtl" className="animate-fade-up" style={{ animationDelay: "180ms" }}>
           <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1">
             <TabsTrigger value="contracts" className="rounded-xl py-2 text-[11px] font-bold">
@@ -529,29 +486,6 @@ export default function Index() {
             <h2 className="flex items-center gap-2 font-bold">
               <Bell className="h-4 w-4 text-primary" /> التذكيرات
             </h2>
-=======
-        {upcomingPayments.length > 0 && (
-          <div className="animate-fade-up" style={{ animationDelay: "140ms" }}>
-            <h2 className="mb-2 flex items-center gap-2 font-bold"><Wallet className="h-4 w-4 text-primary" /> أقرب الدفعات المستحقة</h2>
-            <div className="space-y-2">
-              {upcomingPayments.map((p) => {
-                const isOverdue = effectiveStatus(p) === "overdue";
-                return (
-                  <Link key={p.id} to={"/units/" + p.unitId} className={"flex items-center gap-3 rounded-3xl border p-3.5 transition-transform active:scale-[0.98] " + (isOverdue ? "border-red-200 bg-red-50/50" : "border-border bg-card")}>
-                    <div className={"rounded-2xl p-2.5 " + (isOverdue ? "bg-red-100 text-red-600" : "bg-secondary text-primary")}><Wallet className="h-5 w-5" /></div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold">{p.tenantName || "مستأجر"}</p>
-                      <p className="truncate text-xs text-muted-foreground">{p.unitName || ""} - {p.buildingName || ""}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-bold text-primary">{formatMoney(p.amount)}</p>
-                      <p className={"text-[11px] font-semibold " + (isOverdue ? "text-red-600" : "text-muted-foreground")}>{isOverdue ? "متأخر" : formatDate(p.dueDate)}</p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
           </div>
         )}
 
@@ -564,7 +498,6 @@ export default function Index() {
               {reminders.map((r) => {
                 const Icon = kindIcons[r.kind] || Bell;
                 return (
-<<<<<<< HEAD
                   <Link
                     key={r.id}
                     to={`/units/${r.unitId}`}
@@ -573,25 +506,16 @@ export default function Index() {
                     <div className={`rounded-2xl p-2.5 ${r.kind === "contract" && r.autoRenewal ? "bg-sky-100 text-sky-700" : kindColors[r.kind]}`}>
                       <Icon className="h-5 w-5" />
                     </div>
-=======
-                  <Link key={r.id} to={r.unitId ? "/units/" + r.unitId : "/requests"} className="flex items-center gap-3 rounded-3xl border border-border bg-card p-3.5 transition-transform active:scale-[0.98]">
-                    <div className={"rounded-2xl p-2.5 " + (kindColors[r.kind] || "bg-secondary")}><Icon className="h-5 w-5" /></div>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold">{r.title}</p>
                       <p className="truncate text-xs text-muted-foreground">{r.subtitle}</p>
                       {r.amount && <p className="text-xs font-semibold text-primary">{formatMoney(r.amount)}</p>}
                     </div>
                     <div className="text-left">
-<<<<<<< HEAD
                       <p className={`text-xs font-bold ${r.days < 0 ? "text-red-600" : r.days <= 7 ? "text-amber-600" : "text-primary"}`}>
                         {r.kind === "contract"
                           ? (r.days < 0 ? `منتهي منذ ${-r.days} يوم` : r.days === 0 ? "ينتهي اليوم" : `ينتهي خلال ${r.days} يوم`)
                           : (r.days < 0 ? `متأخر ${-r.days} يوم` : r.days === 0 ? "اليوم" : `بعد ${r.days} يوم`)}
-=======
-                      <p className={"text-xs font-bold " + (r.days < 0 ? "text-red-600" : r.days <= 7 ? "text-amber-600" : "text-primary")}>
-                        {r.days < 0 ? "متأخر " + (-r.days) + " يوم" : r.days === 0 ? "اليوم" : "بعد " + r.days + " يوم"}
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
                       </p>
                       <p className="text-[11px] text-muted-foreground">{formatDate(r.date)}</p>
                     </div>

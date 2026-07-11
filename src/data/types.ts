@@ -1,21 +1,9 @@
-<<<<<<< HEAD
 export type UnitStatus = "occupied" | "rented_not_renewing" | "vacant" | "maintenance";
-=======
-// ===================== Core Status Types =====================
-export type UnitStatus =
-  | "occupied"
-  | "vacant"
-  | "maintenance"
-  | "occupied_no_renewal"
-  | "expired_not_vacated";
-
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 export type PaymentStatus = "paid" | "unpaid" | "partial" | "overdue";
 export type PaymentMethod = "cash" | "bank_transfer" | "ejar" | "";
 export type BillStatus = "paid" | "unpaid";
 export type RepairStatus = "pending" | "completed" | "cancelled";
 export type BillType = "electricity" | "water" | "other";
-<<<<<<< HEAD
 export type RentPeriod = "monthly" | "quarterly" | "semi_annually" | "yearly" | "flexible";
 export type RentPeriodNew = RentPeriod | "semi_annual" | "annual" | "custom" | "imported_schedule";
 export type PaymentMethod = "bank_transfer" | "cash" | "ejar_platform" | "other";
@@ -36,10 +24,6 @@ export type RequestType =
 
 export type RequestStatus = "new" | "pending" | "in_progress" | "completed" | "cancelled";
 export type RequestPriority = "low" | "medium" | "high" | "urgent";
-=======
-export type RentPeriod = "monthly" | "quarterly" | "semi_annually" | "yearly";
-export type ContractStatus = "active" | "future" | "expired" | "ending_soon";
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
 export type RequestType =
   | "maintenance"
@@ -92,30 +76,19 @@ export interface Unit {
 
 export interface Tenant {
   id: string;
-<<<<<<< HEAD
   unitId: string;
   buildingId?: string;
-=======
-  unitId?: string;
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   name: string;
   phone?: string;
   nationalId?: string;
   email?: string;
   notes?: string;
-<<<<<<< HEAD
   extraInfo?: string;
-=======
-  // electricity account info
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   electricityAccountName?: string;
   electricityAccountNumber?: string;
   electricityMeterNumber?: string;
   electricityNotes?: string;
-<<<<<<< HEAD
   activeContractId?: string;
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   createdAt: string;
   updatedAt?: string;
 }
@@ -180,7 +153,6 @@ export interface Payment {
 export interface Contract {
   id: string;
   unitId: string;
-<<<<<<< HEAD
   tenantId?: string;
   tenantName?: string;
   rentAmount?: number;
@@ -192,21 +164,6 @@ export interface Contract {
   expiryReminderDays: number;
   autoRenewal: boolean;
   tenantRenewalPreference?: "unknown" | "renewing" | "not_renewing";
-=======
-  buildingId?: string;
-  tenantName: string;
-  tenantPhone?: string;
-  contractNumber?: string;
-  electricityAccountNumber?: string;
-  electricityMeterNumber?: string;
-  startDate: string;
-  endDate: string;
-  annualRent: number;
-  paymentCycle: RentPeriod;
-  autoRenewal: boolean;
-  reminderDays: number;
-  collectionPercentage?: number;
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   notes?: string;
   createdAt: string;
   contractNumber?: string;
@@ -486,7 +443,6 @@ export interface Settings {
   defaultContractExpiryReminderDays: number;
   rentReminderDays: number;
   notificationsEnabled: boolean;
-<<<<<<< HEAD
   overduePaymentNotificationsEnabled: boolean;
   reminderFrequencyDays: number;
   reminderFrequencyHours: number;
@@ -496,10 +452,6 @@ export interface Settings {
   contractNotificationSound: NotificationSound;
   maintenanceNotificationSound: NotificationSound;
   whatsappTemplates: WhatsAppTemplates;
-=======
-  collectionFeePercentage: number;
-  whatsappPreference: WhatsappPref;
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 }
 
 export type NotificationSound = "payment_overdue.wav" | "contract_reminder.wav" | "default";
@@ -513,11 +465,8 @@ export interface AppData {
   bills: Bill[];
   repairs: Repair[];
   tenantRequests: TenantRequest[];
-<<<<<<< HEAD
   contractAttachments: ContractAttachment[];
   collectionFeeSettlements: CollectionFeeSettlement[];
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   settings: Settings;
 }
 
@@ -535,7 +484,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultContractExpiryReminderDays: 80,
   rentReminderDays: 7,
   notificationsEnabled: false,
-<<<<<<< HEAD
   overduePaymentNotificationsEnabled: true,
   reminderFrequencyDays: 1,
   reminderFrequencyHours: 24,
@@ -545,10 +493,6 @@ export const DEFAULT_SETTINGS: Settings = {
   contractNotificationSound: "contract_reminder.wav",
   maintenanceNotificationSound: "default",
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
-=======
-  collectionFeePercentage: 0,
-  whatsappPreference: "ask",
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 };
 
 export const EMPTY_DATA: AppData = {
@@ -560,10 +504,7 @@ export const EMPTY_DATA: AppData = {
   bills: [],
   repairs: [],
   tenantRequests: [],
-<<<<<<< HEAD
   contractAttachments: [],
   collectionFeeSettlements: [],
-=======
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   settings: DEFAULT_SETTINGS,
 };

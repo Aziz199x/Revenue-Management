@@ -3,13 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-<<<<<<< HEAD
 import { Switch } from "@/components/ui/switch";
 import { showError } from "@/utils/toast";
-=======
-import { Separator } from "@/components/ui/separator";
-import { Zap } from "lucide-react";
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 import {
   Select,
   SelectContent,
@@ -29,15 +24,8 @@ export interface UnitFormValues {
   rentPeriod: RentPeriod;
   status: UnitStatus;
   notes?: string;
-<<<<<<< HEAD
   collectionFeeOverrideEnabled: boolean;
   collectionFeePercent: number | null;
-=======
-  electricityAccountName?: string;
-  electricityAccountNumber?: string;
-  electricityMeterNumber?: string;
-  electricityNotes?: string;
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 }
 
 interface Props {
@@ -65,15 +53,8 @@ export default function UnitForm({ initial, hasActiveContract = false, onSubmit 
   );
   const [status, setStatus] = useState<UnitStatus>(initial?.manualStatus ?? (initial?.status === "maintenance" ? "maintenance" : "vacant"));
   const [notes, setNotes] = useState(initial?.notes ?? "");
-<<<<<<< HEAD
   const [collectionFeeOverrideEnabled, setCollectionFeeOverrideEnabled] = useState(initial?.collectionFeeOverrideEnabled ?? false);
   const [collectionFeePercent, setCollectionFeePercent] = useState(String(initial?.collectionFeePercent ?? 0));
-=======
-  const [electricityAccountName, setElectricityAccountName] = useState(initial?.electricityAccountName ?? "");
-  const [electricityAccountNumber, setElectricityAccountNumber] = useState(initial?.electricityAccountNumber ?? "");
-  const [electricityMeterNumber, setElectricityMeterNumber] = useState(initial?.electricityMeterNumber ?? "");
-  const [electricityNotes, setElectricityNotes] = useState(initial?.electricityNotes ?? "");
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
   const effectiveType = type === "أخرى" ? customType.trim() || "أخرى" : type;
 
@@ -97,15 +78,8 @@ export default function UnitForm({ initial, hasActiveContract = false, onSubmit 
           rentPeriod,
           status,
           notes: notes.trim() || undefined,
-<<<<<<< HEAD
           collectionFeeOverrideEnabled,
           collectionFeePercent: collectionFeeOverrideEnabled ? fee : null,
-=======
-          electricityAccountName: electricityAccountName.trim() || undefined,
-          electricityAccountNumber: electricityAccountNumber.trim() || undefined,
-          electricityMeterNumber: electricityMeterNumber.trim() || undefined,
-          electricityNotes: electricityNotes.trim() || undefined,
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
         });
       }}
     >
@@ -147,15 +121,11 @@ export default function UnitForm({ initial, hasActiveContract = false, onSubmit 
           <Select value={rentPeriod} onValueChange={(v) => setRentPeriod(v as RentPeriod)}>
             <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
             <SelectContent>
-<<<<<<< HEAD
               {UNIT_RENT_PERIOD_OPTIONS.map((p) => (
                 <SelectItem key={p} value={p}>
                   {RENT_PERIOD_LABELS[p]}
                 </SelectItem>
               ))}
-=======
-              {(Object.keys(RENT_PERIOD_LABELS) as RentPeriod[]).map((p) => (<SelectItem key={p} value={p}>{RENT_PERIOD_LABELS[p]}</SelectItem>))}
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
             </SelectContent>
           </Select>
         </div>
@@ -169,7 +139,6 @@ export default function UnitForm({ initial, hasActiveContract = false, onSubmit 
             <SelectItem value="maintenance">{UNIT_STATUS_LABELS.maintenance}</SelectItem>
           </SelectContent>
         </Select>
-<<<<<<< HEAD
         {hasActiveContract && status !== "maintenance" && (
           <p className="text-xs text-muted-foreground">
             تم تحديد الحالة تلقائياً بسبب وجود عقد ساري
@@ -184,9 +153,6 @@ export default function UnitForm({ initial, hasActiveContract = false, onSubmit 
         {collectionFeeOverrideEnabled ? (
           <div className="space-y-1.5"><Label>نسبة رسوم التحصيل لهذه الوحدة</Label><Input type="number" inputMode="decimal" min={0} max={100} step={0.1} value={collectionFeePercent} onChange={(event) => setCollectionFeePercent(event.target.value)} placeholder="مثال: 5" className="rounded-xl" /></div>
         ) : <p className="text-xs text-muted-foreground">سيتم استخدام نسبة العقار</p>}
-=======
-        <p className="text-xs text-muted-foreground">حالة الإشغال تُحسب تلقائياً من العقود</p>
->>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
       </div>
 
       <Separator />
