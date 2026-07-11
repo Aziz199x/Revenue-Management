@@ -105,9 +105,9 @@ function isCorruptedDisplayName(value: string | undefined): boolean {
 }
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
-import { buildPaymentReminderMessage } from "@/utils/whatsapp";
+import { buildPaymentReminderMessage, fillTemplate } from "@/utils/whatsapp";
 import { validatePhone } from "@/utils/whatsapp";
-import { daysUntil, formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
+import { formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
 import { showSuccess, showError } from "@/utils/toast";
 
 function MarkAsReceivedDialog({
@@ -680,7 +680,6 @@ export default function UnitDetails() {
                             console.log("[WhatsApp Payment] raw amount fields:", {
                               grossAmount: p.grossAmount,
                               amount: p.amount,
-                              rentAmount: p.rentAmount,
                             });
                             const paymentAmount = getPaymentAmount(p);
                             const formattedAmount = formatSarAmount(paymentAmount);
@@ -1068,9 +1067,9 @@ export default function UnitDetails() {
       <FormSheet open={editUnitOpen} onOpenChange={setEditUnitOpen} title="تعديل الوحدة">
         <UnitForm
           initial={unit}
-          hasActiveContract={contracts.some(isActiveContract)}
+          hasActiveContract={contracts.some((c) => isActiveContract(c))}
           onSubmit={async (values) => {
-            if (values.status === "vacant" && contracts.some(isActiveContract)) {
+            if (values.status === "vacant" && contracts.some((c) => isActiveContract(c))) {
               showError("لا يمكن جعل الشقة شاغرة لوجود عقد ساري");
               return;
             }
