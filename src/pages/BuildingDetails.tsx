@@ -28,7 +28,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import BuildingForm from "@/components/forms/BuildingForm";
 import UnitForm from "@/components/forms/UnitForm";
 import { useStore, genId } from "@/data/store";
-import { buildingStats, formatMoney, formatDate, todayISO } from "@/data/helpers";
+import { buildingStats, formatMoney, formatDate, todayISO, calculateUnitStatus } from "@/data/helpers";
 import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS } from "@/data/labels";
 import { showSuccess } from "@/utils/toast";
 
@@ -124,6 +124,24 @@ export default function BuildingDetails() {
             <p className="text-lg font-bold">{formatMoney(stats.maintenanceCost)}</p>
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">مجموع الإيجارات السنوية</p>
+            <p className="text-sm font-bold">{formatMoney(stats.totalAnnualRent)}</p>
+          </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">غير مدفوع / متأخر</p>
+            <p className="text-sm font-bold text-red-600">{formatMoney(stats.unpaidTotal)}</p>
+          </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">تحصيل المكتب</p>
+            <p className="text-sm font-bold text-orange-600">{formatMoney(stats.collectionFeeTotal)}</p>
+          </div>
+          <div className="rounded-3xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">صافي المستحق للمالك</p>
+            <p className="text-sm font-bold text-primary">{formatMoney(stats.netToOwner)}</p>
+          </div>
+        </div>
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl border border-border bg-card p-3">
             <p className="text-lg font-bold">{stats.unitsCount}</p>
@@ -170,6 +188,7 @@ export default function BuildingDetails() {
         ) : (
           units.map((u) => {
             const tenant = data.tenants.find((t) => t.unitId === u.id);
+            const computedStatus = calculateUnitStatus(u, data.contracts);
             return (
               <Link
                 key={u.id}
@@ -190,7 +209,7 @@ export default function BuildingDetails() {
                   </div>
                 </div>
                 <div className="text-left">
-                  <StatusBadge status={u.status} label={UNIT_STATUS_LABELS[u.status]} />
+                  <StatusBadge status={computedStatus} label={UNIT_STATUS_LABELS[computedStatus]} />
                   <p className="mt-1 text-xs font-semibold text-primary">
                     {formatMoney(u.rentAmount)}
                     <span className="text-muted-foreground"> / {RENT_PERIOD_LABELS[u.rentPeriod]}</span>

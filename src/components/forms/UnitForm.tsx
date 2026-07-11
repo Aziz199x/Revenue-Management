@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -16,11 +18,16 @@ import { UNIT_TYPES, UNIT_STATUS_LABELS, RENT_PERIOD_LABELS } from "@/data/label
 export interface UnitFormValues {
   name: string;
   floor?: string;
+  area?: string;
   type: string;
   rentAmount: number;
   rentPeriod: RentPeriod;
   status: UnitStatus;
   notes?: string;
+  electricityAccountName?: string;
+  electricityAccountNumber?: string;
+  electricityMeterNumber?: string;
+  electricityNotes?: string;
 }
 
 interface Props {
@@ -31,6 +38,7 @@ interface Props {
 export default function UnitForm({ initial, onSubmit }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [floor, setFloor] = useState(initial?.floor ?? "");
+  const [area, setArea] = useState(initial?.area ?? "");
   const [type, setType] = useState(initial?.type ?? "شقة");
   const [customType, setCustomType] = useState(
     initial && !UNIT_TYPES.includes(initial.type) ? initial.type : "",
@@ -39,9 +47,12 @@ export default function UnitForm({ initial, onSubmit }: Props) {
   const [rentPeriod, setRentPeriod] = useState<RentPeriod>(initial?.rentPeriod ?? "monthly");
   const [status, setStatus] = useState<UnitStatus>(initial?.status ?? "vacant");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [electricityAccountName, setElectricityAccountName] = useState(initial?.electricityAccountName ?? "");
+  const [electricityAccountNumber, setElectricityAccountNumber] = useState(initial?.electricityAccountNumber ?? "");
+  const [electricityMeterNumber, setElectricityMeterNumber] = useState(initial?.electricityMeterNumber ?? "");
+  const [electricityNotes, setElectricityNotes] = useState(initial?.electricityNotes ?? "");
 
-  const effectiveType =
-    initial && !UNIT_TYPES.includes(initial.type) && customType ? customType : type;
+  const effectiveType = type === "أخرى" ? customType.trim() || "أخرى" : type;
 
   return (
     <form
@@ -52,11 +63,16 @@ export default function UnitForm({ initial, onSubmit }: Props) {
         onSubmit({
           name: name.trim(),
           floor: floor.trim() || undefined,
-          type: type === "أخرى" ? customType.trim() || "أخرى" : effectiveType,
+          area: area.trim() || undefined,
+          type: effectiveType,
           rentAmount: Number(rentAmount) || 0,
           rentPeriod,
           status,
           notes: notes.trim() || undefined,
+          electricityAccountName: electricityAccountName.trim() || undefined,
+          electricityAccountNumber: electricityAccountNumber.trim() || undefined,
+          electricityMeterNumber: electricityMeterNumber.trim() || undefined,
+          electricityNotes: electricityNotes.trim() || undefined,
         });
       }}
     >
@@ -70,69 +86,77 @@ export default function UnitForm({ initial, onSubmit }: Props) {
           <Input value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="الأول" className="rounded-xl" />
         </div>
       </div>
-      <div className="space-y-1.5">
-        <Label>نوع الوحدة</Label>
-        <Select value={UNIT_TYPES.includes(type) ? type : "أخرى"} onValueChange={setType}>
-          <SelectTrigger className="rounded-xl">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {UNIT_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {type === "أخرى" && (
-          <Input
-            value={customType}
-            onChange={(e) => setCustomType(e.target.value)}
-            placeholder="اكتب نوع الوحدة"
-            className="mt-2 rounded-xl"
-          />
-        )}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>المساحة</Label>
+          <Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="م²" className="rounded-xl" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>نوع الوحدة</Label>
+          <Select value={UNIT_TYPES.includes(type) ? type : "أخرى"} onValueChange={setType}>
+            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {UNIT_TYPES.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+      {type === "أخرى" && (
+        <Input value={customType} onChange={(e) => setCustomType(e.target.value)} placeholder="اكتب نوع الوحدة" className="rounded-xl" />
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>قيمة الإيجار</Label>
-          <Input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            value={rentAmount}
-            onChange={(e) => setRentAmount(e.target.value)}
-            placeholder="0"
-            className="rounded-xl"
-          />
+          <Input type="number" inputMode="decimal" min={0} value={rentAmount} onChange={(e) => setRentAmount(e.target.value)} placeholder="0" className="rounded-xl" />
         </div>
         <div className="space-y-1.5">
           <Label>فترة الإيجار</Label>
           <Select value={rentPeriod} onValueChange={(v) => setRentPeriod(v as RentPeriod)}>
-            <SelectTrigger className="rounded-xl">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.keys(RENT_PERIOD_LABELS) as RentPeriod[]).map((p) => (
-                <SelectItem key={p} value={p}>
-                  {RENT_PERIOD_LABELS[p]}
-                </SelectItem>
-              ))}
+              {(Object.keys(RENT_PERIOD_LABELS) as RentPeriod[]).map((p) => (<SelectItem key={p} value={p}>{RENT_PERIOD_LABELS[p]}</SelectItem>))}
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>الحالة</Label>
-        <Select value={status} onValueChange={(v) => setStatus(v as UnitStatus)}>
-          <SelectTrigger className="rounded-xl">
-            <SelectValue />
-          </SelectTrigger>
+        <Label>الحالة اليدوية</Label>
+        <Select value={status === "maintenance" ? "maintenance" : "vacant"} onValueChange={(v) => setStatus(v as UnitStatus)}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {(Object.keys(UNIT_STATUS_LABELS) as UnitStatus[]).map((s) => (
-              <SelectItem key={s} value={s}>{UNIT_STATUS_LABELS[s]}</SelectItem>
-            ))}
+            <SelectItem value="vacant">{UNIT_STATUS_LABELS.vacant}</SelectItem>
+            <SelectItem value="maintenance">{UNIT_STATUS_LABELS.maintenance}</SelectItem>
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">حالة الإشغال تُحسب تلقائياً من العقود</p>
       </div>
+
+      <Separator />
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="rounded-lg bg-amber-100 p-1.5"><Zap className="h-4 w-4 text-amber-600" /></div>
+          <Label className="text-sm font-bold">بيانات حساب الكهرباء</Label>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">اسم صاحب حساب الكهرباء</Label>
+          <Input value={electricityAccountName} onChange={(e) => setElectricityAccountName(e.target.value)} className="rounded-xl" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">رقم حساب الكهرباء</Label>
+            <Input value={electricityAccountNumber} onChange={(e) => setElectricityAccountNumber(e.target.value)} className="rounded-xl" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">رقم العداد</Label>
+            <Input value={electricityMeterNumber} onChange={(e) => setElectricityMeterNumber(e.target.value)} className="rounded-xl" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">ملاحظات حساب الكهرباء</Label>
+          <Textarea value={electricityNotes} onChange={(e) => setElectricityNotes(e.target.value)} className="rounded-xl" />
+        </div>
+      </div>
+
       <div className="space-y-1.5">
         <Label>ملاحظات</Label>
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-xl" />

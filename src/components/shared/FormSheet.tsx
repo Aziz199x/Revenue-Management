@@ -17,7 +17,7 @@ export default function FormSheet({ open, onOpenChange, title, children }: Props
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="max-h-[90dvh] overflow-y-auto rounded-t-3xl"
+        className="sheet-safe-bottom max-h-[90dvh] overflow-y-auto rounded-t-3xl"
       >
         <SheetHeader className="text-right">
           <SheetTitle className="text-right">{title}</SheetTitle>

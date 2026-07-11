@@ -10,6 +10,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      position="top-center"
+      richColors
+      closeButton
+      duration={3000}
       toastOptions={{
         classNames: {
           toast:
@@ -20,6 +24,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           cancelButton:
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
+      }}
+      style={{
+        top: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
       }}
       {...props}
     />

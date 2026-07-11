@@ -22,7 +22,7 @@ export function exportCSV(data: AppData) {
   for (const p of data.payments) {
     const { building, unit } = unitInfo(p.unitId);
     lines.push(
-      [esc("دفعة إيجار"), esc(building), esc(unit), esc(""), esc(p.amount), esc(p.paymentDate), esc(p.status), esc(p.notes)].join(","),
+      [esc("دفعة إيجار"), esc(building), esc(unit), esc(""), esc(p.amount), esc(p.dueDate), esc(p.status), esc(p.notes)].join(","),
     );
   }
   for (const b of data.bills) {
