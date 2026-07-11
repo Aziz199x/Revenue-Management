@@ -204,9 +204,8 @@ export function upsertTenant(
   return { tenant, isNew: true };
 }
 
-// ===================== Formatting =====================
 export function formatMoney(n: number): string {
-  return `${(n || 0).toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
+  return `${n.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
 }
 
 export function getPaymentAmount(payment: { grossAmount?: number; amount?: number; rentAmount?: number }): number {
@@ -225,7 +224,6 @@ export function formatSarAmount(value: number | string): string {
 export function formatDate(iso?: string): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
-  if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("ar-SA", {
     year: "numeric",
     month: "short",
@@ -523,6 +521,7 @@ export function getVisiblePaymentsByContract(
 export function buildingStats(data: AppData, buildingId: string) {
   const units = data.units.filter((u) => u.buildingId === buildingId);
   const unitIds = new Set(units.map((u) => u.id));
+  const payments = data.payments.filter((p) => unitIds.has(p.unitId));
   const contracts = data.contracts.filter((c) => unitIds.has(c.unitId));
   const repairs = data.repairs.filter((r) => r.buildingId === buildingId || (r.unitId ? unitIds.has(r.unitId) : false));
 
@@ -535,45 +534,20 @@ export function buildingStats(data: AppData, buildingId: string) {
   const collectedCollectionFees = paidPayments.reduce((s, p) => s + (isCollectionFeeCollected(p.collectionFeeStatus) ? paymentCollectionFee(p) : 0), 0);
   const uncollectedCollectionFees = paidPayments.reduce((s, p) => s + getCollectionFeeRemainingAmount(data, p), 0);
 
-  const totalAnnualRent = contracts.reduce((s, c) => s + c.annualRent, 0);
+  const upcomingDue = payments
+    .map((p) => p.nextDueDate)
+    .filter((d): d is string => !!d && daysUntil(d) >= 0)
+    .sort()[0];
 
-  const unpaidTotal = payments
-    .filter((p) => p.status !== "paid")
-    .reduce((s, p) => s + p.amount, 0);
+  const nearestExpiry = contracts
+    .map((c) => c.endDate)
+    .filter((d) => daysUntil(d) >= 0)
+    .sort()[0];
 
   const maintenanceCost = repairs
     .filter((r) => r.status !== "cancelled")
     .reduce((s, r) => s + r.cost, 0);
   const totalNetIncome = Math.round((totalGrossIncome - collectedCollectionFees - maintenanceCost) * 100) / 100;
-
-  const collectionFeeTotal = payments
-    .filter((p) => p.status === "paid")
-    .reduce((s, p) => s + calculateCollectionFee(p, data), 0);
-
-  const netToOwner = payments
-    .filter((p) => p.status === "paid")
-    .reduce((s, p) => s + calculateOwnerNet(p, data), 0);
-
-  const occupied = units.filter((u) =>
-    ["occupied", "occupied_no_renewal", "expired_not_vacated"].includes(
-      calculateUnitStatus(u, data.contracts),
-    ),
-  ).length;
-  const vacant = units.filter(
-    (u) => calculateUnitStatus(u, data.contracts) === "vacant",
-  ).length;
-  const maintCount = units.filter(
-    (u) => calculateUnitStatus(u, data.contracts) === "maintenance",
-  ).length;
-
-  const unitPayments = data.payments.filter((p) => unitIds.has(p.unitId));
-  const upcomingDue = unitPayments
-    .filter((p) => p.status !== "paid" && daysUntil(p.dueDate) >= 0)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0]?.dueDate;
-
-  const nearestExpiry = contracts
-    .filter((c) => calculateContractStatus(c) !== "expired")
-    .sort((a, b) => a.endDate.localeCompare(b.endDate))[0]?.endDate;
 
   return {
     unitsCount: units.length,
@@ -588,10 +562,10 @@ export function buildingStats(data: AppData, buildingId: string) {
     totalNetIncome,
     upcomingDue,
     nearestExpiry,
+    maintenanceCost,
   };
 }
 
-// ===================== Global Stats =====================
 export function globalStats(data: AppData) {
   const paidPayments = data.payments.filter((p) => p.status === "paid").map((payment) => normalizePaymentFinancials(payment));
   const partialPayments = data.payments.filter((p) => p.status === "partial");
@@ -611,22 +585,6 @@ export function globalStats(data: AppData) {
     .reduce((s, r) => s + r.cost, 0);
   const totalNetIncome = Math.round((totalGrossIncome - totalCollectionFees - maintenanceTotal) * 100) / 100;
   const transfer = ownerTransferStats(paidPayments);
-
-  const collectionFeeTotal = data.payments
-    .filter((p) => p.status === "paid")
-    .reduce((s, p) => s + calculateCollectionFee(p, data), 0);
-
-  const netToOwner = data.payments
-    .filter((p) => p.status === "paid")
-    .reduce((s, p) => s + calculateOwnerNet(p, data), 0);
-
-  const transferredToOwner = data.payments
-    .filter((p) => p.status === "paid" && p.transferredToOwner)
-    .reduce((s, p) => s + calculateOwnerNet(p, data), 0);
-
-  const notTransferredToOwner = data.payments
-    .filter((p) => p.status === "paid" && !p.transferredToOwner)
-    .reduce((s, p) => s + calculateOwnerNet(p, data), 0);
 
   return {
     totalIncome: totalNetIncome,
@@ -754,8 +712,7 @@ export interface ReminderItem {
 
 export function collectReminders(data: AppData): ReminderItem[] {
   const items: ReminderItem[] = [];
-  const unitName = (unitId?: string) => {
-    if (!unitId) return "";
+  const unitName = (unitId: string) => {
     const u = data.units.find((x) => x.id === unitId);
     if (!u) return "وحدة محذوفة";
     const b = data.buildings.find((x) => x.id === u.buildingId);
@@ -827,7 +784,7 @@ export function collectReminders(data: AppData): ReminderItem[] {
       id: `rep-${r.id}`,
       kind: "maintenance",
       title: "صيانة معلقة",
-      subtitle: r.description,
+      subtitle: unitName(r.unitId),
       date: r.repairDate,
       days: daysUntil(r.repairDate),
       unitId: r.unitId,

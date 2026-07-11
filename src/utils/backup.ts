@@ -27,9 +27,9 @@ function escapeCsv(v: unknown) {
 function escapeHtml(v: unknown) {
   if (v === null || v === undefined) return "";
   return String(v)
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 

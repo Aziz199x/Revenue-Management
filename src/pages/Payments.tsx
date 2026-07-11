@@ -156,6 +156,13 @@ export default function Payments() {
     return filteredRows;
   }, [data, filters, safeBuildingFilter, showAllPayments]);
 
+  const upcoming = rows.filter(
+    (r) =>
+      r.payment.status !== "paid" &&
+      r.payment.nextDueDate &&
+      daysUntil(r.payment.nextDueDate) >= 0 &&
+      daysUntil(r.payment.nextDueDate) <= 30,
+  );
   const overdue = rows.filter((r) => r.status === "overdue");
   const eligibleRepairs = useMemo(() => {
     if (!markReceived) return [];
@@ -399,16 +406,21 @@ export default function Payments() {
 
   return (
     <div>
-      <PageHeader title="دفعات الإيجار" subtitle={`${data.payments.length} دفعة`} action={
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setShowFilters(true)}><Filter className="h-4 w-4" /></Button>
-      } />
+      <PageHeader title="دفعات الإيجار" subtitle={`${data.payments.length} دفعة مسجلة`} />
       <div className="space-y-3 p-4">
         {(overdue.length > 0 || upcoming.length > 0) && (
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-3xl bg-red-50 p-3 text-center"><p className="text-lg font-bold text-red-700">{overdue.length}</p><p className="text-[11px] font-semibold text-red-600">دفعات متأخرة</p></div>
-            <div className="rounded-3xl bg-amber-50 p-3 text-center"><p className="text-lg font-bold text-amber-700">{upcoming.length}</p><p className="text-[11px] font-semibold text-amber-600">تستحق قريباً</p></div>
+            <div className="rounded-3xl bg-red-50 p-3 text-center">
+              <p className="text-lg font-bold text-red-700">{overdue.length}</p>
+              <p className="text-[11px] font-semibold text-red-600">دفعات متأخرة</p>
+            </div>
+            <div className="rounded-3xl bg-amber-50 p-3 text-center">
+              <p className="text-lg font-bold text-amber-700">{upcoming.length}</p>
+              <p className="text-[11px] font-semibold text-amber-600">تستحق خلال 30 يوم</p>
+            </div>
           </div>
         )}
+
         <div className="relative">
           <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -459,7 +471,11 @@ export default function Payments() {
         </Button>
 
         {rows.length === 0 ? (
-          <EmptyState icon={Wallet} title="لا توجد دفعات" description="أضف عقود إيجار لتُنشأ الدفعات تلقائياً" />
+          <EmptyState
+            icon={Wallet}
+            title="لا توجد دفعات"
+            description="سجّل الدفعات من صفحة تفاصيل الوحدة"
+          />
         ) : (
           rows.map(({ payment: p, unit, building, tenant, status }) => {
             const maintenanceNote = paymentMaintenanceNote(p);

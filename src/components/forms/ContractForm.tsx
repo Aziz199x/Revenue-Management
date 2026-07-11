@@ -153,19 +153,6 @@ export default function ContractForm({
     }
   };
 
-  const rentNum = Number(annualRent) || 0;
-  const monthsPerCycle: Record<RentPeriod, number> = {
-    monthly: 1,
-    quarterly: 3,
-    semi_annually: 6,
-    yearly: 12,
-  };
-  const perPayment = rentNum > 0 ? Math.round((rentNum * monthsPerCycle[paymentCycle]) / 12) : 0;
-  const numPayments = durationMonths && durationMonths > 0
-    ? Math.ceil(durationMonths / monthsPerCycle[paymentCycle])
-    : 0;
-  const totalPayments = perPayment * numPayments;
-
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="space-y-1.5">

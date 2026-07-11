@@ -20,8 +20,6 @@ export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
   rented_not_renewing: "مؤجرة - لا يرغب بالتجديد",
   vacant: "شاغرة",
   maintenance: "تحت الصيانة",
-  occupied_no_renewal: "مؤجرة - لا يرغب بالتجديد",
-  expired_not_vacated: "عقد منتهي والمستأجر لم يخرج",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
@@ -172,18 +170,13 @@ export const REQUEST_PRIORITY_LABELS: Record<RequestPriority, string> = {
 export const UNIT_TYPES = ["شقة", "محل", "غرفة", "مكتب", "مستودع", "أخرى"];
 
 export const STATUS_COLORS: Record<string, string> = {
-  // payments
   paid: "bg-emerald-100 text-emerald-800",
   unpaid: "bg-slate-200 text-slate-700",
   partial: "bg-amber-100 text-amber-800",
   overdue: "bg-red-100 text-red-700",
-  // units
   occupied: "bg-emerald-100 text-emerald-800",
   vacant: "bg-slate-200 text-slate-700",
   maintenance: "bg-amber-100 text-amber-800",
-  occupied_no_renewal: "bg-orange-100 text-orange-800",
-  expired_not_vacated: "bg-red-100 text-red-700",
-  // repairs
   pending: "bg-amber-100 text-amber-800",
   completed: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-slate-200 text-slate-500",

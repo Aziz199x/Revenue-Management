@@ -47,7 +47,8 @@ const kindIcons = {
   request: ClipboardList,
   eviction: Gavel,
 };
-const kindColors: Record<string, string> = {
+
+const kindColors = {
   rent: "bg-secondary text-primary",
   contract: "bg-amber-100 text-amber-700",
   maintenance: "bg-orange-100 text-orange-700",
@@ -131,7 +132,7 @@ export default function Index() {
 
   return (
     <div>
-      <PageHeader title="أزيز للعقارات" subtitle="لوحة التحكم الرئيسية" />
+      <PageHeader title="مدير العقارات" subtitle="لوحة التحكم الرئيسية" />
       <div className="space-y-4 p-4">
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">فلترة حسب العقار</label>
@@ -167,11 +168,18 @@ export default function Index() {
             </div>
           )}
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-2xl bg-white/15 p-3"><p className="text-xs opacity-80">غير مدفوع</p><p className="font-bold">{formatMoney(stats.unpaidTotal)}</p></div>
-            <div className="rounded-2xl bg-white/15 p-3"><p className="text-xs opacity-80">متأخرات</p><p className="font-bold">{formatMoney(stats.overdueTotal)}</p></div>
+            <div className="rounded-2xl bg-white/15 p-3">
+              <p className="text-xs opacity-80">غير مدفوع</p>
+              <p className="font-bold">{formatMoney(stats.unpaidTotal)}</p>
+            </div>
+            <div className="rounded-2xl bg-white/15 p-3">
+              <p className="text-xs opacity-80">متأخرات</p>
+              <p className="font-bold">{formatMoney(stats.overdueTotal)}</p>
+            </div>
           </div>
         </div>
 
+        {/* Quick stats */}
         <div className="grid grid-cols-3 gap-2 animate-fade-up" style={{ animationDelay: "80ms" }}>
           <Link to="/buildings" className="rounded-2xl border border-border bg-card p-3 text-center active:scale-95 transition-transform">
             <Building2 className="mx-auto h-5 w-5 text-primary" />
@@ -181,7 +189,7 @@ export default function Index() {
           <Link to="/buildings" className="rounded-2xl border border-border bg-card p-3 text-center active:scale-95 transition-transform">
             <Home className="mx-auto h-5 w-5 text-primary" />
             <p className="mt-1 text-lg font-bold">{data.units.length}</p>
-            <p className="text-[11px] text-muted-foreground">وحدة ({occupiedUnits} مؤجرة)</p>
+            <p className="text-[11px] text-muted-foreground">وحدة</p>
           </Link>
           <Link to="/reports" className="rounded-2xl border border-border bg-card p-3 text-center active:scale-95 transition-transform">
             <Wrench className="mx-auto h-5 w-5 text-amber-600" />
@@ -233,17 +241,9 @@ export default function Index() {
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-bold text-purple-800">طلبات المستأجر</p>
-              <p className="text-xs text-purple-600">{openRequests.length} طلب مفتوح{urgentRequests.length > 0 ? " · " + urgentRequests.length + " عاجل" : ""}</p>
+              <p className="text-sm font-bold text-red-700">لديك متأخرات إيجار</p>
+              <p className="text-xs text-red-600">{formatMoney(stats.overdueTotal)} بحاجة للتحصيل</p>
             </div>
-            <ChevronLeft className="h-5 w-5 text-purple-400" />
-          </Link>
-        )}
-
-        {stats.overdueTotal > 0 && (
-          <Link to="/payments" className="flex items-center gap-3 rounded-3xl border border-red-200 bg-red-50 p-4 animate-fade-up" style={{ animationDelay: "120ms" }}>
-            <div className="rounded-full bg-red-100 p-2.5"><AlertTriangle className="h-5 w-5 text-red-600" /></div>
-            <div className="flex-1"><p className="text-sm font-bold text-red-700">لديك متأخرات إيجار</p><p className="text-xs text-red-600">{formatMoney(stats.overdueTotal)} بحاجة للتحصيل</p></div>
             <ChevronLeft className="h-5 w-5 text-red-400" />
           </Link>
         )}
@@ -487,16 +487,16 @@ export default function Index() {
               <Bell className="h-4 w-4 text-primary" /> التذكيرات
             </h2>
           </div>
-        )}
-
-        <div className="animate-fade-up" style={{ animationDelay: "160ms" }}>
-          <h2 className="mb-2 flex items-center gap-2 font-bold"><Bell className="h-4 w-4 text-primary" /> التنبيهات القادمة</h2>
           {reminders.length === 0 ? (
-            <EmptyState icon={Bell} title="لا توجد تذكيرات" description="ستظهر هنا مواعيد الإيجار والعقود والفواتير والطلبات" />
+            <EmptyState
+              icon={Bell}
+              title="لا توجد تذكيرات"
+              description="ستظهر هنا مواعيد الإيجار والعقود والصيانة والفواتير"
+            />
           ) : (
             <div className="space-y-2">
               {reminders.map((r) => {
-                const Icon = kindIcons[r.kind] || Bell;
+                const Icon = kindIcons[r.kind];
                 return (
                   <Link
                     key={r.id}
@@ -509,7 +509,6 @@ export default function Index() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold">{r.title}</p>
                       <p className="truncate text-xs text-muted-foreground">{r.subtitle}</p>
-                      {r.amount && <p className="text-xs font-semibold text-primary">{formatMoney(r.amount)}</p>}
                     </div>
                     <div className="text-left">
                       <p className={`text-xs font-bold ${r.days < 0 ? "text-red-600" : r.days <= 7 ? "text-amber-600" : "text-primary"}`}>

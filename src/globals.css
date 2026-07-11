@@ -78,7 +78,7 @@
   }
 
   .pb-safe {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
   }
 
   .pt-safe {
@@ -87,10 +87,6 @@
 
   .pb-safe-nav {
     padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
-  }
-
-  .sheet-safe-bottom {
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   }
 
   .toast-top {
@@ -138,20 +134,4 @@
   .form-safe {
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
-}
-
-/* Global fix: all bottom-positioned sheets/dialogs respect safe area */
-[data-radix-dialog-overlay] ~ [data-state] {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* Sonner / toast: position above bottom navigation, never cover tabs */
-[data-sonner-toaster] {
-  --mobile-offset: calc(78px + env(safe-area-inset-bottom, 0px)) !important;
-}
-
-/* Dialog content safe area */
-[role="alertdialog"] [data-radix-dialog-content],
-[data-state][role="dialog"] {
-  margin-bottom: env(safe-area-inset-bottom, 0px);
 }

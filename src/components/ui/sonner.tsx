@@ -23,9 +23,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
       }}
-      style={{
-        top: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
-      }}
       {...props}
     />
   );

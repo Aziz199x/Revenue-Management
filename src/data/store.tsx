@@ -117,55 +117,11 @@ function migrateContracts(contracts: Contract[]): Contract[] {
   });
 }
 
-const STORAGE_KEY = "aziz-revenue-data-v2";
-
-function migrateData(parsed: any): AppData {
-  const base: AppData = {
-    buildings: parsed.buildings || [],
-    units: parsed.units || [],
-    tenants: parsed.tenants || [],
-    payments: parsed.payments || [],
-    contracts: parsed.contracts || [],
-    bills: parsed.bills || [],
-    repairs: parsed.repairs || [],
-    tenantRequests: parsed.tenantRequests || parsed.requests || [],
-    settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-  };
-
-  // Migrate old payments (paymentDate → dueDate)
-  base.payments = base.payments.map((p: any) => ({
-    ...p,
-    dueDate: p.dueDate || p.paymentDate || p.nextDueDate || new Date().toISOString().slice(0, 10),
-    transferredToOwner: p.transferredToOwner ?? false,
-  })) as Payment[];
-
-  // Migrate old contracts (add required fields)
-  base.contracts = base.contracts.map((c: any) => ({
-    ...c,
-    tenantName: c.tenantName || "",
-    annualRent: c.annualRent ?? 0,
-    paymentCycle: c.paymentCycle || "monthly",
-    autoRenewal: c.autoRenewal ?? true,
-    reminderDays: c.reminderDays ?? 30,
-  })) as Contract[];
-
-  // Migrate old units (add electricity fields if missing)
-  base.units = base.units.map((u: any) => ({
-    ...u,
-    status: ["occupied", "vacant", "maintenance", "occupied_no_renewal", "expired_not_vacated"].includes(u.status)
-      ? u.status
-      : "vacant",
-  }));
-
-  return base;
-}
+const STORAGE_KEY = "rental-manager-data-v1";
 
 function loadData(): AppData {
   try {
-    // Try v2 first
-    let raw = localStorage.getItem(STORAGE_KEY);
-    // Fall back to old key
-    if (!raw) raw = localStorage.getItem("rental-manager-data-v1");
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_DATA;
     const parsed = JSON.parse(raw);
     const parsedSettings = parsed.settings || {};

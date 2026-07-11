@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BarChart3, Building2, FileSpreadsheet, Wallet, Wrench, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,21 +17,16 @@ import { showError, showSuccess } from "@/utils/toast";
 
 export default function Reports() {
   const { data } = useStore();
-  const [yearFilter, setYearFilter] = useState("all");
-  const [buildingFilter, setBuildingFilter] = useState("all");
   const stats = globalStats(data);
   const reminders = collectReminders(data);
   const monthlyOfficeRows = monthlyOfficeCollectionReport(data).slice(0, 12);
   const upcomingRents = reminders.filter((r) => r.kind === "rent" && r.days >= 0).slice(0, 5);
   const upcomingContracts = reminders.filter((r) => r.kind === "contract" && r.days >= 0).slice(0, 5);
 
-  const expiredContracts = data.contracts.filter((c) => calculateContractStatus(c) === "expired");
-  const vacantUnits = data.units.filter((u) => calculateUnitStatus(u, data.contracts) === "vacant");
-  const occupiedUnits = data.units.filter((u) => calculateUnitStatus(u, data.contracts) === "occupied");
-  const maintenanceRepairs = data.repairs.filter((r) => r.status !== "cancelled");
-  const maintenanceTotal = maintenanceRepairs.reduce((s, r) => s + r.cost, 0);
-
-  const maxIncome = Math.max(1, ...data.buildings.map((b) => buildingStats(data, b.id).totalIncome));
+  const maxIncome = Math.max(
+    1,
+    ...data.buildings.map((b) => buildingStats(data, b.id).totalIncome),
+  );
 
   return (
     <div>
@@ -60,12 +54,6 @@ export default function Reports() {
         }
       />
       <div className="space-y-4 p-4">
-        {/* Filters */}
-        <div className="grid grid-cols-2 gap-2">
-          <Select value={yearFilter} onValueChange={setYearFilter}><SelectTrigger className="rounded-xl bg-card text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل السنوات</SelectItem>{years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent></Select>
-          <Select value={buildingFilter} onValueChange={setBuildingFilter}><SelectTrigger className="rounded-xl bg-card text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل العقارات</SelectItem>{data.buildings.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent></Select>
-        </div>
-
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-3xl bg-primary p-4 text-primary-foreground">
@@ -142,7 +130,9 @@ export default function Reports() {
 
         {/* Income per building */}
         <div>
-          <h2 className="mb-2 flex items-center gap-2 font-bold"><Building2 className="h-4 w-4 text-primary" /> الدخل حسب العقار</h2>
+          <h2 className="mb-2 flex items-center gap-2 font-bold">
+            <Building2 className="h-4 w-4 text-primary" /> الدخل حسب العقار
+          </h2>
           {data.buildings.length === 0 ? (
             <EmptyState icon={BarChart3} title="لا توجد بيانات" description="أضف عقارات ودفعات لعرض التقارير" />
           ) : (
@@ -185,47 +175,45 @@ export default function Reports() {
           )}
         </div>
 
-        {/* Contract summary */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-3xl border border-border bg-card p-4 text-center"><p className="text-2xl font-bold text-emerald-700">{occupiedUnits.length}</p><p className="text-xs text-muted-foreground">وحدات مؤجرة</p></div>
-          <div className="rounded-3xl border border-border bg-card p-4 text-center"><p className="text-2xl font-bold text-slate-600">{vacantUnits.length}</p><p className="text-xs text-muted-foreground">وحدات شاغرة</p></div>
-        </div>
-
         {/* Upcoming rents */}
         {upcomingRents.length > 0 && (
           <div>
             <h2 className="mb-2 font-bold">أقرب مواعيد تحصيل الإيجار</h2>
             <div className="space-y-2">
               {upcomingRents.map((r) => (
-                <Link key={r.id} to={r.unitId ? "/units/" + r.unitId : "#"} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+                <Link
+                  key={r.id}
+                  to={`/units/${r.unitId}`}
+                  className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-sm"
+                >
                   <span className="font-semibold">{r.subtitle}</span>
-                  <span className="text-xs text-primary">{formatDate(r.date)}{r.amount ? " · " + formatMoney(r.amount) : ""}</span>
+                  <span className="text-xs text-primary">{formatDate(r.date)}</span>
                 </Link>
               ))}
             </div>
           </div>
         )}
 
-        {/* Expiring contracts */}
+        {/* Upcoming contract expirations */}
         {upcomingContracts.length > 0 && (
           <div>
             <h2 className="mb-2 font-bold">أقرب انتهاءات العقود</h2>
             <div className="space-y-2">
               {upcomingContracts.map((r) => (
-                <Link key={r.id} to={r.unitId ? "/units/" + r.unitId : "#"} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+                <Link
+                  key={r.id}
+                  to={`/units/${r.unitId}`}
+                  className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-sm"
+                >
                   <span className="font-semibold">{r.subtitle}</span>
-                  <span className={"text-xs " + (r.days <= 30 ? "text-amber-600 font-bold" : "text-muted-foreground")}>{formatDate(r.date)} ({r.days} يوم)</span>
+                  <span className={`text-xs ${r.days <= 30 ? "text-amber-600 font-bold" : "text-muted-foreground"}`}>
+                    {formatDate(r.date)} ({r.days} يوم)
+                  </span>
                 </Link>
               ))}
             </div>
           </div>
         )}
-
-        {/* Export buttons */}
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={() => exportCSV(data)}><FileDown className="ml-2 h-4 w-4" /> CSV</Button>
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={() => exportJSON(data)}><FileDown className="ml-2 h-4 w-4" /> JSON</Button>
-        </div>
       </div>
     </div>
   );

@@ -25,9 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -47,7 +53,6 @@ import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import FormSheet from "@/components/shared/FormSheet";
 import StatusBadge from "@/components/shared/StatusBadge";
-import ReceivePaymentDialog from "@/components/shared/ReceivePaymentDialog";
 import UnitForm from "@/components/forms/UnitForm";
 import TenantForm from "@/components/forms/TenantForm";
 import PaymentForm from "@/components/forms/PaymentForm";
@@ -233,7 +238,9 @@ export default function UnitDetails() {
     return (
       <div className="p-6 text-center">
         <p className="font-semibold">الوحدة غير موجودة</p>
-        <Button className="mt-4 rounded-xl" onClick={() => navigate("/buildings")}>العودة للعقارات</Button>
+        <Button className="mt-4 rounded-xl" onClick={() => navigate("/buildings")}>
+          العودة للعقارات
+        </Button>
       </div>
     );
   }
@@ -277,13 +284,9 @@ export default function UnitDetails() {
     .filter((r) => r.unitId === unit.id)
     .sort((a, b) => b.requestDate.localeCompare(a.requestDate));
 
-  const payments = data.payments.filter((p) => p.unitId === unit.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const contracts = data.contracts.filter((c) => c.unitId === unit.id).sort((a, b) => b.endDate.localeCompare(a.endDate));
-  const bills = data.bills.filter((b) => b.unitId === unit.id).sort((a, b) => b.billDate.localeCompare(a.billDate));
-  const repairs = data.repairs.filter((r) => r.unitId === unit.id).sort((a, b) => b.repairDate.localeCompare(a.repairDate));
-  const requests = data.tenantRequests.filter((r) => r.unitId === unit.id).sort((a, b) => b.requestDate.localeCompare(a.requestDate));
-
-  const maintenanceTotal = repairs.filter((r) => r.status !== "cancelled").reduce((s, r) => s + r.cost, 0);
+  const maintenanceTotal = repairs
+    .filter((r) => r.status !== "cancelled")
+    .reduce((s, r) => s + r.cost, 0);
 
   const deleteUnit = () => {
     update((prev) => ({
@@ -296,53 +299,14 @@ export default function UnitDetails() {
       repairs: prev.repairs.filter((r) => r.unitId !== unit.id),
     }));
     showSuccess("تم حذف الوحدة");
-    navigate(building ? "/buildings/" + building.id : "/buildings");
+    navigate(building ? `/buildings/${building.id}` : "/buildings");
   };
 
-  const handleSaveContract = (values: ContractFormValues, existing?: Contract) => {
-    const contractId = existing?.id ?? genId();
-    const contract: Contract = { ...existing, id: contractId, unitId: unit.id, buildingId: unit.buildingId, createdAt: existing?.createdAt ?? todayISO(), ...values };
-    update((prev) => {
-      const newContracts = existing ? prev.contracts.map((c) => c.id === contractId ? contract : c) : [...prev.contracts, contract];
-      const existingPayments = prev.payments.filter((p) => p.contractId === contractId);
-      const newPayments = regenerateContractPayments(contract, existingPayments, prev);
-      const otherPayments = prev.payments.filter((p) => p.contractId !== contractId);
-      let tenants = prev.tenants;
-      const hasTenant = prev.tenants.some((t) => t.name === values.tenantName && t.unitId === unit.id);
-      if (!hasTenant && values.tenantName) {
-        tenants = prev.tenants.filter((t) => t.unitId !== unit.id);
-        tenants = [...tenants, { id: genId(), unitId: unit.id, name: values.tenantName, phone: values.tenantPhone, createdAt: todayISO() }];
-      }
-      return { ...prev, contracts: newContracts, payments: [...otherPayments, ...newPayments], tenants };
-    });
-  };
-
-  const handleDeleteContract = (c: Contract) => {
-    update((prev) => ({ ...prev, contracts: prev.contracts.filter((x) => x.id !== c.id), payments: prev.payments.filter((p) => p.contractId !== c.id) }));
-    showSuccess("تم حذف العقد");
-  };
-
-  const handleReceive = (payment: Payment, values: { receivedDate: string; paymentMethod: string; notes?: string }) => {
-    update((prev) => ({ ...prev, payments: prev.payments.map((p) => p.id === payment.id ? { ...p, status: "paid" as const, receivedDate: values.receivedDate, paymentMethod: values.paymentMethod as any, notes: values.notes || p.notes } : p) }));
-    showSuccess("تم تأكيد الاستلام");
-  };
-
-  const markUnpaid = (payment: Payment) => {
-    update((prev) => ({ ...prev, payments: prev.payments.map((p) => p.id === payment.id ? { ...p, status: "unpaid" as const, receivedDate: undefined, paymentMethod: "", transferredToOwner: false } : p) }));
-    showSuccess("تم تحديث الحالة");
-  };
-
-  const toggleTransfer = (payment: Payment) => {
-    update((prev) => ({ ...prev, payments: prev.payments.map((p) => p.id === payment.id ? { ...p, transferredToOwner: !p.transferredToOwner, transferredDate: !p.transferredToOwner ? todayISO() : undefined } : p) }));
-  };
-
-  const handleWhatsapp = (payment: Payment, useBusiness: boolean) => {
-    const msg = buildWhatsappMessage({ tenantName: payment.tenantName || tenant?.name, phone: tenant?.phone, unitName: unit.name, buildingName: building?.name, amount: payment.amount, dueDate: payment.dueDate, status: PAYMENT_STATUS_LABELS[effectiveStatus(payment)] });
-    sendWhatsapp(tenant?.phone, msg, useBusiness);
-  };
-
-  const removeItem = (key: string, id: string) => {
-    update((prev) => ({ ...prev, [key]: (prev as any)[key].filter((x: any) => x.id !== id) }));
+  const removeItem = (key: "payments" | "contracts" | "bills" | "repairs" | "tenants", id: string) => {
+    update((prev) => ({
+      ...prev,
+      [key]: (prev[key] as { id: string }[]).filter((x) => x.id !== id),
+    }));
     showSuccess("تم الحذف");
   };
 
@@ -408,31 +372,66 @@ export default function UnitDetails() {
 
   return (
     <div>
-      <PageHeader title={unit.name} subtitle={building ? building.name + " · " + unit.type : unit.type} back action={
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setEditUnitOpen(true)}><Pencil className="h-4 w-4" /></Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-destructive"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
-            <AlertDialogContent className="max-w-[90vw] rounded-3xl">
-              <AlertDialogHeader className="text-right"><AlertDialogTitle>حذف الوحدة؟</AlertDialogTitle><AlertDialogDescription>سيتم حذف الوحدة وجميع بياناتها.</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter className="flex-row gap-2"><AlertDialogCancel className="rounded-xl">إلغاء</AlertDialogCancel><AlertDialogAction className="rounded-xl bg-destructive" onClick={deleteUnit}>حذف</AlertDialogAction></AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      } />
+      <PageHeader
+        title={unit.name}
+        subtitle={building ? `${building.name} · ${unit.type}` : unit.type}
+        back
+        action={
+          <div className="flex gap-1">
+            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setEditUnitOpen(true)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="max-w-[90vw] rounded-3xl">
+                <AlertDialogHeader className="text-right">
+                  <AlertDialogTitle>حذف الوحدة؟</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    سيتم حذف الوحدة وجميع بياناتها (مستأجر، دفعات، عقود، فواتير، صيانة).
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-row gap-2">
+                  <AlertDialogCancel className="rounded-xl">إلغاء</AlertDialogCancel>
+                  <AlertDialogAction className="rounded-xl bg-destructive" onClick={deleteUnit}>
+                    حذف
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        }
+      />
 
       <div className="space-y-4 p-4">
+        {/* Unit summary */}
         <div className="rounded-3xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-secondary p-2.5"><DoorOpen className="h-5 w-5 text-primary" /></div>
+              <div className="rounded-2xl bg-secondary p-2.5">
+                <DoorOpen className="h-5 w-5 text-primary" />
+              </div>
               <div>
-                <p className="font-bold">{formatMoney(unit.rentAmount)}<span className="text-xs font-normal text-muted-foreground"> / شهر</span></p>
-                <p className="text-xs text-muted-foreground">{unit.floor ? "طابق " + unit.floor : ""}{unit.area ? " · " + unit.area + " م²" : ""}</p>
+                <p className="font-bold">
+                  {formatMoney(unit.rentAmount)}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {" "}
+                    / {RENT_PERIOD_LABELS[unit.rentPeriod]}
+                  </span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {unit.floor ? `طابق ${unit.floor}` : "بدون طابق"}
+                </p>
               </div>
             </div>
-            <StatusBadge status={computedStatus} label={UNIT_STATUS_LABELS[computedStatus]} />
+            <StatusBadge status={unit.status} label={UNIT_STATUS_LABELS[unit.status]} />
           </div>
+          {unit.notes && (
+            <p className="mt-3 rounded-2xl bg-muted p-3 text-sm text-muted-foreground">{unit.notes}</p>
+          )}
         </div>
 
         <Tabs defaultValue="tenant" dir="rtl">
@@ -457,14 +456,24 @@ export default function UnitDetails() {
             </TabsTrigger>
           </TabsList>
 
+          {/* Tenant */}
           <TabsContent value="tenant" className="mt-4 space-y-3">
             {tenant ? (
               <div className="rounded-3xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3"><div className="rounded-full bg-secondary p-3"><User className="h-5 w-5 text-primary" /></div><p className="font-bold">{tenant.name}</p></div>
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-full bg-secondary p-3">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <p className="font-bold">{tenant.name}</p>
+                  </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditTenant(tenant)}><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" onClick={() => removeItem("tenants", tenant.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditTenant(tenant)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" onClick={() => removeItem("tenants", tenant.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-3 space-y-2 text-sm">
@@ -547,19 +556,18 @@ export default function UnitDetails() {
                     </div>
                   )}
                 </div>
-                {(unit.electricityAccountName || unit.electricityAccountNumber || unit.electricityMeterNumber || tenant.electricityAccountName || tenant.electricityAccountNumber) && (
-                  <div className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm space-y-1">
-                    <p className="flex items-center gap-1.5 font-bold text-amber-800"><Zap className="h-4 w-4" /> بيانات حساب الكهرباء</p>
-                    {(unit.electricityAccountName || tenant.electricityAccountName) && <p className="text-xs">الاسم: {unit.electricityAccountName || tenant.electricityAccountName}</p>}
-                    {(unit.electricityAccountNumber || tenant.electricityAccountNumber) && <p className="text-xs">رقم الحساب: {unit.electricityAccountNumber || tenant.electricityAccountNumber}</p>}
-                    {(unit.electricityMeterNumber || tenant.electricityMeterNumber) && <p className="text-xs">رقم العداد: {unit.electricityMeterNumber || tenant.electricityMeterNumber}</p>}
-                  </div>
-                )}
-                {tenant.notes && <p className="rounded-2xl bg-muted p-3 text-muted-foreground">{tenant.notes}</p>}
               </div>
-            ) : (<><EmptyState icon={User} title="لا يوجد مستأجر" description="أضف عقد إيجار ليُنشأ المستأجر تلقائياً" /><Button className="w-full rounded-xl" onClick={() => setContractOpen(true)}><Plus className="ml-1 h-4 w-4" /> إضافة عقد</Button></>)}
+            ) : (
+              <>
+                <EmptyState icon={User} title="لا يوجد مستأجر" description="أضف بيانات المستأجر لهذه الوحدة" />
+                <Button className="w-full rounded-xl" onClick={() => setTenantOpen(true)}>
+                  <Plus className="ml-1 h-4 w-4" /> إضافة مستأجر
+                </Button>
+              </>
+            )}
           </TabsContent>
 
+          {/* Payments */}
           <TabsContent value="payments" className="mt-4 space-y-3">
             <Button className="w-full rounded-xl" onClick={() => setPaymentOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> تسجيل دفعة إيجار
@@ -964,17 +972,22 @@ export default function UnitDetails() {
                 <div key={r.id} className="rounded-3xl border border-border bg-card p-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-bold">{formatMoney(p.amount)}</p>
-                      <p className="text-xs text-muted-foreground">الاستحقاق: {formatDate(p.dueDate)}{daysUntil(p.dueDate) > 0 ? " (بعد " + daysUntil(p.dueDate) + " يوم)" : daysUntil(p.dueDate) < 0 ? " (متأخر)" : ""}</p>
-                      {p.status === "paid" && p.receivedDate && <p className="text-xs text-emerald-700">تم الاستلام: {formatDate(p.receivedDate)}</p>}
-                      {p.status === "paid" && p.paymentMethod && <p className="text-xs text-muted-foreground">طريقة الدفع: {PAYMENT_METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</p>}
-                      {p.status === "paid" && fee > 0 && <p className="text-xs text-muted-foreground">تحصيل المكتب: {formatMoney(fee)} · صافي المالك: {formatMoney(calculateOwnerNet(p, data))}</p>}
+                      <p className="font-bold">{r.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(r.repairDate)}
+                        {r.contractor ? ` · ${r.contractor}` : ""}
+                      </p>
+                      <p className="text-sm font-semibold text-primary">{formatMoney(r.cost)}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <StatusBadge status={st} label={PAYMENT_STATUS_LABELS[st]} />
+                      <StatusBadge status={r.status} label={REPAIR_STATUS_LABELS[r.status]} />
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => setEditPayment(p)}><Pencil className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-destructive" onClick={() => removeItem("payments", p.id)}><Trash2 className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditRepair(r)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" onClick={() => removeItem("repairs", r.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1080,7 +1093,18 @@ export default function UnitDetails() {
         />
       </FormSheet>
 
-      {receivePayment && <ReceivePaymentDialog open={!!receivePayment} amount={receivePayment.amount} onOpenChange={(o) => !o && setReceivePayment(null)} onSubmit={(v) => handleReceive(receivePayment, v)} />}
+      <FormSheet open={tenantOpen} onOpenChange={setTenantOpen} title="إضافة مستأجر">
+        <TenantForm
+          onSubmit={(values) => {
+            update((prev) => ({
+              ...prev,
+              tenants: [...prev.tenants, { id: genId(), unitId: unit.id, createdAt: todayISO(), ...values }],
+            }));
+            setTenantOpen(false);
+            showSuccess("تمت إضافة المستأجر");
+          }}
+        />
+      </FormSheet>
 
       <FormSheet open={!!editTenant} onOpenChange={(o) => !o && setEditTenant(null)} title="تعديل المستأجر">
         {editTenant && (
