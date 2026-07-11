@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -135,3 +136,117 @@
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 }
+=======
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 168 30% 96%;
+    --foreground: 185 45% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 185 45% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 185 45% 14%;
+
+    --primary: 174 70% 33%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 168 35% 92%;
+    --secondary-foreground: 174 70% 24%;
+
+    --muted: 168 25% 92%;
+    --muted-foreground: 185 15% 42%;
+
+    --accent: 38 95% 55%;
+    --accent-foreground: 30 60% 15%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 95% 50%;
+    --warning-foreground: 30 60% 15%;
+
+    --border: 168 20% 87%;
+    --input: 168 20% 84%;
+    --ring: 174 70% 33%;
+
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: "Cairo", system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input[type="date"] {
+    text-align: right;
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: fadeUp 0.4s ease-out both;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+  }
+
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);
+  }
+
+  .pb-safe-nav {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
+  }
+
+  /* Bottom sheets: ensure content and buttons clear the system nav bar */
+  .sheet-safe-bottom {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Global fix: all bottom-positioned sheets/dialogs respect safe area */
+[data-radix-dialog-overlay] ~ [data-state] {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Sonner / toast: position above bottom navigation, never cover tabs */
+[data-sonner-toaster] {
+  --mobile-offset: calc(78px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Dialog content safe area */
+[role="alertdialog"] [data-radix-dialog-content],
+[data-state][role="dialog"] {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+>>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77

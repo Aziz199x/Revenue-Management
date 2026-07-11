@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useEffect,
 } from "react";
+<<<<<<< HEAD
 import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract } from "./types";
 import { withComputedUnitStatuses } from "./unitStatus";
 
@@ -116,14 +117,68 @@ function migrateContracts(contracts: Contract[]): Contract[] {
     return { ...contract, startDate: startDate ?? contract.startDate, endDate: endDate ?? contract.endDate };
   });
 }
+=======
+import {
+  AppData,
+  EMPTY_DATA,
+  DEFAULT_SETTINGS,
+  Payment,
+  Contract,
+} from "./types";
+>>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
 
-const STORAGE_KEY = "rental-manager-data-v1";
+const STORAGE_KEY = "aziz-revenue-data-v2";
+
+function migrateData(parsed: any): AppData {
+  const base: AppData = {
+    buildings: parsed.buildings || [],
+    units: parsed.units || [],
+    tenants: parsed.tenants || [],
+    payments: parsed.payments || [],
+    contracts: parsed.contracts || [],
+    bills: parsed.bills || [],
+    repairs: parsed.repairs || [],
+    tenantRequests: parsed.tenantRequests || parsed.requests || [],
+    settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+  };
+
+  // Migrate old payments (paymentDate → dueDate)
+  base.payments = base.payments.map((p: any) => ({
+    ...p,
+    dueDate: p.dueDate || p.paymentDate || p.nextDueDate || new Date().toISOString().slice(0, 10),
+    transferredToOwner: p.transferredToOwner ?? false,
+  })) as Payment[];
+
+  // Migrate old contracts (add required fields)
+  base.contracts = base.contracts.map((c: any) => ({
+    ...c,
+    tenantName: c.tenantName || "",
+    annualRent: c.annualRent ?? 0,
+    paymentCycle: c.paymentCycle || "monthly",
+    autoRenewal: c.autoRenewal ?? true,
+    reminderDays: c.reminderDays ?? 30,
+  })) as Contract[];
+
+  // Migrate old units (add electricity fields if missing)
+  base.units = base.units.map((u: any) => ({
+    ...u,
+    status: ["occupied", "vacant", "maintenance", "occupied_no_renewal", "expired_not_vacated"].includes(u.status)
+      ? u.status
+      : "vacant",
+  }));
+
+  return base;
+}
 
 function loadData(): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    // Try v2 first
+    let raw = localStorage.getItem(STORAGE_KEY);
+    // Fall back to old key
+    if (!raw) raw = localStorage.getItem("rental-manager-data-v1");
     if (!raw) return EMPTY_DATA;
     const parsed = JSON.parse(raw);
+<<<<<<< HEAD
     const parsedSettings = parsed.settings || {};
     const legacyFee = Number(parsedSettings.defaultCollectionFeePercent) || 0;
     const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = parsedSettings;
@@ -153,6 +208,9 @@ function loadData(): AppData {
           ?? DEFAULT_SETTINGS.defaultContractExpiryReminderDays,
       },
     });
+=======
+    return migrateData(parsed);
+>>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   } catch {
     return EMPTY_DATA;
   }
@@ -200,6 +258,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replaceAll = useCallback((newData: AppData) => {
+<<<<<<< HEAD
     const importedSettings = newData.settings as AppData["settings"] & { defaultCollectionFeePercent?: number };
     const legacyFee = Number(importedSettings.defaultCollectionFeePercent) || 0;
     const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = importedSettings;
@@ -220,6 +279,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       })),
       settings: { ...DEFAULT_SETTINGS, ...settingsWithoutLegacyFee },
     }));
+=======
+    const migrated = migrateData(newData);
+    setData(migrated);
+>>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
   }, []);
 
   return (

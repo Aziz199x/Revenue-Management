@@ -11,6 +11,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       position="top-center"
+<<<<<<< HEAD
+=======
+      richColors
+      closeButton
+      duration={3000}
+>>>>>>> d2e78b157cf3468e577bccd295a25e4cacab8b77
       toastOptions={{
         duration: 2500,
         classNames: {
@@ -22,6 +28,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           cancelButton:
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
+      }}
+      style={{
+        top: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
       }}
       {...props}
     />
