@@ -39,6 +39,10 @@ const defaultPaymentFilters = {
   search: "",
 };
 
+function paymentSortDate(payment: Payment): string {
+  return payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate;
+}
+
 function loadPaymentFilters() {
   try {
     const saved = localStorage.getItem(PAYMENT_FILTERS_KEY);
@@ -149,7 +153,11 @@ export default function Payments() {
         }
         return true;
       })
-      .sort((a, b) => b.payment.paymentDate.localeCompare(a.payment.paymentDate));
+      .sort((a, b) => {
+        const dateCompare = paymentSortDate(a.payment).localeCompare(paymentSortDate(b.payment));
+        if (dateCompare !== 0) return dateCompare;
+        return (a.unit?.name || "").localeCompare(b.unit?.name || "", "ar");
+      });
     console.log("[Payments] raw filtered payments:", data.payments.length);
     console.log("[Payments] visible payments:", filteredRows.length);
     console.log("[Payments] selected status filter:", filters.status);

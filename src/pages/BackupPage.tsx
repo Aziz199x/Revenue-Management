@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Cloud,
   Download,
@@ -9,6 +10,7 @@ import {
   Loader2,
   Clock,
   HardDrive,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,9 +28,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import PageHeader from "@/components/shared/PageHeader";
+import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { useStore } from "@/data/store";
+import { EMPTY_DATA } from "@/data/types";
 import { exportJSON, exportCSV, parseBackup } from "@/utils/backup";
 import {
   signIn,
@@ -71,6 +76,8 @@ function formatDate(iso: string): string {
 
 export default function BackupPage() {
   const { data, update, replaceAll } = useStore();
+  const location = useLocation();
+  const openedFromSettings = location.pathname.startsWith("/settings/");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [signedIn, setSignedIn] = useState(isSignedIn());
@@ -250,7 +257,11 @@ export default function BackupPage() {
 
   return (
     <div>
-      <PageHeader title="النسخ الاحتياطي والاستعادة" subtitle="Google Drive" />
+      {openedFromSettings ? (
+        <SettingsSubPageHeader title="النسخ الاحتياطي والاستعادة" subtitle="النسخ المحلي والنسخ عبر Google Drive" />
+      ) : (
+        <PageHeader title="النسخ الاحتياطي والاستعادة" subtitle="Google Drive" />
+      )}
 
       <div className="space-y-4 p-4">
         {/* Google Drive Account */}
@@ -409,6 +420,41 @@ export default function BackupPage() {
             جاري استعادة النسخة الاحتياطية...
           </div>
         )}
+
+        <div className="space-y-3 rounded-3xl border border-red-200 bg-red-50/50 p-4">
+          <p className="text-sm font-bold text-red-700">إدارة البيانات</p>
+          <p className="text-xs leading-5 text-red-700">
+            مسح البيانات يحذف العقارات والوحدات والعقود والدفعات نهائيا من هذا الجهاز. يفضل إنشاء نسخة احتياطية قبل المتابعة.
+          </p>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-full rounded-xl">
+                <Trash2 className="ml-2 h-4 w-4" />
+                مسح جميع البيانات
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-[90vw] rounded-3xl">
+              <AlertDialogHeader className="text-right">
+                <AlertDialogTitle>مسح جميع البيانات؟</AlertDialogTitle>
+                <AlertDialogDescription>
+                  سيتم حذف جميع العقارات والوحدات والدفعات نهائيا. ننصح بتصدير نسخة احتياطية أولا.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="flex-row gap-2">
+                <AlertDialogCancel className="rounded-xl">إلغاء</AlertDialogCancel>
+                <AlertDialogAction
+                  className="rounded-xl bg-destructive"
+                  onClick={() => {
+                    replaceAll(EMPTY_DATA);
+                    showSuccess("تم مسح جميع البيانات");
+                  }}
+                >
+                  مسح الكل
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* Backup list dialog */}

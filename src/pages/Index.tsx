@@ -28,10 +28,8 @@ import {
   formatMoney,
   formatDate,
   getDaysUntilDate,
-  shouldShowContractExpiryReminder,
   buildContractExpiryReminders,
   getContractEndDate,
-  getNearestActiveContractNeedingAttention,
   getActiveContractsNeedingAttention,
 } from "@/data/helpers";
 import { fillTemplate } from "@/utils/whatsapp";
@@ -98,37 +96,12 @@ export default function Index() {
         };
       }).sort((a, b) => a.daysRemaining - b.daysRemaining).slice(0, 3)
     : [];
-  console.log("[Home Dashboard] contracts count:", dashboardData.contracts.length);
-  dashboardData.contracts.forEach((contract) => {
-    const endDate = getContractEndDate(contract);
-    const daysRemaining = getDaysUntilDate(endDate);
-    const reminderDays = Number(contract.expiryReminderDays || 80);
-    console.log("[Contract Reminder Check]", {
-      contractId: contract.id,
-      tenantName: contract.tenantName,
-      unitId: contract.unitId,
-      endDate,
-      daysRemaining,
-      reminderDays,
-      status: contract.status,
-      show: shouldShowContractExpiryReminder(contract),
-    });
-  });
-  const rentPaymentReminders = reminders.filter((r) => r.kind === "rent");
-  console.log("[Home Dashboard] rent payment reminders:", rentPaymentReminders.length);
-  console.log("[Home Dashboard] contract expiry reminders:", contractExpiryReminders.length);
-  console.log("[Home Dashboard] total reminders:", reminders.length);
   const paymentCards = collectPaymentCards(dashboardData);
 
   const upcomingPayments = paymentCards.filter((c) => c.status === "upcoming").slice(0, 5);
   const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, 5);
   const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, 8);
   const nearestContracts = contractExpiryReminders.length > 0 ? contractExpiryReminders.slice(0, 8) : nearestContractStatus;
-  const autoRenewingCount = contractExpiryReminders.filter((reminder) => reminder.autoRenewal).length;
-  const needsActionCount = contractExpiryReminders.length - autoRenewingCount;
-  const nearestAttentionContract = getNearestActiveContractNeedingAttention(dashboardData.contracts);
-  const nearestAttentionEndDate = nearestAttentionContract ? getContractEndDate(nearestAttentionContract) : null;
-  const nearestAttentionDays = getDaysUntilDate(nearestAttentionEndDate);
 
   return (
     <div>
@@ -143,16 +116,6 @@ export default function Index() {
               {data.buildings.map((building) => <SelectItem key={building.id} value={building.id}>{building.name}</SelectItem>)}
             </SelectContent>
           </Select>
-        </div>
-        <div className="rounded-3xl border border-border bg-card p-4">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold"><CalendarClock className="h-4 w-4 text-primary" /> إحصائيات العقود والتذكيرات</h2>
-          <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-            <div className="rounded-2xl bg-amber-50 p-2"><p className="text-lg font-bold text-amber-700">{contractExpiryReminders.length}</p><p className="text-[10px] text-muted-foreground">العقود القريبة من الانتهاء</p></div>
-            <div className="rounded-2xl bg-sky-50 p-2"><p className="text-lg font-bold text-sky-700">{autoRenewingCount}</p><p className="text-[10px] text-muted-foreground">تتجدد تلقائيا</p></div>
-            <div className="rounded-2xl bg-orange-50 p-2"><p className="text-lg font-bold text-orange-700">{needsActionCount}</p><p className="text-[10px] text-muted-foreground">تحتاج إجراء</p></div>
-            <div className="rounded-2xl bg-red-50 p-2"><p className="text-lg font-bold text-red-700">{paymentCards.filter((card) => card.status === "overdue").length}</p><p className="text-[10px] text-muted-foreground">دفعات متأخرة</p></div>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">أقرب عقد ينتهي: <span className="font-semibold text-foreground">{nearestAttentionEndDate ? `${formatDate(nearestAttentionEndDate)}${nearestAttentionDays !== null ? ` (بعد ${nearestAttentionDays} يوم)` : ""}` : "لا توجد عقود تحتاج إجراء"}</span></p>
         </div>
         {/* Hero income card */}
         <div className="animate-fade-up rounded-3xl bg-primary p-5 text-primary-foreground">

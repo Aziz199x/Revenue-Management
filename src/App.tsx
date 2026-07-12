@@ -18,6 +18,8 @@ import UnitDetails from "./pages/UnitDetails";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
+import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
+import WhatsAppSettingsPage from "./pages/settings/WhatsAppSettingsPage";
 import TenantRequests from "./pages/TenantRequests";
 import RequestDetails from "./pages/RequestDetails";
 import BackupPage from "./pages/BackupPage";
@@ -131,6 +133,9 @@ const App = () => {
               <Route path="/payments" element={<Payments />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
+              <Route path="/settings/backup" element={<BackupPage />} />
+              <Route path="/settings/whatsapp" element={<WhatsAppSettingsPage />} />
               <Route path="/backup" element={<BackupPage />} />
               <Route path="/requests" element={<TenantRequests />} />
               <Route path="/requests/:requestId" element={<RequestDetails />} />
