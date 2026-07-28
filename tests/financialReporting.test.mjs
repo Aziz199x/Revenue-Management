@@ -1,0 +1,155 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createServer } from "vite";
+
+let server;
+let reporting;
+let finance;
+let helpers;
+
+test.before(async () => {
+  server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
+  reporting = await server.ssrLoadModule("/src/reporting/unitMonthStatus.ts");
+  finance = await server.ssrLoadModule("/src/reporting/financialReportEngine.ts");
+  helpers = await server.ssrLoadModule("/src/data/helpers.ts");
+});
+
+test.after(async () => {
+  await server?.close();
+});
+
+const unit = {
+  id: "u1",
+  buildingId: "b1",
+  name: "شقة 1",
+  type: "شقة",
+  rentAmount: 12000,
+  rentPeriod: "monthly",
+  status: "occupied",
+  createdAt: "2026-01-01",
+};
+
+const contract = {
+  id: "c1",
+  unitId: unit.id,
+  tenantName: "المستأجر",
+  startDate: "2026-01-01",
+  endDate: "2026-12-31",
+  paymentFrequency: "monthly",
+  annualRent: 12000,
+  expiryReminderDays: 60,
+  autoRenewal: false,
+  createdAt: "2026-01-01",
+};
+
+function payment(overrides = {}) {
+  return {
+    id: "p1",
+    unitId: unit.id,
+    contractId: contract.id,
+    tenantName: contract.tenantName,
+    amount: 1000,
+    grossAmount: 1000,
+    paymentDate: "2026-06-01",
+    dueDateGregorian: "2026-06-01",
+    status: "paid",
+    receivedAmount: 1000,
+    createdAt: "2026-01-01",
+    ...overrides,
+  };
+}
+
+function data(payments, contracts = [contract]) {
+  return {
+    buildings: [{ id: "b1", name: "العقار", collectionFeePercent: 5, createdAt: "2026-01-01" }],
+    units: [unit],
+    contracts,
+    payments,
+    tenants: [],
+    bills: [],
+    repairs: [],
+    requests: [],
+    collectionFeeSettlements: [],
+    settings: { reportMonthCutoffDay: 25 },
+  };
+}
+
+test("the configurable cutoff moves late-month due dates into the following report month", () => {
+  assert.equal(helpers.getPaymentReportYearMonth("2026-04-24", 25), "2026-04");
+  assert.equal(helpers.getPaymentReportYearMonth("2026-04-25", 25), "2026-05");
+  assert.equal(helpers.getPaymentReportYearMonth("2026-05-31", 25), "2026-06");
+  assert.equal(helpers.getPaymentReportYearMonth("2026-05-31", null), "2026-05");
+  assert.equal(helpers.getPaymentReportYearMonth("2026-05-31", 25, "due_month"), "2026-05");
+  assert.equal(helpers.getPaymentReportYearMonth("2026-05-10", 25, "next_month"), "2026-06");
+});
+
+test("a per-payment override moves the scheduled obligation and does not duplicate it", () => {
+  const endOfMonthContract = { ...contract, startDate: "2026-05-31", endDate: "2026-06-15" };
+  const recorded = payment({
+    contractId: endOfMonthContract.id,
+    paymentDate: "2026-05-31",
+    dueDateGregorian: "2026-05-31",
+    reportingMonthMode: "due_month",
+  });
+  const snapshot = data([recorded], [endOfMonthContract]);
+  const may = reporting.buildUnitMonthRows(snapshot, "b1", "2026-05")[0];
+  const june = reporting.buildUnitMonthRows(snapshot, "b1", "2026-06")[0];
+
+  assert.equal(may.collectedAmount, 1000);
+  assert.equal(may.status, "occupied_paid");
+  assert.equal(june.rentAmount, 0);
+  assert.equal(june.status, "occupied_no_due");
+});
+
+test("money and dates use Western digits", () => {
+  assert.equal(helpers.formatMoney(1234567.89), "1,234,567.89 ر.س");
+  assert.doesNotMatch(helpers.formatMoney(1234567.89), /[٠-٩۰-۹]/);
+  assert.doesNotMatch(helpers.formatDate("2026-07-13"), /[٠-٩۰-۹]/);
+});
+
+test("early May collection for a June installment is counted in June", () => {
+  const snapshot = data([payment({ receivedDate: "2026-05-25", contractId: "legacy-contract-id" })]);
+  const may = reporting.buildUnitMonthRows(snapshot, "b1", "2026-05")[0];
+  const june = reporting.buildUnitMonthRows(snapshot, "b1", "2026-06")[0];
+
+  assert.equal(may.collectedAmount, 0);
+  assert.equal(june.status, "occupied_paid");
+  assert.equal(june.collectedAmount, 1000);
+  assert.match(june.message, /الدفع مبكراً/);
+  assert.match(june.message, /2026-06/);
+});
+
+test("late July collection closes June and is also reported as July cash", () => {
+  const snapshot = data([payment({ receivedDate: "2026-07-05" })]);
+  const june = reporting.buildUnitMonthRows(snapshot, "b1", "2026-06")[0];
+  const julyCash = finance.generateLateCollectionsReport(snapshot, "b1", "2026-07");
+
+  assert.equal(june.status, "occupied_paid_late");
+  assert.equal(june.outstandingAmount, 0);
+  assert.match(june.message, /2026-07/);
+  assert.equal(julyCash.length, 1);
+  assert.equal(julyCash[0].dueMonth, "2026-06");
+  assert.equal(julyCash[0].collectionDate, "2026-07-05");
+});
+
+test("an orphan payment cannot make a genuinely vacant month overdue", () => {
+  const futureContract = { ...contract, startDate: "2026-07-01", endDate: "2027-06-30" };
+  const stalePayment = payment({ status: "overdue", receivedAmount: undefined, dueDateGregorian: "2026-04-01", paymentDate: "2026-04-01" });
+  const april = reporting.buildUnitMonthRows(data([stalePayment], [futureContract]), "b1", "2026-04")[0];
+
+  assert.equal(april.status, "vacant");
+  assert.equal(april.rentAmount, 0);
+  assert.equal(april.outstandingAmount, 0);
+});
+
+test("cancelled contracts and duplicate records do not create false revenue", () => {
+  const cancelled = { ...contract, status: "cancelled" };
+  const cancelledRow = reporting.buildUnitMonthRows(data([payment({ status: "overdue", receivedAmount: undefined })], [cancelled]), "b1", "2026-06")[0];
+  assert.equal(cancelledRow.status, "vacant");
+
+  const duplicate = payment({ id: "p2", receivedDate: "2026-06-01" });
+  const valid = payment({ receivedDate: "2026-06-01" });
+  const paidRow = reporting.buildUnitMonthRows(data([valid, duplicate]), "b1", "2026-06")[0];
+  assert.equal(paidRow.collectedAmount, 1000);
+  assert.deepEqual(paidRow.duplicatePaymentIds, ["p2"]);
+});

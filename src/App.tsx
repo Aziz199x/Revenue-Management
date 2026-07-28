@@ -16,6 +16,8 @@ import Buildings from "./pages/Buildings";
 import BuildingDetails from "./pages/BuildingDetails";
 import UnitDetails from "./pages/UnitDetails";
 import Payments from "./pages/Payments";
+import SearchPage from "./pages/SearchPage";
+import OwnerReportPage from "./pages/OwnerReportPage";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
@@ -131,7 +133,9 @@ const App = () => {
               <Route path="/buildings/:buildingId" element={<BuildingDetails />} />
               <Route path="/units/:unitId" element={<UnitDetails />} />
               <Route path="/payments" element={<Payments />} />
+              <Route path="/search" element={<SearchPage />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/reports/owner/:buildingId" element={<OwnerReportPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
               <Route path="/settings/backup" element={<BackupPage />} />

@@ -13,6 +13,7 @@ import {
   ClipboardList,
   MessageCircle,
   Gavel,
+  Search,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -78,8 +79,8 @@ export default function Index() {
   const stats = globalStats(dashboardData);
   const reminders = collectReminders(dashboardData).filter((reminder) => reminder.kind !== "contract").slice(0, 6);
   const contractExpiryReminders = buildContractExpiryReminders(dashboardData.contracts, dashboardData.units, dashboardData.buildings, dashboardData.settings.contractReminderDays);
-  const nearestContractStatus = contractExpiryReminders.length === 0
-    ? getActiveContractsNeedingAttention(dashboardData.contracts).map((contract) => {
+  const nearestContractStatus = getActiveContractsNeedingAttention(dashboardData.contracts)
+    .map((contract) => {
         const unit = dashboardData.units.find((item) => String(item.id) === String(contract.unitId));
         const building = dashboardData.buildings.find((item) => item.id === unit?.buildingId);
         const endDate = getContractEndDate(contract) || contract.endDate;
@@ -94,18 +95,32 @@ export default function Index() {
           date: endDate,
           daysRemaining: getDaysUntilDate(endDate) ?? 999999,
         };
-      }).sort((a, b) => a.daysRemaining - b.daysRemaining).slice(0, 3)
-    : [];
+      })
+    .sort((a, b) => a.daysRemaining - b.daysRemaining)
+    .slice(0, 8);
   const paymentCards = collectPaymentCards(dashboardData);
 
   const upcomingPayments = paymentCards.filter((c) => c.status === "upcoming").slice(0, 5);
   const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, 5);
   const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, 8);
-  const nearestContracts = contractExpiryReminders.length > 0 ? contractExpiryReminders.slice(0, 8) : nearestContractStatus;
+  const nearestContracts = [
+    ...contractExpiryReminders,
+    ...nearestContractStatus.filter((item) =>
+      !contractExpiryReminders.some((reminder) => reminder.contractId === item.id.replace(/^info-/, "")),
+    ),
+  ].slice(0, 8);
 
   return (
     <div>
-      <PageHeader title="مدير العقارات" subtitle="لوحة التحكم الرئيسية" />
+      <PageHeader
+        title="مدير العقارات"
+        subtitle="لوحة التحكم الرئيسية"
+        action={
+          <Link to="/search" aria-label="البحث الشامل" className="rounded-full p-2 hover:bg-secondary">
+            <Search className="h-5 w-5" />
+          </Link>
+        }
+      />
       <div className="space-y-4 p-4">
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">فلترة حسب العقار</label>
@@ -345,7 +360,7 @@ export default function Index() {
                           tenantName: tenant.name,
                           buildingName: pc.buildingName,
                           unitName: pc.unitName,
-                          amount: pc.amount.toLocaleString("ar-SA"),
+                  amount: pc.amount.toLocaleString("en-US"),
                           dueDate: formatDate(pc.dueDate),
                           contractEndDate: "",
                           ownerName: "",

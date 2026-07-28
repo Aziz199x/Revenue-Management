@@ -22,6 +22,23 @@ export function getResolvedCollectionFeePercent(building?: Building | null, unit
   return Number(building?.collectionFeePercent) || 0;
 }
 
+export function getPaymentCollectionFeePercent(
+  payment: Pick<Payment, "collectionFeePercent" | "collectionFeePercentage">,
+  building?: Building | null,
+  unit?: Unit | null,
+): number {
+  const configuredPercent = getResolvedCollectionFeePercent(building, unit);
+  const storedPercent = payment.collectionFeePercent ?? payment.collectionFeePercentage;
+
+  // Older edit flows persisted a missing percentage as 0. If the unit is
+  // currently configured with a fee, treat that zero as legacy data so the
+  // next receipt uses the actual configured percentage.
+  if (storedPercent === undefined || (storedPercent === 0 && configuredPercent > 0)) {
+    return configuredPercent;
+  }
+  return Number(storedPercent) || 0;
+}
+
 export const EJAR_COLLECTION_FEE_REASON = "الدفع تم عبر منصة إيجار ووصل المبلغ للمالك مباشرة، ولم يتم تحصيل نسبة المكتب";
 
 export function normalizeReceiveMethod(method?: string | null): PaymentReceiveMethod {
@@ -85,7 +102,8 @@ export function getCollectedRentAmount(payment: Payment): number {
 
 export function normalizePaymentFinancials(payment: Payment, feePercent = payment.collectionFeePercent ?? payment.collectionFeePercentage ?? 0): Payment {
   const grossAmount = payment.grossAmount ?? payment.amount;
-  const receiveMethod = getPaymentReceiveMethod(payment);
+  const hasReceivedRent = payment.status === "paid" || payment.status === "partial";
+  const receiveMethod = hasReceivedRent ? getPaymentReceiveMethod(payment) : undefined;
   const collectionFeePercent = feePercent;
   const collectionFeeAmount = payment.collectionFeeAmount ?? calcCollectionFee(grossAmount, collectionFeePercent).collectionFeeAmount;
   const collectionFeeStatus = payment.status === "paid"
@@ -95,7 +113,12 @@ export function normalizePaymentFinancials(payment: Payment, feePercent = paymen
   const nextPayment = {
     ...payment,
     grossAmount,
-    paymentMethod: payment.paymentMethod ?? (receiveMethod === "office_collection" ? undefined : receiveMethod),
+    paidAmount: payment.status === "partial" ? payment.paidAmount : undefined,
+    receivedAmount: payment.status === "paid"
+      ? payment.receivedAmount ?? grossAmount
+      : payment.status === "partial" ? payment.receivedAmount ?? payment.paidAmount ?? 0 : undefined,
+    receivedDate: payment.status === "paid" ? payment.receivedDate : undefined,
+    paymentMethod: hasReceivedRent ? payment.paymentMethod ?? (receiveMethod === "office_collection" ? undefined : receiveMethod) : undefined,
     receiveMethod,
     collectionFeePercent,
     collectionFeePercentage: payment.collectionFeePercentage ?? collectionFeePercent,
@@ -205,7 +228,7 @@ export function upsertTenant(
 }
 
 export function formatMoney(n: number): string {
-  return `${n.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
 }
 
 export function getPaymentAmount(payment: { grossAmount?: number; amount?: number; rentAmount?: number }): number {
@@ -218,13 +241,13 @@ export function getPaymentAmount(payment: { grossAmount?: number; amount?: numbe
 export function formatSarAmount(value: number | string): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "0 ر.س";
-  return `${amount.toLocaleString("ar-SA")} ر.س`;
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
 }
 
 export function formatDate(iso?: string): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("ar-SA", {
+  return d.toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -392,6 +415,7 @@ export function paymentDueDateValue(payment: { dueDateGregorian?: string; nextDu
 
 export function isPaymentPaid(payment: Payment): boolean {
   const value = payment as Payment & { isReceived?: boolean; dueAmount?: number; isDeleted?: boolean; cancelled?: boolean };
+  if (payment.status === "unpaid" || payment.status === "overdue" || payment.status === "partial") return false;
   const due = Number(payment.grossAmount ?? payment.amount ?? value.dueAmount ?? 0);
   const received = Number(payment.receivedAmount ?? payment.paidAmount ?? 0);
   return payment.status === "paid" || value.isReceived === true || (due > 0 && received >= due);
@@ -402,7 +426,7 @@ export function getRemainingPaymentAmount(payment: Payment): number {
   const due = Number(payment.grossAmount ?? payment.amount ?? value.dueAmount ?? 0);
   const received = isPaymentPaid(payment)
     ? due
-    : Number(payment.receivedAmount ?? payment.paidAmount ?? 0);
+    : payment.status === "partial" ? Number(payment.receivedAmount ?? payment.paidAmount ?? 0) : 0;
   return Math.max(0, Math.round((due - received) * 100) / 100);
 }
 
@@ -437,19 +461,31 @@ export function isPaymentOverdueForNotification(payment: Payment, today = todayI
   return isPaymentOverdue(payment, today);
 }
 
-export function getPaymentReportYearMonth(paymentDueDate: string): string {
-  const dueDate = paymentDueDate;
-  const parsed = parseLocalDate(dueDate);
-  if (!parsed) return dueDate.slice(0, 7);
-  if (parsed.getDate() >= 25) {
-    parsed.setMonth(parsed.getMonth() + 1);
-  }
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+export function getPaymentReportYearMonth(
+  paymentDueDate: string,
+  cutoffDay: number | null = 25,
+  mode: "auto" | "due_month" | "next_month" = "auto",
+): string {
+  const parsed = parseLocalDate(paymentDueDate);
+  if (!parsed) return paymentDueDate.slice(0, 7);
+  const shouldShift = mode === "next_month"
+    || (mode === "auto" && cutoffDay !== null && parsed.getDate() >= cutoffDay);
+  const reportDate = shouldShift
+    ? new Date(parsed.getFullYear(), parsed.getMonth() + 1, 1)
+    : parsed;
+  return `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function getPaymentReportMonth(payment: { dueDateGregorian?: string; nextDueDate?: string; paymentDate: string }): string {
+export function getPaymentReportMonth(
+  payment: { dueDateGregorian?: string; nextDueDate?: string; paymentDate: string; reportingMonthMode?: "auto" | "due_month" | "next_month"; reportingYearMonth?: string },
+  cutoffDay: number | null = 25,
+): string {
+  // Explicit month chosen by the user wins over any automatic rule.
+  if (payment.reportingYearMonth && /^\d{4}-\d{2}$/.test(payment.reportingYearMonth)) {
+    return payment.reportingYearMonth;
+  }
   const dueDate = payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate;
-  return getPaymentReportYearMonth(dueDate);
+  return getPaymentReportYearMonth(dueDate, cutoffDay, payment.reportingMonthMode ?? "auto");
 }
 
 export function getPaymentMaintenanceDeductions(data: AppData, paymentId: string) {
@@ -620,7 +656,7 @@ export interface MonthlyOfficeCollectionReportRow {
 export function monthlyOfficeCollectionReport(data: AppData): MonthlyOfficeCollectionReportRow[] {
   const rows = new Map<string, MonthlyOfficeCollectionReportRow>();
   for (const payment of data.payments.filter((item) => !item.deletedAt)) {
-    const reportMonth = getPaymentReportMonth(payment);
+    const reportMonth = getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay);
     const parsed = parseLocalDate(`${reportMonth}-01`);
     if (!parsed) continue;
     const unit = data.units.find((item) => item.id === payment.unitId);

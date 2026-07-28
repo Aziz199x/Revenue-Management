@@ -170,6 +170,16 @@ export const REQUEST_PRIORITY_LABELS: Record<RequestPriority, string> = {
 export const UNIT_TYPES = ["شقة", "محل", "غرفة", "مكتب", "مستودع", "أخرى"];
 
 export const STATUS_COLORS: Record<string, string> = {
+  occupied_paid: "bg-emerald-100 text-emerald-800",
+  occupied_paid_late: "bg-orange-100 text-orange-700",
+  occupied_partial: "bg-amber-100 text-amber-800",
+  occupied_unpaid: "bg-red-100 text-red-700",
+  occupied_ejar: "bg-blue-100 text-blue-700",
+  occupied_no_due: "bg-slate-200 text-slate-700",
+  no_contract: "bg-slate-200 text-slate-500",
+  future_contract: "bg-blue-100 text-blue-700",
+  contract_starts_next_month: "bg-blue-100 text-blue-700",
+
   paid: "bg-emerald-100 text-emerald-800",
   unpaid: "bg-slate-200 text-slate-700",
   partial: "bg-amber-100 text-amber-800",
@@ -186,4 +196,18 @@ export const STATUS_COLORS: Record<string, string> = {
   medium: "bg-amber-100 text-amber-800",
   high: "bg-orange-100 text-orange-700",
   urgent: "bg-red-100 text-red-700",
+};
+
+export const UNIT_MONTH_STATUS_LABELS: Record<string, string> = {
+  occupied_paid: "مدفوع في الموعد",
+  occupied_paid_late: "مدفوع متأخر",
+  occupied_partial: "مدفوع جزئياً",
+  occupied_unpaid: "غير مدفوع",
+  occupied_ejar: "مدفوع عبر إيجار",
+  occupied_no_due: "لا يوجد استحقاق",
+  maintenance: "تحت الصيانة",
+  vacant: "شاغرة",
+  no_contract: "لا يوجد عقد",
+  future_contract: "عقد مستقبلي",
+  contract_starts_next_month: "يبدأ الشهر القادم",
 };

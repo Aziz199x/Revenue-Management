@@ -265,7 +265,7 @@ export default function ContractForm({
           {durationMonths > 0 && (
             <p>مدة العقد: {durationMonths} شهر{durationMonths >= 12 ? ` (${Math.floor(durationMonths / 12)} سنة${durationMonths % 12 > 0 ? ` و ${durationMonths % 12} شهر` : ""})` : ""}</p>
           )}
-          <p>ينتهي العقد في: {new Date(endDate + "T00:00:00").toLocaleDateString("ar-SA-u-ca-gregory", { year: "numeric", month: "long", day: "2-digit" })}</p>
+          <p>ينتهي العقد في: {new Date(endDate + "T00:00:00").toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", { year: "numeric", month: "long", day: "2-digit" })}</p>
           {effectiveReminderDays > 0 && (
             <p>التذكير قبل الانتهاء: {effectiveReminderDays} يوم</p>
           )}

@@ -16,10 +16,12 @@ import { useStore } from "@/data/store";
 import { NotificationSound } from "@/data/types";
 import {
   clearAllScheduledNotifications,
+  cleanupDuplicateNotificationChannels,
   getNotificationDiagnostics,
   NotificationDiagnostics,
   notificationsSupported,
   openAppNotificationSettings,
+  openBatteryOptimizationSettings,
   openSystemNotificationSoundSettings,
   requestNotificationPermission,
   scheduleTestNotification,
@@ -108,6 +110,10 @@ export default function NotificationSettingsPage() {
   };
 
   const runTest = async () => {
+    if (!data.settings.notificationsEnabled) {
+      showError("فعّل الإشعارات المحلية أولًا قبل إرسال اختبار");
+      return;
+    }
     setTesting(true);
     try {
       const result = await scheduleTestNotification(data.settings);
@@ -200,6 +206,24 @@ export default function NotificationSettingsPage() {
 
         <section className="space-y-3 rounded-3xl border border-border bg-card p-4">
           <p className="text-sm font-bold">توقيت الإشعارات</p>
+          <div className="flex items-center justify-between rounded-2xl border border-border p-3">
+            <div>
+              <p className="text-sm font-semibold">اليوم كامل</p>
+              <p className="text-xs text-muted-foreground">إرسال التذكيرات طوال اليوم وتعطيل تخصيص وقت البداية والنهاية</p>
+            </div>
+            <Switch
+              checked={data.settings.notificationAllDay === true}
+              onCheckedChange={(enabled) => update((prev) => ({
+                ...prev,
+                settings: {
+                  ...prev.settings,
+                  notificationAllDay: enabled,
+                  notificationWindowStart: enabled ? "00:00" : prev.settings.notificationWindowStart,
+                  notificationWindowEnd: enabled ? "23:59" : prev.settings.notificationWindowEnd,
+                },
+              }))}
+            />
+          </div>
           <div className="space-y-2">
             <Label className="text-xs">تكرار الإشعارات</Label>
             <Select
@@ -226,14 +250,78 @@ export default function NotificationSettingsPage() {
               </div>
             )}
           </div>
+          <div className="space-y-2 rounded-2xl border border-border p-3">
+            <p className="text-sm font-semibold">تخصيص التكرار حسب النوع</p>
+            <p className="text-[11px] text-muted-foreground">اترك «افتراضي» لاستخدام التكرار العام أعلاه.</p>
+            {([
+              { key: "upcomingPaymentFrequencyHours" as const, label: "الدفعات القريبة" },
+              { key: "overduePaymentFrequencyHours" as const, label: "الدفعات المتأخرة" },
+              { key: "contractFrequencyHours" as const, label: "العقود قرب الانتهاء" },
+            ]).map(({ key, label }) => (
+              <div key={key} className="grid grid-cols-2 items-center gap-2">
+                <Label className="text-xs">{label}</Label>
+                <Select
+                  value={data.settings[key] != null ? String(data.settings[key]) : "default"}
+                  onValueChange={(value) => update((prev) => ({
+                    ...prev,
+                    settings: { ...prev.settings, [key]: value === "default" ? null : Number(value) },
+                  }))}
+                >
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">افتراضي</SelectItem>
+                    <SelectItem value="1">كل ساعة</SelectItem>
+                    <SelectItem value="2">كل ساعتين</SelectItem>
+                    <SelectItem value="4">كل 4 ساعات</SelectItem>
+                    <SelectItem value="6">كل 6 ساعات</SelectItem>
+                    <SelectItem value="12">مرتين يوميا</SelectItem>
+                    <SelectItem value="24">يوميا</SelectItem>
+                    <SelectItem value="48">كل يومين</SelectItem>
+                    <SelectItem value="72">كل 3 أيام</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+            <div className="grid grid-cols-2 items-center gap-2">
+              <Label className="text-xs">الاستمرار بتذكير المتأخرات لمدة</Label>
+              <Select
+                value={String(data.settings.overdueRentTailDays ?? 90)}
+                onValueChange={(value) => update((prev) => ({
+                  ...prev,
+                  settings: { ...prev.settings, overdueRentTailDays: Number(value) },
+                }))}
+              >
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="14">14 يوم</SelectItem>
+                  <SelectItem value="30">30 يوم</SelectItem>
+                  <SelectItem value="60">60 يوم</SelectItem>
+                  <SelectItem value="90">90 يوم</SelectItem>
+                  <SelectItem value="180">180 يوم</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
               <Label className="text-xs">وقت البداية</Label>
-              <Input type="time" value={data.settings.notificationWindowStart ?? "09:00"} onChange={(event) => update((prev) => ({ ...prev, settings: { ...prev.settings, notificationWindowStart: event.target.value || "09:00" } }))} className="rounded-xl" />
+              <Input
+                type="time"
+                disabled={data.settings.notificationAllDay === true}
+                value={data.settings.notificationAllDay ? "00:00" : (data.settings.notificationWindowStart ?? "09:00")}
+                onChange={(event) => update((prev) => ({ ...prev, settings: { ...prev.settings, notificationWindowStart: event.target.value || "09:00" } }))}
+                className="rounded-xl disabled:opacity-60"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">وقت النهاية</Label>
-              <Input type="time" value={data.settings.notificationWindowEnd ?? "21:00"} onChange={(event) => update((prev) => ({ ...prev, settings: { ...prev.settings, notificationWindowEnd: event.target.value || "21:00" } }))} className="rounded-xl" />
+              <Input
+                type="time"
+                disabled={data.settings.notificationAllDay === true}
+                value={data.settings.notificationAllDay ? "23:59" : (data.settings.notificationWindowEnd ?? "21:00")}
+                onChange={(event) => update((prev) => ({ ...prev, settings: { ...prev.settings, notificationWindowEnd: event.target.value || "21:00" } }))}
+                className="rounded-xl disabled:opacity-60"
+              />
             </div>
           </div>
         </section>
@@ -302,6 +390,26 @@ export default function NotificationSettingsPage() {
               تحديث الحالة
             </Button>
           </div>
+          <Button
+            variant="outline"
+            className="w-full rounded-xl text-xs"
+            onClick={async () => {
+              if (!data.settings.notificationsEnabled) {
+                showError("فعّل الإشعارات المحلية أولًا حتى تتم جدولة تذكيرات الدفعات والعقود");
+                await refreshDiagnostics();
+                return;
+              }
+              const result = await syncScheduledNotifications(data, { forceOnOpen: true });
+              if (result.success) {
+                showSuccess(`تمت إعادة الجدولة: ${result.pendingNotifications} إشعار معلق في النظام`);
+              } else {
+                showError(result.error || "تعذرت إعادة جدولة الإشعارات");
+              }
+              await refreshDiagnostics();
+            }}
+          >
+            إعادة جدولة التذكيرات الآن
+          </Button>
           <div className="rounded-2xl bg-muted p-3 text-xs leading-6 text-muted-foreground">
             <p>حالة الإذن: {diagnostics?.permissionStatus ?? "غير معروف"}</p>
             <p>التذكيرات الموجودة: {diagnostics?.remindersFound ?? 0}</p>
@@ -312,6 +420,9 @@ export default function NotificationSettingsPage() {
             {diagnostics?.nativeStatus && (
               <>
                 <p>إشعارات التطبيق من Android: {diagnostics.nativeStatus.notificationsEnabled ? "مفعلة" : "معطلة"}</p>
+                {diagnostics.nativeStatus.batteryUnrestricted !== undefined && (
+                  <p>قيود البطارية: {diagnostics.nativeStatus.batteryUnrestricted ? "غير مقيد (ممتاز)" : "مقيد — قد يؤخر التذكيرات"}</p>
+                )}
                 <p>قناة الاختبار: {diagnostics.nativeStatus.channelExists ? (diagnostics.nativeStatus.channelEnabled ? "مفعلة" : "معطلة") : "غير موجودة"}</p>
                 {diagnostics.nativeStatus.channelImportance !== undefined && <p>أهمية قناة الاختبار: {diagnostics.nativeStatus.channelImportance}</p>}
               </>
@@ -329,6 +440,38 @@ export default function NotificationSettingsPage() {
             }}
           >
             إلغاء كل الإشعارات المجدولة
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full rounded-xl text-xs"
+            onClick={async () => {
+              const count = await cleanupDuplicateNotificationChannels(data.settings);
+              showSuccess(count > 0 ? `تم تنظيف ${count} قناة مكررة` : "لا توجد قنوات مكررة للتنظيف");
+              await refreshDiagnostics();
+            }}
+          >
+            تنظيف قنوات الإشعارات المكررة
+          </Button>
+          {diagnostics?.nativeStatus?.batteryUnrestricted === false && (
+            <div className="rounded-2xl bg-amber-50 p-3 text-xs leading-6 text-amber-800">
+              <p className="font-bold">تنبيه: النظام يقيد التطبيق في الخلفية</p>
+              <p>قد يؤخر هذا وصول التذكيرات عند إغلاق التطبيق. اضغط الزر أدناه واختر «السماح» لإعفاء التطبيق من قيود البطارية.</p>
+            </div>
+          )}
+          <Button
+            variant="outline"
+            className="w-full rounded-xl text-xs"
+            onClick={async () => {
+              try {
+                const opened = await openBatteryOptimizationSettings();
+                if (!opened) showError("إعدادات البطارية متاحة داخل تطبيق Android فقط");
+                else setTimeout(() => { void refreshDiagnostics(); }, 3000);
+              } catch {
+                showError("تعذر فتح إعدادات قيود البطارية");
+              }
+            }}
+          >
+            إعفاء التطبيق من قيود البطارية
           </Button>
           <Button
             variant="outline"

@@ -24,7 +24,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import { useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
-import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth } from "@/data/helpers";
+import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
@@ -103,9 +103,9 @@ export default function Payments() {
   }
 
   const months = useMemo(() => {
-    const set = new Set(data.payments.map((p) => getPaymentReportMonth(p)));
+    const set = new Set(data.payments.map((p) => getPaymentReportMonth(p, data.settings.reportMonthCutoffDay)));
     return [...set].sort().reverse();
-  }, [data.payments]);
+  }, [data.payments, data.settings.reportMonthCutoffDay]);
 
   const computedBuildings = useMemo(() => {
     return data.buildings.map((b) => ({ id: b.id, name: b.name }));
@@ -145,7 +145,7 @@ export default function Payments() {
       .filter((r) => {
         if (effectiveBuildingFilter !== "all" && r.building?.id !== effectiveBuildingFilter) return false;
         if (filters.status !== "all" && r.status !== filters.status) return false;
-        if (filters.month !== "all" && getPaymentReportMonth(r.payment) !== filters.month) return false;
+        if (filters.month !== "all" && getPaymentReportMonth(r.payment, data.settings.reportMonthCutoffDay) !== filters.month) return false;
         if (filters.search.trim()) {
           const q = filters.search.trim();
           const hay = `${r.unit?.name ?? ""} ${r.building?.name ?? ""} ${r.tenant?.name ?? ""}`;
@@ -182,7 +182,7 @@ export default function Payments() {
       && repair.status !== "cancelled");
   }, [data.repairs, data.units, markReceived]);
   const eligibleOfficeFees = useMemo(() => {
-    if (!markReceived || !deductOfficeFees) return [];
+    if (!markReceived) return [];
     const sourceUnit = data.units.find((unit) => unit.id === markReceived.unitId);
     if (!sourceUnit) return [];
     const propertyUnitIds = new Set(data.units.filter((unit) => unit.buildingId === sourceUnit.buildingId).map((unit) => unit.id));
@@ -192,6 +192,7 @@ export default function Payments() {
         payment.id !== markReceived.id
         && !payment.deletedAt
         && propertyUnitIds.has(payment.unitId)
+        && getPaymentReceiveMethod(payment) === "ejar_platform"
         && getCollectionFeeRemainingAmount(data, payment) > 0
       )
       .map((payment) => {
@@ -205,7 +206,7 @@ export default function Payments() {
           settled: getCollectionFeeSettledAmount(data, payment),
         };
       });
-  }, [data, markReceived, deductOfficeFees]);
+  }, [data, markReceived]);
   const selectedOfficeFeeSettlementTotal = Object.values(selectedFeeSettlementAmounts)
     .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
 
@@ -558,7 +559,7 @@ export default function Payments() {
                     className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"
                     onClick={() =>
                       {
-                        setMrFeePercent(p.collectionFeePercent ?? getResolvedCollectionFeePercent(building, unit));
+                        setMrFeePercent(getPaymentCollectionFeePercent(p, building, unit));
                         setMarkReceived({
                         id: p.id,
                         amount: p.amount,
@@ -642,6 +643,12 @@ export default function Payments() {
                 <p className="font-bold">الصافي للمالك: {formatMoney(markReceived.amount - Math.round(markReceived.amount * mrFeePercent) / 100 - selectedOfficeFeeSettlementTotal - data.repairs.filter((r) => selectedRepairIds.includes(r.id)).reduce((s, r) => s + r.cost, 0))}</p>
               </div>
             )}
+            {eligibleOfficeFees.length > 0 && !deductOfficeFees && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-bold">اقتراح ذكي لتسوية رسوم منصة إيجار</p>
+                <p className="mt-1">توجد رسوم مكتب غير محصلة بقيمة {formatMoney(eligibleOfficeFees.reduce((sum, item) => sum + item.remaining, 0))} في وحدات أخرى من نفس العقار. فعّل الخيار أدناه لاختيار ما يُخصم من هذه الدفعة، وسيُوثّق الربط في الدفعتين.</p>
+              </div>
+            )}
             <label className="flex items-center gap-2 rounded-xl border p-2 text-xs">
               <input
                 type="checkbox"
@@ -676,7 +683,7 @@ export default function Payments() {
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block font-semibold">{item.unit?.name || item.payment.unitName || "وحدة غير محددة"} - {item.tenant?.name || item.payment.tenantName || "مستأجر غير محدد"}</span>
-                            <span className="block text-muted-foreground">شهر الدفعة: {getPaymentReportMonth(item.payment)}</span>
+                            <span className="block text-muted-foreground">شهر الدفعة: {getPaymentReportMonth(item.payment, data.settings.reportMonthCutoffDay)}</span>
                             <span className="block text-muted-foreground">رسوم التحصيل: {formatMoney(item.payment.collectionFeeAmount ?? 0)} - المتبقي: {formatMoney(item.remaining)}</span>
                           </span>
                         </label>

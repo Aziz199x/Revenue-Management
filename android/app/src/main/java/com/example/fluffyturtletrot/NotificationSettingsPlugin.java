@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
@@ -53,12 +54,50 @@ public class NotificationSettingsPlugin extends Plugin {
         }
     }
 
+    /**
+     * Opens the system dialog asking the user to exempt the app from battery
+     * optimization (Doze restrictions). Falls back to the optimization list
+     * screen, then to app details, if the direct request is unavailable.
+     */
+    @PluginMethod
+    public void openBatteryOptimizationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve(new JSObject());
+        } catch (Exception directRequestError) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                call.resolve(new JSObject());
+            } catch (Exception listError) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(intent);
+                    call.resolve(new JSObject());
+                } catch (Exception detailsError) {
+                    call.reject("Unable to open battery optimization settings", detailsError);
+                }
+            }
+        }
+    }
+
     @PluginMethod
     public void getStatus(PluginCall call) {
         JSObject result = new JSObject();
         boolean notificationsEnabled = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
         result.put("notificationsEnabled", notificationsEnabled);
         result.put("sdkInt", Build.VERSION.SDK_INT);
+
+        PowerManager powerManager = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+        if (powerManager != null) {
+            result.put("batteryUnrestricted", powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+        }
 
         String channelId = call.getString("channelId");
         if (channelId != null && !channelId.isEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -89,7 +89,7 @@ export function getDefaultPaymentMessage(
     `السلام عليكم`,
     tenantName ? `عزيزي/عزيزتي ${tenantName}،` : "",
     `نود تذكيركم بأن موعد سداد الإيجار للوحدة ${unitName || ""} في عقار ${buildingName || ""} قد حلّ.`,
-    amount !== undefined ? `المبلغ المستحق: ${amount.toLocaleString("ar-SA")} ر.س.` : "",
+    amount !== undefined ? `المبلغ المستحق: ${amount.toLocaleString("en-US")} ر.س.` : "",
     dueDate ? `موعد السداد: ${dueDate}` : "",
     "نأمل سرعة السداد، وشكرًا لكم.",
   ];
@@ -102,7 +102,7 @@ export function getPaymentReminderMessage(
   amount?: number,
   dueDate?: string,
 ): string {
-  const amountStr = amount !== undefined ? amount.toLocaleString("ar-SA") : "";
+  const amountStr = amount !== undefined ? amount.toLocaleString("en-US") : "";
   return `السلام عليكم، نود تذكيركم بأن دفعة الإيجار للوحدة ${unitName || ""} في عقار ${buildingName || ""} بمبلغ ${amountStr} ر.س، وموعد السداد ${dueDate || ""}. نأمل سرعة السداد، وشكرًا لكم.`;
 }
 
@@ -112,7 +112,7 @@ export function getOverdueReminderMessage(
   amount?: number,
   dueDate?: string,
 ): string {
-  const amountStr = amount !== undefined ? amount.toLocaleString("ar-SA") : "";
+  const amountStr = amount !== undefined ? amount.toLocaleString("en-US") : "";
   return `السلام عليكم، نود إفادتكم بأن دفعة الإيجار للوحدة ${unitName || ""} في عقار ${buildingName || ""} بمبلغ ${amountStr} ر.س، وموعد السداد كان بتاريخ ${dueDate || ""}، ولم يتم تسجيل سدادها حتى الآن. نأمل سرعة السداد، وشكرًا لكم.`;
 }
 
@@ -142,7 +142,7 @@ export function getDefaultOverdueMessage(
     `السلام عليكم`,
     tenantName ? `عزيزي/عزيزتي ${tenantName}،` : "",
     `نود إفادتكم بأن دفعة الإيجار للوحدة ${unitName || ""} في عقار ${buildingName || ""} لم يتم تسجيل سدادها حتى الآن.`,
-    amount !== undefined ? `المبلغ المستحق: ${amount.toLocaleString("ar-SA")} ر.س.` : "",
+    amount !== undefined ? `المبلغ المستحق: ${amount.toLocaleString("en-US")} ر.س.` : "",
     dueDate ? `موعد السداد: ${dueDate}` : "",
     "نأمل سرعة السداد، وشكرًا لكم.",
   ];

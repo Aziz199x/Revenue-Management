@@ -112,6 +112,10 @@ export interface Payment {
   ownerTransferDate?: string | null;
   ownerTransferMethod?: PaymentMethod | null;
   ownerTransferNotes?: string;
+  /** Controls which monthly report owns this obligation. */
+  reportingMonthMode?: "auto" | "due_month" | "next_month";
+  /** Explicit report month (yyyy-mm) chosen by the user. Takes precedence over reportingMonthMode. */
+  reportingYearMonth?: string;
 }
 
 export interface Contract {
@@ -385,11 +389,20 @@ export interface Settings {
   overduePaymentNotificationsEnabled: boolean;
   reminderFrequencyDays: number;
   reminderFrequencyHours: number;
+  /** Per-type overrides; null/undefined falls back to reminderFrequencyHours. */
+  upcomingPaymentFrequencyHours?: number | null;
+  overduePaymentFrequencyHours?: number | null;
+  contractFrequencyHours?: number | null;
+  /** How many days to keep nagging about an overdue rent payment. */
+  overdueRentTailDays?: number;
+  notificationAllDay: boolean;
   notificationWindowStart: string;
   notificationWindowEnd: string;
   paymentNotificationSound: NotificationSound;
   contractNotificationSound: NotificationSound;
   maintenanceNotificationSound: NotificationSound;
+  /** Due dates on or after this day belong to the following report month. */
+  reportMonthCutoffDay: number | null;
   whatsappTemplates: WhatsAppTemplates;
 }
 
@@ -426,11 +439,17 @@ export const DEFAULT_SETTINGS: Settings = {
   overduePaymentNotificationsEnabled: true,
   reminderFrequencyDays: 1,
   reminderFrequencyHours: 24,
+  upcomingPaymentFrequencyHours: null,
+  overduePaymentFrequencyHours: null,
+  contractFrequencyHours: null,
+  overdueRentTailDays: 90,
+  notificationAllDay: false,
   notificationWindowStart: "09:00",
   notificationWindowEnd: "21:00",
   paymentNotificationSound: "payment_overdue.wav",
   contractNotificationSound: "contract_reminder.wav",
   maintenanceNotificationSound: "default",
+  reportMonthCutoffDay: 25,
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
 };
 

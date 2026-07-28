@@ -14,17 +14,19 @@ const KNOWN_SOUND_FILES: NotificationSound[] = [
 ];
 
 const channelIds = (settings: Settings) => ({
-  contract: `contract_reminders_v5_${soundKey(settings.contractNotificationSound)}`,
-  payment: `payment_reminders_v5_${soundKey(settings.paymentNotificationSound)}`,
-  maintenance: `maintenance_reminders_v4_${soundKey(settings.maintenanceNotificationSound)}`,
-  general: "general_reminders_v4",
-  test: "notification_test_v2",
+  contract: "contract_reminders",
+  payment: "payment_reminders",
+  maintenance: "maintenance_reminders",
+  general: "general_reminders",
+  test: "notification_test",
 });
 
 const SCHEDULED_IDS_KEY = "rental-manager-scheduled-ids-v4";
+const NATIVE_ENGINE_MIGRATED_KEY = "rental-manager-native-engine-migrated-v1";
 const WEB_NOTIFIED_KEY = "rental-manager-notified-v3";
 const LAST_SYNC_FINGERPRINT_KEY = "rental-manager-notification-fingerprint-v1";
 const LAST_SYNC_RESULT_KEY = "rental-manager-last-sync-result-v1";
+const NOTIFICATION_ENGINE_VERSION = "2026-07-12-explicit-unpaid-reminders";
 const MAX_NATIVE_SCHEDULED_NOTIFICATIONS = 64;
 const MAX_SCHEDULES_PER_REMINDER = 4;
 
@@ -34,6 +36,7 @@ let channelCreationAttempts = new Map<string, boolean>();
 interface NotificationSettingsPlugin {
   openChannel(options: { channelId: string }): Promise<void>;
   openAppSettings(): Promise<void>;
+  openBatteryOptimizationSettings(): Promise<void>;
   getStatus(options?: { channelId?: string }): Promise<NativeNotificationStatus>;
 }
 
@@ -45,7 +48,35 @@ const NativeNotificationSettings = registerPlugin<NotificationSettingsPlugin>("N
     openAppSettings: async () => {
       throw new Error("System notification settings are only available in the native Android app");
     },
+    openBatteryOptimizationSettings: async () => {
+      throw new Error("Battery optimization settings are only available in the native Android app");
+    },
     getStatus: async () => ({ notificationsEnabled: notificationsSupported() && Notification.permission === "granted" }),
+  }),
+});
+
+interface NativeRemindersStatus {
+  exactAlarmsAllowed?: boolean;
+  sdkInt?: number;
+  armed?: boolean;
+  nextOccurrenceAt?: string;
+  nextOccurrenceEpochMs?: number;
+  deliveredLedgerSize?: number;
+}
+
+interface NativeRemindersPlugin {
+  setPlan(options: { plan: string }): Promise<NativeRemindersStatus>;
+  getStatus(): Promise<NativeRemindersStatus>;
+  openExactAlarmSettings(): Promise<void>;
+}
+
+const NativeReminders = registerPlugin<NativeRemindersPlugin>("NativeReminders", {
+  web: () => ({
+    setPlan: async () => ({}),
+    getStatus: async () => ({}),
+    openExactAlarmSettings: async () => {
+      throw new Error("Exact alarm settings are only available in the native Android app");
+    },
   }),
 });
 
@@ -101,6 +132,8 @@ export interface NotificationDiagnostics {
 export interface NativeNotificationStatus {
   notificationsEnabled: boolean;
   sdkInt?: number;
+  /** True when the app is exempt from battery optimization (Doze). */
+  batteryUnrestricted?: boolean;
   channelId?: string;
   channelExists?: boolean;
   channelImportance?: number;
@@ -148,6 +181,42 @@ function safeSoundForChannel(sound: string): string {
   if (sound === "default") return "default";
   if (KNOWN_SOUND_FILES.includes(sound as NotificationSound)) return sound;
   return "default";
+}
+
+function shouldDeleteLegacyChannel(id: string, name: string | undefined, currentIds: Set<string>): boolean {
+  if (currentIds.has(id)) return false;
+  const normalizedName = name || "";
+  return /^(contract_reminders|payment_reminders|maintenance_reminders|general_reminders|notification_test)(?:_|$)/.test(id)
+    || id === "Default"
+    || normalizedName.includes("تذكيرات العقود")
+    || normalizedName.includes("تذكيرات الدفعات")
+    || normalizedName.includes("طلبات الصيانة")
+    || normalizedName.includes("التذكيرات العامة")
+    || normalizedName.includes("اختبار الإشعارات")
+    || normalizedName.includes("تذكيرات الإيجار والعقود");
+}
+
+async function cleanupLegacyChannels(settings: Settings): Promise<number> {
+  if (!isNative()) return 0;
+  const ids = channelIds(settings);
+  const currentIds = new Set(Object.values(ids));
+  try {
+    const result = await LocalNotifications.listChannels();
+    const legacy = result.channels.filter((channel) => shouldDeleteLegacyChannel(channel.id, channel.name, currentIds));
+    for (const channel of legacy) {
+      try {
+        await LocalNotifications.deleteChannel({ id: channel.id });
+        channelCreationAttempts.delete(channel.id);
+      } catch (error) {
+        console.warn("[Notifications] Failed to delete legacy channel:", channel.id, error);
+      }
+    }
+    if (legacy.length) console.log("[Notifications] Deleted legacy channels:", legacy.map((channel) => channel.id));
+    return legacy.length;
+  } catch (error) {
+    console.warn("[Notifications] Legacy channel cleanup failed:", error);
+    return 0;
+  }
 }
 
 /** Deterministic 32-bit positive integer id required by the native scheduler. */
@@ -282,13 +351,25 @@ export async function openAppNotificationSettings(): Promise<boolean> {
   return true;
 }
 
+/** Opens the system request/screen to exempt the app from battery optimization. */
+export async function openBatteryOptimizationSettings(): Promise<boolean> {
+  if (!isNative()) return false;
+  await NativeNotificationSettings.openBatteryOptimizationSettings();
+  return true;
+}
+
 export async function getNativeNotificationStatus(settings?: Settings): Promise<NativeNotificationStatus | undefined> {
   if (!isNative()) return undefined;
   const ids = channelIds(settings || ({} as Settings));
   return NativeNotificationSettings.getStatus({ channelId: ids.test });
 }
 
+export async function cleanupDuplicateNotificationChannels(settings: Settings): Promise<number> {
+  return cleanupLegacyChannels(settings);
+}
+
 async function ensureAndroidChannels(settings: Settings): Promise<string[]> {
+  await cleanupLegacyChannels(settings);
   const ids = channelIds(settings);
   const created: string[] = [];
   const soundFallbacks: string[] = [];
@@ -415,15 +496,44 @@ function atClock(day: Date, clock: { hour: number; minute: number }): Date {
   return date;
 }
 
-function getFrequencyIntervalHours(settings: Settings): number {
-  const hours = Number(settings.reminderFrequencyHours);
-  return Number.isFinite(hours) && hours >= 1 ? hours : 24;
+type ReminderCategory = "upcoming" | "overdue" | "contract";
+
+function getFrequencyIntervalHours(settings: Settings, category?: ReminderCategory): number {
+  const globalHours = Number(settings.reminderFrequencyHours);
+  const fallback = Number.isFinite(globalHours) && globalHours >= 1 ? globalHours : 24;
+  if (!category) return fallback;
+  const raw = category === "contract"
+    ? settings.contractFrequencyHours
+    : category === "overdue"
+      ? settings.overduePaymentFrequencyHours
+      : settings.upcomingPaymentFrequencyHours;
+  const hours = Number(raw);
+  return Number.isFinite(hours) && hours >= 1 ? hours : fallback;
 }
 
-function getNotificationTimesForDay(settings: Settings): string[] {
+function reminderCategory(r: { kind: string; days: number }): ReminderCategory {
+  if (r.kind === "contract" || r.kind === "eviction") return "contract";
+  return r.days < 0 ? "overdue" : "upcoming";
+}
+
+function getOverdueTailDays(settings: Settings): number {
+  const days = Number(settings.overdueRentTailDays);
+  return Number.isFinite(days) && days >= 1 ? Math.min(365, days) : 90;
+}
+
+function getNotificationTimesForDay(settings: Settings, category?: ReminderCategory): string[] {
+  if (settings.notificationAllDay) {
+    const intervalHours = getFrequencyIntervalHours(settings, category);
+    const times: string[] = [];
+    for (let hour = 0; hour <= 23; hour += intervalHours) {
+      times.push(`${hour.toString().padStart(2, "0")}:00`);
+    }
+    return times;
+  }
+
   const startClock = parseClock(settings.notificationWindowStart, "09:00");
   const endClock = parseClock(settings.notificationWindowEnd, "21:00");
-  const intervalHours = getFrequencyIntervalHours(settings);
+  const intervalHours = getFrequencyIntervalHours(settings, category);
 
   const startMinutes = startClock.hour * 60 + startClock.minute;
   const endMinutes = endClock.hour * 60 + endClock.minute;
@@ -441,6 +551,12 @@ function getNotificationTimesForDay(settings: Settings): string[] {
 
 function nextValidTimeAtOrAfter(baseDate: Date, timeStr: string, settings: Settings): Date | null {
   const [h, m] = timeStr.split(":").map(Number);
+  if (settings.notificationAllDay) {
+    const candidate = new Date(baseDate);
+    candidate.setHours(h, m, 0, 0);
+    return candidate;
+  }
+
   const startClock = parseClock(settings.notificationWindowStart, "09:00");
   const endClock = parseClock(settings.notificationWindowEnd, "21:00");
 
@@ -455,60 +571,44 @@ function nextValidTimeAtOrAfter(baseDate: Date, timeStr: string, settings: Setti
 
 function buildReminderScheduleTimes(r: ReminderItem, settings: Settings): Date[] {
   const now = new Date();
-  const times = getNotificationTimesForDay(settings);
+  const times = getNotificationTimesForDay(settings, reminderCategory(r));
   if (times.length === 0) return [];
 
   const due = new Date(`${r.date}T00:00:00`);
   if (Number.isNaN(due.getTime())) return [];
+  const dueEnd = new Date(due);
+  dueEnd.setHours(23, 59, 59, 999);
 
   const windowDays =
     r.kind === "contract"
       ? (r.reminderWindow ?? settings.contractReminderDays)
       : settings.rentReminderDays;
 
-  const anchorDays: number[] = [];
-
-  if (r.kind === "contract") {
-    const firstReminderDay = -windowDays;
-    const sevenDaysBefore = -7;
-    const threeDaysBefore = -3;
-    const expiryDay = 0;
-    anchorDays.push(firstReminderDay, sevenDaysBefore, threeDaysBefore, expiryDay);
-  } else if (r.kind === "rent" && r.days < 0) {
-    anchorDays.push(0, 1, 3, 7);
-  } else if (r.kind === "rent") {
-    const firstReminderDay = -windowDays;
-    const oneDayBefore = -1;
-    const dueDay = 0;
-    anchorDays.push(firstReminderDay, oneDayBefore, dueDay);
-  } else {
-    const firstReminderDay = -windowDays;
-    const dueDay = 0;
-    anchorDays.push(firstReminderDay, dueDay);
-  }
-
   const results: Date[] = [];
   const seen = new Set<number>();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
 
-  for (const offset of anchorDays) {
-    if (results.length >= MAX_SCHEDULES_PER_REMINDER) break;
+  let startDay = new Date(due);
+  if (r.days >= 0) {
+    startDay.setDate(startDay.getDate() - windowDays);
+    if (startDay < today) startDay = new Date(today);
+  } else {
+    startDay = new Date(today);
+  }
 
-    const anchor = new Date(due);
-    anchor.setDate(anchor.getDate() + offset);
+  let endDay = new Date(due);
+  if (r.days < 0) {
+    endDay = new Date(today);
+    endDay.setDate(endDay.getDate() + (r.kind === "rent" ? 7 : 3));
+  }
 
-    // Skip anchors that are before the reminder window start
-    if (r.kind === "contract" && r.days >= 0 && anchor < new Date(new Date().setHours(0, 0, 0, 0))) {
-      continue;
-    }
-
+  for (const day = new Date(startDay); day <= endDay && results.length < MAX_SCHEDULES_PER_REMINDER; day.setDate(day.getDate() + 1)) {
     for (const timeStr of times) {
       if (results.length >= MAX_SCHEDULES_PER_REMINDER) break;
-
-      const candidate = nextValidTimeAtOrAfter(anchor, timeStr, settings);
-      if (!candidate) continue;
-      if (candidate <= now) continue;
-      if (r.kind === "contract" && candidate > due) continue;
-
+      const candidate = nextValidTimeAtOrAfter(day, timeStr, settings);
+      if (!candidate || candidate <= now) continue;
+      if (r.days >= 0 && candidate > dueEnd) continue;
       const key = candidate.getTime();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -550,7 +650,7 @@ function reminderTitle(r: ReminderItem): string {
 
 function reminderBody(r: ReminderItem): string {
   if (r.kind === "contract") {
-    const expiryDate = new Date(r.date + "T00:00:00").toLocaleDateString("ar-SA", {
+    const expiryDate = new Date(r.date + "T00:00:00").toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -563,7 +663,7 @@ function reminderBody(r: ReminderItem): string {
     return `العقد للوحدة ${r.unitName || r.subtitle} ينتهي بعد ${r.days} يوم ويحتاج إجراء في منصة إيجار (${expiryDate}).`;
   }
   if (r.kind === "rent" && r.days < 0) {
-    return `لديك دفعة إيجار متأخرة للوحدة ${r.unitName || r.subtitle} بمبلغ ${(r.amount ?? 0).toLocaleString("ar-SA")} ر.س.`;
+    return `لديك دفعة إيجار متأخرة للوحدة ${r.unitName || r.subtitle} بمبلغ ${(r.amount ?? 0).toLocaleString("en-US")} ر.س.`;
   }
   const prefix = r.title === "موعد سداد الإيجار" ? "دفعة إيجار" : r.title;
   if (r.days < 0) return `${prefix}: ${r.subtitle} — متأخر منذ ${-r.days} يوم`;
@@ -614,6 +714,106 @@ function buildDesiredNotifications(data: AppData): DesiredNotification[] {
   return desired
     .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime())
     .slice(0, MAX_NATIVE_SCHEDULED_NOTIFICATIONS);
+}
+
+// ---------------------------------------------------------------------------
+// Native reminder plan
+// ---------------------------------------------------------------------------
+// The native ReminderEngine owns all background scheduling. JS only describes
+// WHAT should be reminded (facts + settings); the engine computes WHEN, fires
+// alarms without the WebView, survives reboots/updates, and re-arms itself.
+
+function buildReminderPlan(data: AppData): string {
+  const reminders = collectReminders(data)
+    .filter((r) => {
+      if (r.kind === "rent" && r.days < 0 && !data.settings.overduePaymentNotificationsEnabled) return false;
+      // Drop stale non-rent reminders (same rule as the legacy builder)
+      if (r.days < -3 && r.kind !== "rent") return false;
+      // Cap zombie overdue rent at the configured tail (engine enforces the same)
+      if (r.kind === "rent" && r.days < -getOverdueTailDays(data.settings)) return false;
+      return true;
+    })
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      title: r.title,
+      subtitle: r.subtitle,
+      unitName: r.unitName ?? "",
+      dueDate: r.date,
+      amount: r.amount ?? 0,
+      autoRenewal: r.autoRenewal === true,
+      ...(r.reminderWindow != null ? { reminderWindow: r.reminderWindow } : {}),
+    }));
+
+  return JSON.stringify({
+    version: 1,
+    engineVersion: NOTIFICATION_ENGINE_VERSION,
+    updatedAt: new Date().toISOString(),
+    settings: {
+      notificationsEnabled: data.settings.notificationsEnabled === true,
+      overdueEnabled: data.settings.overduePaymentNotificationsEnabled === true,
+      rentReminderDays: data.settings.rentReminderDays,
+      contractReminderDays: data.settings.contractReminderDays,
+      frequencyHours: getFrequencyIntervalHours(data.settings),
+      upcomingFrequencyHours: getFrequencyIntervalHours(data.settings, "upcoming"),
+      overdueFrequencyHours: getFrequencyIntervalHours(data.settings, "overdue"),
+      contractFrequencyHours: getFrequencyIntervalHours(data.settings, "contract"),
+      overdueTailDays: getOverdueTailDays(data.settings),
+      allDay: data.settings.notificationAllDay === true,
+      windowStart: data.settings.notificationWindowStart || "09:00",
+      windowEnd: data.settings.notificationWindowEnd || "21:00",
+      paymentSound: normalizeSound(data.settings.paymentNotificationSound).sound,
+      contractSound: normalizeSound(data.settings.contractNotificationSound).sound,
+      maintenanceSound: normalizeSound(data.settings.maintenanceNotificationSound).sound,
+    },
+    reminders,
+  });
+}
+
+/**
+ * One-time migration: cancel every notification the legacy WebView-driven
+ * scheduler left in the Capacitor plugin, so the native engine is the single
+ * writer and duplicates are impossible.
+ */
+async function migrateLegacyScheduledNotifications(): Promise<number> {
+  try {
+    if (localStorage.getItem(NATIVE_ENGINE_MIGRATED_KEY)) return 0;
+  } catch {
+    // continue; cancelling twice is harmless
+  }
+  let cancelled = 0;
+  try {
+    const pending = await LocalNotifications.getPending();
+    if (pending.notifications.length > 0) {
+      await LocalNotifications.cancel({
+        notifications: pending.notifications.map((n) => ({ id: n.id })),
+      });
+      cancelled = pending.notifications.length;
+    }
+    saveTrackedIds([]);
+    localStorage.setItem(NATIVE_ENGINE_MIGRATED_KEY, new Date().toISOString());
+    console.log("[Notifications] Migrated to native engine, cancelled legacy:", cancelled);
+  } catch (e) {
+    console.warn("[Notifications] Legacy migration failed (will retry):", e);
+  }
+  return cancelled;
+}
+
+/** Opens the Android 12+ "Alarms & reminders" system screen. */
+export async function openExactAlarmSystemSettings(): Promise<boolean> {
+  if (!isNative()) return false;
+  await NativeReminders.openExactAlarmSettings();
+  return true;
+}
+
+export async function getNativeReminderEngineStatus(): Promise<NativeRemindersStatus | undefined> {
+  if (!isNative()) return undefined;
+  try {
+    return await NativeReminders.getStatus();
+  } catch (e) {
+    console.error("[Notifications] Engine status failed:", e);
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +868,7 @@ function buildNotificationFingerprint(data: AppData): string {
   }));
 
   const fingerprint = JSON.stringify({
+    engineVersion: NOTIFICATION_ENGINE_VERSION,
     contracts: relevantContracts,
     payments: relevantPayments,
     repairs: relevantRepairs,
@@ -679,6 +880,7 @@ function buildNotificationFingerprint(data: AppData): string {
       contractReminderDays: data.settings.contractReminderDays,
       rentReminderDays: data.settings.rentReminderDays,
       reminderFrequencyHours: data.settings.reminderFrequencyHours,
+      notificationAllDay: data.settings.notificationAllDay,
       notificationWindowStart: data.settings.notificationWindowStart,
       notificationWindowEnd: data.settings.notificationWindowEnd,
       paymentNotificationSound: data.settings.paymentNotificationSound,
@@ -731,6 +933,12 @@ async function syncScheduledNotificationsNow(
       }
       saveTrackedIds([]);
     }
+    // Tell the native engine to stand down (cancels the alarm chain).
+    try {
+      await NativeReminders.setPlan({ plan: buildReminderPlan(data) });
+    } catch (e) {
+      console.error("[Notifications] Disable plan push failed:", e);
+    }
     saveLastSyncFingerprint("disabled");
     result.success = true;
     saveLastSyncResult(result);
@@ -771,86 +979,39 @@ async function syncScheduledNotificationsNow(
     return result;
   }
 
-  // Ensure channels
+  // Ensure channels exist before the native engine posts on them
   try {
     await ensureAndroidChannels(data.settings);
   } catch (e) {
     console.error("[Notifications] Channel ensure failed:", e);
   }
 
-  // Build desired notifications
-  const desired = buildDesiredNotifications(data);
-  result.remindersFound = collectReminders(data).length;
-  result.notificationsGenerated = desired.length;
+  // One-time cleanup of notifications scheduled by the legacy WebView path
+  result.notificationsCancelled += await migrateLegacyScheduledNotifications();
 
-  // Read pending notifications
-  let pending: { notifications: { id: number }[] } = { notifications: [] };
+  // Hand the declarative plan to the native engine. From here on, Android
+  // owns scheduling: exact wake-up alarms, reboot/update restore, WorkManager
+  // safety net — none of it depends on React being alive.
+  const plan = buildReminderPlan(data);
+  const parsedPlan = JSON.parse(plan) as { reminders: unknown[] };
+  result.remindersFound = collectReminders(data).length;
+  result.notificationsGenerated = parsedPlan.reminders.length;
+
   try {
-    pending = await LocalNotifications.getPending();
-    result.pendingNotifications = pending.notifications.length;
-  } catch (e) {
-    console.error("[Notifications] getPending failed:", e);
-    result.error = "تعذر قراءة الإشعارات المعلقة";
+    const status = await NativeReminders.setPlan({ plan });
+    result.notificationsScheduled = parsedPlan.reminders.length;
+    result.pendingNotifications = status.armed ? 1 : 0;
+    if (status.nextOccurrenceAt) result.nextNotificationAt = status.nextOccurrenceAt;
+    result.exactAlarmStatus = status.exactAlarmsAllowed === true
+      ? "مسموح — سيتم تسليم الإشعارات في وقتها بدقة"
+      : status.exactAlarmsAllowed === false
+        ? "غير مسموح — فعّل «المنبهات والتذكيرات» من إعدادات التطبيق لدقة أعلى"
+        : result.exactAlarmStatus;
+  } catch (e: any) {
+    console.error("[Notifications] Native plan push failed:", e);
+    result.error = e?.message || "تعذر تحديث محرك التذكيرات";
     saveLastSyncResult(result);
     return result;
-  }
-
-  const desiredIds = new Set(desired.map((n) => n.id));
-  const pendingIds = new Set(pending.notifications.map((n) => n.id));
-
-  // Cancel stale notifications (pending but not desired)
-  const staleIds = pending.notifications
-    .map((n) => n.id)
-    .filter((id) => !desiredIds.has(id));
-
-  if (staleIds.length > 0) {
-    try {
-      await LocalNotifications.cancel({ notifications: staleIds.map((id) => ({ id })) });
-      result.notificationsCancelled = staleIds.length;
-      console.log("[Notifications] Cancelled stale:", staleIds.length);
-    } catch (e) {
-      console.error("[Notifications] Stale cancellation failed:", e);
-    }
-  }
-
-  // Schedule missing notifications (desired but not pending)
-  const missing = desired.filter((n) => !pendingIds.has(n.id));
-
-  if (missing.length > 0) {
-    try {
-      await LocalNotifications.schedule({
-        notifications: missing.map((n) => ({
-          id: n.id,
-          title: n.title,
-          body: n.body,
-          channelId: n.channelId,
-          sound: safeSoundForChannel(n.sound),
-          smallIcon: "ic_notification",
-          largeIcon: "ic_launcher",
-          schedule: n.schedule,
-        })),
-      });
-      result.notificationsScheduled = missing.length;
-      console.log("[Notifications] Scheduled missing:", missing.length);
-    } catch (e: any) {
-      console.error("[Notifications] Scheduling failed:", e);
-      result.error = e?.message || "تعذر جدولة الإشعارات";
-      saveLastSyncResult(result);
-      return result;
-    }
-  }
-
-  // Update tracked IDs
-  try {
-    const newPending = await LocalNotifications.getPending();
-    const tracked = newPending.notifications.map((n) => n.id);
-    saveTrackedIds(tracked);
-    result.pendingNotifications = tracked.length;
-
-    const next = desired.find((n) => n.schedule.at > new Date())?.schedule.at;
-    if (next) result.nextNotificationAt = next.toISOString();
-  } catch (e) {
-    console.error("[Notifications] Final pending read failed:", e);
   }
 
   saveLastSyncFingerprint(fingerprint);
@@ -1028,13 +1189,15 @@ export async function clearAllScheduledNotifications(): Promise<{
 export async function getNotificationDiagnostics(data: AppData): Promise<NotificationDiagnostics> {
   const permissionStatus = await checkPermissionStatus();
   const lastResult = getLastSyncResult();
+  const currentReminders = collectReminders(data);
+  const currentDesired = buildDesiredNotifications(data);
 
   const diagnostics: NotificationDiagnostics = {
     isNative: isNative(),
     notificationsSupported: notificationsSupported(),
     permissionStatus,
-    remindersFound: lastResult?.remindersFound ?? 0,
-    notificationsGenerated: lastResult?.notificationsGenerated ?? 0,
+    remindersFound: currentReminders.length,
+    notificationsGenerated: currentDesired.length,
     scheduledNotifications: lastResult?.notificationsScheduled ?? 0,
     pendingNativeNotifications: lastResult?.pendingNotifications ?? 0,
     exactAlarmStatus:
@@ -1065,29 +1228,29 @@ export async function getNotificationDiagnostics(data: AppData): Promise<Notific
 
   if (data.settings.notificationsEnabled && permissionStatus === "granted") {
     try {
-      const pending = await LocalNotifications.getPending();
-      diagnostics.pendingNativeNotifications = pending.notifications.length;
-
-      const next = pending.notifications
-        .map((n) => (n as any).schedule?.at)
-        .filter(Boolean)
-        .map((d) => new Date(d))
-        .filter((d) => d > new Date())
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-
-      if (next) {
-        diagnostics.nextNotificationAt = next.toISOString();
-        diagnostics.nextNotificationLabel = next.toLocaleString("ar-SA", {
-          weekday: "long",
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+      const engine = await getNativeReminderEngineStatus();
+      if (engine) {
+        diagnostics.pendingNativeNotifications = engine.armed ? 1 : 0;
+        diagnostics.exactAlarmStatus = engine.exactAlarmsAllowed === true
+          ? "مسموح — سيتم تسليم الإشعارات في وقتها بدقة"
+          : engine.exactAlarmsAllowed === false
+            ? "غير مسموح — فعّل «المنبهات والتذكيرات» من إعدادات التطبيق لدقة أعلى"
+            : diagnostics.exactAlarmStatus;
+        if (engine.nextOccurrenceEpochMs) {
+          const next = new Date(engine.nextOccurrenceEpochMs);
+          diagnostics.nextNotificationAt = next.toISOString();
+          diagnostics.nextNotificationLabel = next.toLocaleString("ar-SA-u-nu-latn-ca-gregory", {
+            weekday: "long",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        }
       }
     } catch (e) {
-      console.error("[Notifications] Diagnostics pending read failed:", e);
+      console.error("[Notifications] Diagnostics engine read failed:", e);
     }
   }
 

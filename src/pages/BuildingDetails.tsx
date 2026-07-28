@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -10,6 +10,9 @@ import {
   Wallet,
   MessageCircle,
   CheckCircle2,
+  BarChart3,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,10 +43,16 @@ import UnitForm from "@/components/forms/UnitForm";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import { useStore, genId } from "@/data/store";
 import { buildingStats, formatMoney, formatDate, todayISO, normalizePaymentFinancials, parseLocalDate, effectiveStatus, getPaymentReceiveMethod, isCollectionFeeCollected, getPaymentReportMonth, getPaymentReportYearMonth, calculateInstallmentAmount, generatePaymentDueDates, getContractEndDate, getRemainingPaymentAmount, getPaymentAmount, formatSarAmount, daysUntil, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getCollectedRentAmount, isPaymentOverdue } from "@/data/helpers";
-import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS } from "@/data/labels";
+import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS, UNIT_MONTH_STATUS_LABELS } from "@/data/labels";
 import { Contract, Payment, PaymentReceiveMethod, PaymentStatus, Unit } from "@/data/types";
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
 import { showSuccess, showError } from "@/utils/toast";
+import { buildMonthlyReportBundle } from "@/reporting/reportBundle";
+import { exportBuildingExcel } from "@/utils/buildingExcelExport";
+import ExecutiveDashboard from "@/components/reports/ExecutiveDashboard";
+import MonthlyExceptionsCard from "@/components/reports/MonthlyExceptionsCard";
+import LateCollectionsList from "@/components/reports/LateCollectionsList";
+import { UnitMonthStatus, UnitMonthRow, LatePaymentRow } from "@/reporting/types";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -112,7 +121,7 @@ export default function BuildingDetails() {
   const [addUnitOpen, setAddUnitOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(monthKey(new Date()));
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<UnitMonthStatus | "all">("all");
   const [receiveMethodFilter, setReceiveMethodFilter] = useState<PaymentReceiveMethod | "all">("all");
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
   const activeTab = searchParams.get("tab") || "units";
@@ -124,6 +133,10 @@ export default function BuildingDetails() {
   };
 
   const building = data.buildings.find((b) => b.id === buildingId);
+  const reportBundle = useMemo(
+    () => (building ? buildMonthlyReportBundle(data, building.id, selectedMonth) : null),
+    [data, building, selectedMonth],
+  );
   if (!building) {
     return (
       <div className="p-6 text-center">
@@ -134,122 +147,16 @@ export default function BuildingDetails() {
       </div>
     );
   }
+  const bundle = reportBundle!;
 
   const stats = buildingStats(data, building.id);
   const units = data.units.filter((u) => u.buildingId === building.id);
   const unitIds = new Set(units.map((u) => u.id));
-  const selectedMonthPayments = data.payments
-    .filter((payment) => unitIds.has(payment.unitId) && !payment.deletedAt && getPaymentReportMonth(payment) === selectedMonth)
-    .map((payment) => normalizePaymentFinancials(payment))
-    .sort((a, b) => paymentDueDate(a).localeCompare(paymentDueDate(b)));
-  const monthlyUnitRows: MonthlyUnitReportRow[] = units.map((unit) => {
-    const unitContracts = data.contracts
-      .filter((contract) => contract.unitId === unit.id && isContractInReportMonth(contract, selectedMonth))
-      .sort((a, b) => b.startDate.localeCompare(a.startDate));
-    const contract = unitContracts[0];
-    const payment = selectedMonthPayments.find((item) =>
-      item.unitId === unit.id && (!contract || !item.contractId || item.contractId === contract.id),
-    );
-    const tenant = data.tenants.find((item) => item.id === payment?.tenantId || item.id === contract?.tenantId || item.unitId === unit.id);
-
-    if (!contract && !payment) {
-      return {
-        unit,
-        status: "vacant",
-        expectedAmount: 0,
-        collectedAmount: 0,
-        remainingAmount: 0,
-        collectionFeeAmount: 0,
-        collectionFeeSettledAmount: 0,
-        collectionFeeRemainingAmount: 0,
-      };
-    }
-
-    if (payment) {
-      const expectedAmount = payment.grossAmount ?? payment.amount;
-      const collectedAmount = getCollectedRentAmount(payment);
-      const remainingAmount = Math.max(0, Math.round((expectedAmount - collectedAmount) * 100) / 100);
-      const status = remainingAmount <= 0 ? "paid" : effectiveStatus(payment);
-      const hasCollectedRent = collectedAmount > 0;
-      const receiveMethod = hasCollectedRent ? getPaymentReceiveMethod(payment) : undefined;
-      const collectionFeeRemainingAmount = hasCollectedRent ? getCollectionFeeRemainingAmount(data, payment) : 0;
-      const collectionFeeSettledAmount = hasCollectedRent ? getCollectionFeeSettledAmount(data, payment) : 0;
-      return {
-        unit,
-        contract,
-        payment,
-        tenantName: payment.tenantName || tenant?.name || contract?.tenantName,
-        tenantPhone: payment.tenantPhone || tenant?.phone || contract?.tenantPhone,
-        dueDate: paymentDueDate(payment),
-        status,
-        expectedAmount,
-        collectedAmount,
-        remainingAmount,
-        receiveMethod,
-        collectionFeeAmount: hasCollectedRent ? (payment.collectionFeeAmount ?? 0) : 0,
-        collectionFeeSettledAmount,
-        collectionFeeRemainingAmount,
-        collectionFeeStatus: hasCollectedRent ? payment.collectionFeeStatus : undefined,
-      };
-    }
-
-    const dueDate = contract ? expectedContractDueDate(contract, selectedMonth) : undefined;
-    if (!dueDate) {
-      return {
-        unit,
-        contract,
-        tenantName: tenant?.name || contract?.tenantName,
-        tenantPhone: tenant?.phone || contract?.tenantPhone,
-        status: "vacant",
-        expectedAmount: 0,
-        collectedAmount: 0,
-        remainingAmount: 0,
-        collectionFeeAmount: 0,
-        collectionFeeSettledAmount: 0,
-        collectionFeeRemainingAmount: 0,
-      };
-    }
-    const expectedAmount = contract ? expectedContractInstallment(contract, unit) : 0;
-    const status: MonthlyReportStatus = dueDate < todayISO() ? "overdue" : "unpaid";
-    return {
-      unit,
-      contract,
-      tenantName: tenant?.name || contract?.tenantName,
-      tenantPhone: tenant?.phone || contract?.tenantPhone,
-      dueDate,
-      status,
-      expectedAmount,
-      collectedAmount: 0,
-      remainingAmount: expectedAmount,
-      collectionFeeAmount: 0,
-      collectionFeeSettledAmount: 0,
-      collectionFeeRemainingAmount: 0,
-    };
-  });
-  const filteredMonthlyRows = monthlyUnitRows.filter((row) => {
+  const filteredUnitRows: UnitMonthRow[] = bundle.report.unitRows.filter((row) => {
     if (statusFilter !== "all" && row.status !== statusFilter) return false;
-    if (receiveMethodFilter !== "all" && row.receiveMethod !== receiveMethodFilter) return false;
+    if (receiveMethodFilter !== "all" && row.collectionMethod !== receiveMethodFilter) return false;
     return true;
   });
-  const filteredMonthlyPayments = filteredMonthlyRows.map((row) => ({
-    id: row.payment?.id || `unit-month-${row.unit.id}-${selectedMonth}`,
-    unitId: row.unit.id,
-    unitName: row.unit.name,
-    tenantName: row.tenantName,
-    tenantPhone: row.tenantPhone,
-    amount: row.expectedAmount,
-    grossAmount: row.expectedAmount,
-    paidAmount: row.collectedAmount,
-    paymentDate: row.dueDate || `${selectedMonth}-01`,
-    dueDateGregorian: row.dueDate,
-    nextDueDate: row.dueDate,
-    status: row.status as PaymentStatus,
-    receiveMethod: row.receiveMethod,
-    collectionFeeAmount: row.collectionFeeAmount,
-    collectionFeeSettledAmount: row.collectionFeeSettledAmount,
-    collectionFeeRemainingAmount: row.collectionFeeRemainingAmount,
-    collectionFeeStatus: row.collectionFeeStatus,
-  }));
   const selectedMonthDate = parseLocalDate(`${selectedMonth}-01`) || new Date();
   const prevMonth = () => {
     const date = new Date(selectedMonthDate);
@@ -261,59 +168,29 @@ export default function BuildingDetails() {
     date.setMonth(date.getMonth() + 1);
     setSelectedMonth(monthKey(date));
   };
-  const monthRepairs = data.repairs.filter((repair) =>
-    repair.status !== "cancelled"
-    && repair.repairDate.startsWith(selectedMonth)
-    && (repair.buildingId === building.id || (repair.unitId ? unitIds.has(repair.unitId) : false)),
-  );
-  const totalDueRent = monthlyUnitRows.reduce((sum, row) => sum + row.expectedAmount, 0);
-  const totalCollectedRent = monthlyUnitRows.reduce((sum, row) => sum + row.collectedAmount, 0);
-  const totalUncollectedRent = Math.max(0, Math.round((totalDueRent - totalCollectedRent) * 100) / 100);
-  const officeFeesDue = monthlyUnitRows.reduce((sum, row) => sum + row.collectionFeeAmount, 0);
-  const officeFeesCollected = monthlyUnitRows.reduce((sum, row) => sum + (isCollectionFeeCollected(row.collectionFeeStatus) ? row.collectionFeeAmount : row.collectionFeeSettledAmount), 0);
-  const officeFeesUncollected = monthlyUnitRows.reduce((sum, row) => sum + row.collectionFeeRemainingAmount, 0);
-  const ejarPaymentsTotal = monthlyUnitRows
-    .filter((row) => row.receiveMethod === "ejar_platform")
-    .reduce((sum, row) => sum + row.collectedAmount, 0);
-  const maintenanceMonthlyCost = monthRepairs.reduce((sum, repair) => sum + repair.cost, 0);
-  const monthlyCollectionRate = totalDueRent > 0 ? Math.round((totalCollectedRent / totalDueRent) * 100) : 0;
-  const sourceSettlementDeductions = data.collectionFeeSettlements
-    .filter((settlement) => settlement.sourcePaymentId && selectedMonthPayments.some((payment) => payment.id === settlement.sourcePaymentId))
-    .reduce((sum, settlement) => sum + settlement.amount, 0);
-  const currentPaymentFeesDeducted = monthlyUnitRows
-    .reduce((sum, row) => sum + (row.collectionFeeStatus === "collected" ? row.collectionFeeAmount : 0), 0);
-  const monthlyNetOwnerIncome = Math.round((totalCollectedRent - currentPaymentFeesDeducted - sourceSettlementDeductions - maintenanceMonthlyCost) * 100) / 100;
-  const paidPaymentsCount = monthlyUnitRows.filter((row) => row.status === "paid").length;
-  const unpaidPaymentsCount = monthlyUnitRows.filter((row) => row.status === "unpaid").length;
-  const overduePaymentsCount = monthlyUnitRows.filter((row) => row.status === "overdue").length;
-  const ejarPaymentsCount = monthlyUnitRows.filter((row) => row.receiveMethod === "ejar_platform").length;
-  const overduePropertyPayments = data.payments
-    .filter((payment) => unitIds.has(payment.unitId) && isPaymentOverdue(normalizePaymentFinancials(payment)))
-    .map((payment) => normalizePaymentFinancials(payment))
-    .sort((a, b) => paymentDueDate(a).localeCompare(paymentDueDate(b)));
+  const paidCount = bundle.report.unitRows.filter((row) => row.status === "occupied_paid" || row.status === "occupied_paid_late" || row.status === "occupied_ejar").length;
+  const unpaidCount = bundle.report.unitRows.filter((row) => row.status === "occupied_unpaid").length;
+  const partialCount = bundle.report.unitRows.filter((row) => row.status === "occupied_partial").length;
+  const ejarCount = bundle.report.unitRows.filter((row) => row.collectionMethod === "ejar_platform").length;
 
-  const openPaymentWhatsapp = (payment: Payment) => {
-    const unit = units.find((item) => item.id === payment.unitId);
-    const tenant = data.tenants.find((item) => item.id === payment.tenantId || item.unitId === payment.unitId);
-    const tenantPhone = payment.tenantPhone || tenant?.phone;
-    const amount = getPaymentAmount(payment);
-    if (!amount) {
+  const openPaymentWhatsapp = (row: LatePaymentRow) => {
+    if (!row.outstandingAmount) {
       showError("مبلغ الدفعة غير صحيح");
       return;
     }
-    if (!tenantPhone) {
+    if (!row.tenantPhone) {
       showError("رقم جوال المستأجر غير موجود");
       return;
     }
     const message = buildPaymentReminderMessage({
-      tenantName: payment.tenantName || tenant?.name,
-      buildingName: payment.buildingName || building.name,
-      unitName: payment.unitName || unit?.name,
-      amount: formatSarAmount(amount),
-      dueDate: formatDate(paymentDueDate(payment)),
+      tenantName: row.tenantName,
+      buildingName: building.name,
+      unitName: row.unitName,
+      amount: formatSarAmount(row.outstandingAmount),
+      dueDate: formatDate(row.dueDate),
       isOverdue: true,
     });
-    setWhatsappPreview({ phone: tenantPhone, message });
+    setWhatsappPreview({ phone: row.tenantPhone, message });
   };
 
   const deleteBuilding = () => {
@@ -344,6 +221,44 @@ export default function BuildingDetails() {
         back
         action={
           <div className="flex gap-1">
+            <Button
+              variant={activeTab === "performance" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              title="تقرير الأداء"
+              aria-label="فتح تقرير الأداء"
+              onClick={() => setActiveTab("performance")}
+            >
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              title="تصدير إكسل"
+              aria-label="تصدير تقرير إكسل للعقار"
+              onClick={async () => {
+                try {
+                  await exportBuildingExcel(data, building);
+                  showSuccess("تم إنشاء ملف الإكسل");
+                } catch (err) {
+                  console.error("Excel export failed:", err);
+                  showError("تعذر تصدير ملف الإكسل");
+                }
+              }}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              title="تقرير المالك الشهري"
+              aria-label="فتح تقرير المالك الشهري"
+              onClick={() => navigate(`/reports/owner/${building.id}`)}
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setEditOpen(true)}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -372,28 +287,32 @@ export default function BuildingDetails() {
         }
       />
 
-      <div className="p-4">
+      <div className="p-4 md:p-6 lg:p-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
           <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1">
             <TabsTrigger value="units" className="rounded-xl py-2 text-xs font-bold">
               الوحدات
             </TabsTrigger>
             <TabsTrigger value="financial" className="rounded-xl py-2 text-xs font-bold">
-              التقارير المالية
+              المالية
             </TabsTrigger>
             <TabsTrigger value="overdue" className="rounded-xl py-2 text-xs font-bold">
-              <span>الدفعات المتأخرة</span>
-              {overduePropertyPayments.length > 0 && (
+              <span>المتأخرة</span>
+              {bundle.report.latePayments.length > 0 && (
                 <span className="mr-1 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] text-destructive-foreground">
-                  {overduePropertyPayments.length}
+                  {bundle.report.latePayments.length}
                 </span>
               )}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="financial" className="mt-4 space-y-4">
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        <details className="group rounded-3xl border border-border bg-card p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold">
+            <span>الملخص التراكمي للعقار</span>
+            <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-semibold text-muted-foreground">جميع الشهور · اضغط للعرض</span>
+          </summary>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <div className="rounded-3xl bg-primary p-4 text-primary-foreground">
             <Wallet className="mb-1 h-5 w-5 opacity-80" />
             <p className="text-xs opacity-80">صافي دخل المالك</p>
@@ -419,8 +338,8 @@ export default function BuildingDetails() {
             <p className="text-xs text-muted-foreground">تكاليف الصيانة</p>
             <p className="text-lg font-bold">{formatMoney(stats.maintenanceCost)}</p>
           </div>
-        </div>
-        <div className="space-y-2 rounded-3xl border border-border bg-card p-4 text-sm">
+          </div>
+          <div className="mt-3 space-y-2 rounded-2xl bg-muted/60 p-3 text-xs">
           <p className="font-medium">
             {(building.collectionFeePercent ?? 0) > 0
               ? `نسبة رسوم التحصيل: ${building.collectionFeePercent}%`
@@ -436,7 +355,8 @@ export default function BuildingDetails() {
             أقرب انتهاء عقد:
             <span className="font-semibold">{formatDate(stats.nearestExpiry)}</span>
           </p>
-        </div>
+          </div>
+        </details>
 
         <div className="space-y-3 rounded-3xl border border-border bg-card p-4">
           <div className="flex items-center justify-between gap-2">
@@ -446,19 +366,19 @@ export default function BuildingDetails() {
               <Button variant="outline" size="sm" className="h-8 rounded-full px-3 text-xs" onClick={nextMonth}>التالي</Button>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             <input
               type="month"
               value={selectedMonth}
               onChange={(event) => setSelectedMonth(event.target.value || monthKey(new Date()))}
-              className="h-10 rounded-xl border border-input bg-background px-3 text-xs"
+              className="col-span-2 h-10 rounded-xl border border-input bg-background px-3 text-xs md:col-span-1"
             />
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as PaymentStatus | "all")}>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as UnitMonthStatus | "all")}>
               <SelectTrigger className="rounded-xl bg-background text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">كل الحالات</SelectItem>
-                {(["paid", "unpaid", "overdue", "partial"] as PaymentStatus[]).map((status) => (
-                  <SelectItem key={status} value={status}>{PAYMENT_STATUS_LABELS[status]}</SelectItem>
+                {(["occupied_paid", "occupied_paid_late", "occupied_partial", "occupied_unpaid", "occupied_ejar", "vacant"] as UnitMonthStatus[]).map((status) => (
+                  <SelectItem key={status} value={status}>{UNIT_MONTH_STATUS_LABELS[status]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -471,119 +391,153 @@ export default function BuildingDetails() {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={data.settings.reportMonthCutoffDay === null ? "none" : String(data.settings.reportMonthCutoffDay)}
+              onValueChange={(value) => update((prev) => ({
+                ...prev,
+                settings: { ...prev.settings, reportMonthCutoffDay: value === "none" ? null : Number(value) },
+              }))}
+            >
+              <SelectTrigger className="rounded-xl bg-background text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">بدون ترحيل تلقائي</SelectItem>
+                {[25, 26, 27, 28, 29, 30, 31].map((day) => (
+                  <SelectItem key={day} value={String(day)}>الترحيل من يوم {day}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            أي دفعة تستحق يوم 25 أو بعده تُحسب ضمن تقرير الشهر التالي حتى لا تتكرر بين شهرين.
+            {data.settings.reportMonthCutoffDay === null
+              ? "قاعدة التقرير: كل دفعة تُحتسب في شهر موعدها، ويمكن تغيير شهر دفعة منفردة عند تعديلها."
+              : `قاعدة التقرير: موعد السداد من يوم ${data.settings.reportMonthCutoffDay} حتى نهاية الشهر يُحتسب ضمن الشهر التالي. ويمكن تجاوز القاعدة لكل دفعة عند تعديلها.`}
           </p>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">إجمالي المستحق</p><p className="font-bold">{formatMoney(totalDueRent)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">إجمالي المحصل</p><p className="font-bold text-emerald-700">{formatMoney(totalCollectedRent)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">غير محصل</p><p className="font-bold text-red-700">{formatMoney(totalUncollectedRent)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">نسبة التحصيل</p><p className="font-bold">{monthlyCollectionRate}%</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب المستحقة</p><p className="font-bold">{formatMoney(officeFeesDue)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب المحصلة</p><p className="font-bold text-emerald-700">{formatMoney(officeFeesCollected)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب غير المحصلة</p><p className="font-bold text-orange-700">{formatMoney(officeFeesUncollected)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">مدفوع عبر إيجار</p><p className="font-bold">{formatMoney(ejarPaymentsTotal)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">تكاليف الصيانة</p><p className="font-bold text-amber-700">{formatMoney(maintenanceMonthlyCost)}</p></div>
-            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">صافي دخل المالك</p><p className="font-bold text-primary">{formatMoney(monthlyNetOwnerIncome)}</p></div>
+          <div className="grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
+            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">مستحقات الشهر</p><p className="font-bold">{formatMoney(bundle.report.expectedRent)}</p></div>
+            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">المحصل من مستحقات الشهر</p><p className="font-bold text-emerald-700">{formatMoney(bundle.report.collectedForMonth)}</p></div>
+            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">غير محصل</p><p className="font-bold text-red-700">{formatMoney(bundle.report.outstanding)}</p></div>
+            <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">نسبة التحصيل</p><p className="font-bold">{bundle.report.collectionRate}%</p></div>
           </div>
+          <details className="rounded-2xl border border-border p-3">
+            <summary className="cursor-pointer text-xs font-bold">عرض التفاصيل المالية الإضافية</summary>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">متأخرات حُصلت هذا الشهر</p><p className="font-bold text-emerald-700">{formatMoney(bundle.report.lateCollectionsAmount)}</p></div>
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب المستحقة</p><p className="font-bold">{formatMoney(bundle.report.officeFeesDue)}</p></div>
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب المحصلة</p><p className="font-bold text-emerald-700">{formatMoney(bundle.report.officeFeesCollected)}</p></div>
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">رسوم المكتب غير المحصلة</p><p className="font-bold text-orange-700">{formatMoney(bundle.report.officeFeesOutstanding)}</p></div>
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">مدفوع عبر إيجار</p><p className="font-bold">{formatMoney(bundle.report.collectedThroughEjar)}</p></div>
+              <div className="rounded-2xl bg-muted p-3"><p className="text-muted-foreground">تكاليف الصيانة</p><p className="font-bold text-amber-700">{formatMoney(bundle.report.maintenanceCost)}</p></div>
+              <div className="col-span-2 rounded-2xl bg-primary/10 p-3 md:col-span-1"><p className="text-muted-foreground">صافي دخل المالك</p><p className="font-bold text-primary">{formatMoney(bundle.report.ownerNet)}</p></div>
+            </div>
+          </details>
           <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
-            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-emerald-700">{paidPaymentsCount}</p><p className="text-muted-foreground">مدفوعة</p></div>
-            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-red-700">{unpaidPaymentsCount}</p><p className="text-muted-foreground">غير مدفوعة</p></div>
-            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-orange-700">{overduePaymentsCount}</p><p className="text-muted-foreground">متأخرة</p></div>
-            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-primary">{ejarPaymentsCount}</p><p className="text-muted-foreground">إيجار</p></div>
+            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-emerald-700">{paidCount}</p><p className="text-muted-foreground">مدفوعة</p></div>
+            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-amber-700">{partialCount}</p><p className="text-muted-foreground">جزئية</p></div>
+            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-red-700">{unpaidCount}</p><p className="text-muted-foreground">غير مدفوعة</p></div>
+            <div className="rounded-2xl border border-border p-2"><p className="font-bold text-primary">{ejarCount}</p><p className="text-muted-foreground">إيجار</p></div>
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-bold">دفعات الشهر</h3>
-            {filteredMonthlyPayments.length === 0 ? (
-              <p className="rounded-2xl bg-muted p-3 text-xs text-muted-foreground">لا توجد دفعات مطابقة لهذا الشهر داخل هذا العقار.</p>
+            {filteredUnitRows.length === 0 ? (
+              <p className="rounded-2xl bg-muted p-3 text-xs text-muted-foreground">لا توجد وحدات مطابقة لهذا الشهر داخل هذا العقار.</p>
             ) : (
-              filteredMonthlyPayments.map((payment) => {
-                const paymentUnit = units.find((unit) => unit.id === payment.unitId);
-                const status = effectiveStatus(payment) as PaymentStatus | "vacant";
-                const hasCollectedRent = status === "paid" || status === "partial" || (payment.paidAmount ?? 0) > 0;
-                const receiveMethod = hasCollectedRent && payment.receiveMethod ? getPaymentReceiveMethod(payment) : undefined;
-                const statusLabel = status === "vacant" ? "شاغرة" : PAYMENT_STATUS_LABELS[status];
-                return (
-                  <Link key={payment.id} to={`/units/${payment.unitId}`} className="block rounded-2xl border border-border p-3 text-xs transition-transform active:scale-[0.98]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold">{paymentUnit?.name || payment.unitName || "وحدة محذوفة"}</p>
-                        {status === "vacant" ? (
-                          <p className="mt-1 text-muted-foreground">لا يوجد عقد نشط داخل هذا الشهر</p>
-                        ) : (
-                          <>
-                            <p className="mt-1 text-muted-foreground">موعد السداد: {formatDate(paymentDueDate(payment))}</p>
-                            {receiveMethod && (
-                              <p className="mt-1 text-muted-foreground">طريقة الاستلام: {PAYMENT_RECEIVE_METHOD_LABELS[receiveMethod]}</p>
-                            )}
-                            {hasCollectedRent && (
-                              <p className={payment.collectionFeeStatus === "uncollected" ? "mt-1 text-orange-700" : "mt-1 text-muted-foreground"}>
-                                رسوم المكتب: {formatMoney(payment.collectionFeeAmount ?? 0)} - {COLLECTION_FEE_STATUS_LABELS[payment.collectionFeeStatus ?? "uncollected"]}
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-left">
-                        <StatusBadge status={status} label={statusLabel} />
-                        <p className="mt-2 font-bold text-primary">{formatMoney(payment.grossAmount ?? payment.amount)}</p>
-                      </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {filteredUnitRows.map((row) => (
+                <Link key={row.unitId} to={`/units/${row.unitId}`} className="block rounded-2xl border border-border p-3 text-xs transition-transform active:scale-[0.98]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold">{row.unitName}{row.tenantName ? ` - ${row.tenantName}` : ""}</p>
+                      <p className="mt-1 text-muted-foreground">{row.message}</p>
+                      {row.collectionMethod && (
+                        <p className="mt-1 text-muted-foreground">طريقة الاستلام: {PAYMENT_RECEIVE_METHOD_LABELS[row.collectionMethod]}</p>
+                      )}
+                      {row.officeFeeAmount > 0 && (
+                        <p className={row.officeFeeOutstanding > 0 ? "mt-1 text-orange-700" : "mt-1 text-muted-foreground"}>
+                          رسوم المكتب: {formatMoney(row.officeFeeAmount)}{row.officeFeeOutstanding > 0 ? ` - متبقي ${formatMoney(row.officeFeeOutstanding)}` : " - محصلة"}
+                        </p>
+                      )}
+                      {row.duplicatePaymentIds.length > 0 && (
+                        <p className="mt-1 font-semibold text-red-700">⚠ يوجد {row.duplicatePaymentIds.length} سجل دفع مكرر لهذه الوحدة هذا الشهر — راجع الدفعات</p>
+                      )}
                     </div>
-                  </Link>
-                );
-              })
+                    <div className="shrink-0 text-left">
+                      <StatusBadge status={row.status} label={UNIT_MONTH_STATUS_LABELS[row.status] || row.status} />
+                      {row.rentAmount > 0 && <p className="mt-2 font-bold text-primary">{formatMoney(row.rentAmount)}</p>}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+              </div>
             )}
           </div>
+          {bundle.report.lateCollections.length > 0 && (
+            <details className="rounded-2xl border border-amber-200 bg-amber-50/50 p-3">
+              <summary className="cursor-pointer text-xs font-bold text-amber-800">
+                التحصيلات المتأخرة لهذا الشهر ({bundle.report.lateCollections.length})
+              </summary>
+              <div className="mt-3">
+                <LateCollectionsList rows={bundle.report.lateCollections} yearMonth={selectedMonth} />
+              </div>
+            </details>
+          )}
         </div>
 
           </TabsContent>
 
+          <TabsContent value="performance" className="mt-4 space-y-4">
+            <div className="rounded-3xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-bold">تقرير أداء العقار</h2>
+                  <p className="mt-1 text-[11px] text-muted-foreground">تحليل المؤشرات والمخاطر والتنبيهات للشهر المحدد</p>
+                </div>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value || monthKey(new Date()))}
+                  className="h-9 w-32 rounded-xl border border-input bg-background px-2 text-xs"
+                />
+              </div>
+            </div>
+            <ExecutiveDashboard bundle={bundle} />
+            <MonthlyExceptionsCard exceptions={bundle.exceptions} />
+          </TabsContent>
+
           <TabsContent value="overdue" className="mt-4 space-y-3">
-            {overduePropertyPayments.length === 0 ? (
+            {bundle.report.latePayments.length === 0 ? (
               <EmptyState icon={CalendarClock} title="لا توجد دفعات متأخرة" description="جميع دفعات هذا العقار محصلة أو لم يحن موعدها بعد" />
             ) : (
-              overduePropertyPayments.map((payment) => {
-                const unit = units.find((item) => item.id === payment.unitId);
-                const tenant = data.tenants.find((item) => item.id === payment.tenantId || item.unitId === payment.unitId);
-                const dueDate = paymentDueDate(payment);
-                const dueAmount = payment.grossAmount ?? payment.amount;
-                const paidAmount = payment.paidAmount ?? 0;
-                const remainingAmount = getRemainingPaymentAmount(payment);
-                const overdueDays = Math.abs(daysUntil(dueDate));
-                const receiveMethod = paidAmount > 0 && payment.receiveMethod ? getPaymentReceiveMethod(payment) : undefined;
-                return (
-                  <div key={payment.id} className="rounded-3xl border border-border bg-card p-4 text-xs">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold">{tenant?.name || payment.tenantName || "مستأجر غير محدد"}</p>
-                        <p className="mt-1 text-muted-foreground">{unit?.name || payment.unitName || "وحدة غير محددة"}</p>
-                        <p className="mt-1 text-muted-foreground">موعد السداد: {formatDate(dueDate)} - متأخرة {overdueDays} يوم</p>
-                        {receiveMethod && (
-                          <p className="mt-1 text-muted-foreground">طريقة الاستلام: {PAYMENT_RECEIVE_METHOD_LABELS[receiveMethod]}</p>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-left">
-                        <StatusBadge status="overdue" label={PAYMENT_STATUS_LABELS.overdue} />
-                        <p className="mt-2 font-bold text-red-700">{formatMoney(remainingAmount)}</p>
-                      </div>
+              bundle.report.latePayments.map((row) => (
+                <div key={row.id} className="rounded-3xl border border-border bg-card p-4 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold">{row.tenantName || "مستأجر غير محدد"}</p>
+                      <p className="mt-1 text-muted-foreground">{row.unitName}</p>
+                      <p className="mt-1 text-muted-foreground">موعد السداد: {formatDate(row.dueDate)} - متأخرة {row.delayDays} يوم</p>
+                      {row.isPartial && (
+                        <p className="mt-1 text-amber-700">دفعة جزئية — تبقى {formatMoney(row.outstandingAmount)}</p>
+                      )}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المستحق</p><p className="font-bold">{formatMoney(dueAmount)}</p></div>
-                      <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المدفوع</p><p className="font-bold text-emerald-700">{formatMoney(paidAmount)}</p></div>
-                      <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المتبقي</p><p className="font-bold text-red-700">{formatMoney(remainingAmount)}</p></div>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1 rounded-full text-xs" onClick={() => openPaymentWhatsapp(payment)}>
-                        <MessageCircle className="ml-1 h-4 w-4" /> واتساب
-                      </Button>
-                      <Button size="sm" className="flex-1 rounded-full text-xs" onClick={() => navigate(`/units/${payment.unitId}`)}>
-                        <CheckCircle2 className="ml-1 h-4 w-4" /> تسجيل استلام
-                      </Button>
+                    <div className="shrink-0 text-left">
+                      <StatusBadge status="overdue" label={PAYMENT_STATUS_LABELS.overdue} />
+                      <p className="mt-2 font-bold text-red-700">{formatMoney(row.outstandingAmount)}</p>
                     </div>
                   </div>
-                );
-              })
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المستحق</p><p className="font-bold">{formatMoney(row.rentAmount)}</p></div>
+                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المدفوع</p><p className="font-bold text-emerald-700">{formatMoney(Math.max(0, row.rentAmount - row.outstandingAmount))}</p></div>
+                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المتبقي</p><p className="font-bold text-red-700">{formatMoney(row.outstandingAmount)}</p></div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 rounded-full text-xs" onClick={() => openPaymentWhatsapp(row)}>
+                      <MessageCircle className="ml-1 h-4 w-4" /> واتساب
+                    </Button>
+                    <Button size="sm" className="flex-1 rounded-full text-xs" onClick={() => navigate(`/units/${row.unitId}`)}>
+                      <CheckCircle2 className="ml-1 h-4 w-4" /> تسجيل استلام
+                    </Button>
+                  </div>
+                </div>
+              ))
             )}
           </TabsContent>
 
@@ -619,7 +573,7 @@ export default function BuildingDetails() {
         {units.length === 0 ? (
           <EmptyState icon={DoorOpen} title="لا توجد وحدات" description="أضف وحدات مثل شقق أو محلات لهذا العقار" />
         ) : (
-          units.map((u) => {
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{units.map((u) => {
             const tenant = data.tenants.find((t) => t.unitId === u.id);
             return (
               <Link
@@ -649,7 +603,7 @@ export default function BuildingDetails() {
                 </div>
               </Link>
             );
-          })
+          })}</div>
         )}
           </TabsContent>
         </Tabs>

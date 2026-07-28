@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select";
 import { Payment, PaymentMethod, PaymentReceiveMethod, PaymentStatus } from "@/data/types";
 import { PAYMENT_RECEIVE_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/data/labels";
-import { isValidDate, todayISO } from "@/data/helpers";
+import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth } from "@/data/helpers";
+import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -28,7 +29,23 @@ export interface PaymentFormValues {
   paymentMethod?: PaymentMethod;
   receiveMethod?: PaymentReceiveMethod;
   notes?: string;
+  reportingMonthMode?: "auto" | "due_month" | "next_month";
+  reportingYearMonth?: string;
 }
+
+const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const shiftMonthKey = (isoDate: string, offset: number): string => {
+  const parsed = parseLocalDate(isoDate) || new Date();
+  return monthKey(new Date(parsed.getFullYear(), parsed.getMonth() + offset, 1));
+};
+
+const monthLabel = (yearMonth: string): string => {
+  const parsed = parseLocalDate(`${yearMonth}-01`);
+  if (!parsed) return yearMonth;
+  const name = parsed.toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", { month: "long", year: "numeric" });
+  return `شهر ${parsed.getMonth() + 1} — ${name}`;
+};
 
 interface Props {
   initial?: Payment;
@@ -47,7 +64,25 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
   const [receivedDate, setReceivedDate] = useState(initial?.receivedDate ?? todayISO());
   const [paymentMethod, setPaymentMethod] = useState<PaymentReceiveMethod | "">(initial?.receiveMethod ?? initial?.paymentMethod ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const { data } = useStore();
+  const cutoffDay = data.settings.reportMonthCutoffDay;
+  const initialPaymentDate = initial?.paymentDate ?? todayISO();
+  const [reportMonth, setReportMonth] = useState<string>(() => {
+    if (initial?.reportingYearMonth) return initial.reportingYearMonth;
+    if (initial?.reportingMonthMode === "due_month") return shiftMonthKey(initialPaymentDate, 0);
+    if (initial?.reportingMonthMode === "next_month") return shiftMonthKey(initialPaymentDate, 1);
+    return "auto";
+  });
   const [pendingValues, setPendingValues] = useState<PaymentFormValues | null>(null);
+
+  // Explicit month choices derived from the due date (previous, same, next, +2 months).
+  const monthOptions = (() => {
+    const base = isValidDate(paymentDate) ? paymentDate : todayISO();
+    const options = [-1, 0, 1, 2].map((offset) => shiftMonthKey(base, offset));
+    if (reportMonth !== "auto" && !options.includes(reportMonth)) options.unshift(reportMonth);
+    return options;
+  })();
+  const autoMonth = getPaymentReportYearMonth(isValidDate(paymentDate) ? paymentDate : todayISO(), cutoffDay, "auto");
 
   const buildValues = (): PaymentFormValues => ({
     amount: Number(amount) || 0,
@@ -61,6 +96,14 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
     paymentMethod: status === "paid" && paymentMethod !== "office_collection" ? paymentMethod || undefined : undefined,
     receiveMethod: status === "paid" ? paymentMethod || undefined : undefined,
     notes: notes.trim() || undefined,
+    reportingMonthMode: reportMonth === "auto"
+      ? "auto"
+      : reportMonth === shiftMonthKey(paymentDate, 0)
+        ? "due_month"
+        : reportMonth === shiftMonthKey(paymentDate, 1)
+          ? "next_month"
+          : "auto",
+    reportingYearMonth: reportMonth === "auto" ? undefined : reportMonth,
   });
 
   const validate = (values: PaymentFormValues) => {
@@ -101,6 +144,19 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>تُحتسب هذه الدفعة لشهر</Label>
+        <Select value={reportMonth} onValueChange={setReportMonth}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">تلقائي حسب يوم القطع ({monthLabel(autoMonth)})</SelectItem>
+            {monthOptions.map((option) => (
+              <SelectItem key={option} value={option}>{monthLabel(option)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">الدفعة المسددة نهاية الشهر غالبًا دفعة مقدمة للشهر التالي — اختر الشهر الصحيح لاحتسابها في التقرير الشهري.</p>
       </div>
       {status === "partial" && (
         <div className="space-y-1.5">

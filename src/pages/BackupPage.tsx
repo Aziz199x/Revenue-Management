@@ -62,7 +62,7 @@ function formatFileSize(bytes: string): string {
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("ar-SA", {
+    return d.toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", {
       year: "numeric",
       month: "short",
       day: "numeric",

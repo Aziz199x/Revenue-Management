@@ -73,12 +73,15 @@ import {
   upsertTenant,
   getVisiblePaymentsByContract,
   getResolvedCollectionFeePercent,
+  getPaymentCollectionFeePercent,
   getPaymentsPerYear,
   normalizePaymentFinancials,
   getPaymentReceiveMethod,
   calculateNetAmountToTransferToOwner,
   getPaymentMaintenanceDeductionAmount,
   getPaymentMaintenanceDeductions,
+  getCollectionFeeRemainingAmount,
+  getCollectionFeeSettledAmount,
 } from "@/data/helpers";
 import {
   UNIT_STATUS_LABELS,
@@ -112,21 +115,32 @@ import { showSuccess, showError } from "@/utils/toast";
 
 function MarkAsReceivedDialog({
   payment,
+  fallbackFeePercent,
+  feeSuggestions,
   onConfirm,
   onCancel,
 }: {
   payment: Payment;
-  onConfirm: (receivedDate: string, method: PaymentReceiveMethod, feePercent: number, notes?: string) => void;
+  fallbackFeePercent: number;
+  feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number }>;
+  onConfirm: (receivedDate: string, method: PaymentReceiveMethod, feePercent: number, notes: string | undefined, settlements: Array<{ paymentId: string; amount: number }>) => void;
   onCancel: () => void;
 }) {
   const [receivedDate, setReceivedDate] = useState(todayISO());
   const [method, setMethod] = useState<PaymentReceiveMethod>("bank_transfer");
   const [notes, setNotes] = useState("");
+  const [selectedSettlements, setSelectedSettlements] = useState<Record<string, number>>({});
 
   const grossAmount = payment.grossAmount ?? payment.amount;
-  const feePercent = payment.collectionFeePercent ?? 0;
+  // Legacy payments may not have stored a fee percentage. Reverting one of
+  // those payments to unpaid must not turn the configured fee into 0%.
+  const storedFeePercent = payment.collectionFeePercent ?? payment.collectionFeePercentage;
+  const feePercent = storedFeePercent === undefined || (storedFeePercent === 0 && fallbackFeePercent > 0)
+    ? fallbackFeePercent
+    : storedFeePercent;
   const feeAmount = Math.round(grossAmount * feePercent) / 100;
   const netAmount = Math.round((grossAmount - feeAmount) * 100) / 100;
+  const settlementTotal = Object.values(selectedSettlements).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
@@ -151,10 +165,40 @@ function MarkAsReceivedDialog({
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">الصافي بعد رسوم التحصيل</span>
-                  <span className="font-semibold">{formatMoney(netAmount)}</span>
+                  <span className="font-semibold">{formatMoney(netAmount - settlementTotal)}</span>
                 </div>
               </>
           </div>
+          {feeSuggestions.length > 0 && (
+            <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs">
+              <div>
+                <p className="font-bold text-amber-900">اقتراح ذكي لتسوية رسوم منصة إيجار</p>
+                <p className="mt-1 text-amber-800">اختر رسوم مكتب لم تُحصّل من وحدات أخرى في نفس العقار. سيُحفظ مرجع التسوية في الدفعتين.</p>
+              </div>
+              {feeSuggestions.map((suggestion) => {
+                const selected = selectedSettlements[suggestion.payment.id] || 0;
+                return (
+                  <label key={suggestion.payment.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
+                    <input
+                      type="checkbox"
+                      checked={selected > 0}
+                      onChange={(event) => setSelectedSettlements((current) => {
+                        const next = { ...current };
+                        if (event.target.checked) next[suggestion.payment.id] = Math.min(suggestion.remaining, Math.max(0, grossAmount - settlementTotal));
+                        else delete next[suggestion.payment.id];
+                        return next;
+                      })}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{suggestion.unitName} - {suggestion.tenantName}</span>
+                      <span className="text-muted-foreground">المتبقي للمكتب: {formatMoney(suggestion.remaining)}</span>
+                    </span>
+                  </label>
+                );
+              })}
+              {settlementTotal > 0 && <p className="font-bold text-amber-900">إجمالي التسوية: {formatMoney(settlementTotal)}</p>}
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>تاريخ الاستلام</Label>
             <Input
@@ -186,7 +230,7 @@ function MarkAsReceivedDialog({
             <Button variant="outline" className="flex-1 rounded-xl" onClick={onCancel}>
               إلغاء
             </Button>
-            <Button className="flex-1 rounded-xl" onClick={() => onConfirm(receivedDate, method, feePercent, notes.trim() || undefined)}>
+            <Button className="flex-1 rounded-xl" disabled={settlementTotal > grossAmount} onClick={() => onConfirm(receivedDate, method, feePercent, notes.trim() || undefined, Object.entries(selectedSettlements).map(([paymentId, amount]) => ({ paymentId, amount })))}>
               تأكيد الاستلام
             </Button>
           </div>
@@ -246,6 +290,20 @@ export default function UnitDetails() {
   }
 
   const building = data.buildings.find((b) => b.id === unit.buildingId);
+  const buildingUnitIds = new Set(data.units.filter((item) => item.buildingId === unit.buildingId).map((item) => item.id));
+  const officeFeeSuggestions = markReceived ? data.payments
+    .map((payment) => normalizePaymentFinancials(payment))
+    .filter((payment) => payment.id !== markReceived.id
+      && !payment.deletedAt
+      && buildingUnitIds.has(payment.unitId)
+      && getPaymentReceiveMethod(payment) === "ejar_platform"
+      && getCollectionFeeRemainingAmount(data, payment) > 0)
+    .map((payment) => ({
+      payment,
+      unitName: data.units.find((item) => item.id === payment.unitId)?.name || payment.unitName || "وحدة غير محددة",
+      tenantName: data.tenants.find((item) => item.id === payment.tenantId || item.unitId === payment.unitId)?.name || payment.tenantName || "مستأجر غير محدد",
+      remaining: getCollectionFeeRemainingAmount(data, payment),
+    })) : [];
   const visibleTenants = data.tenants.filter((t) => {
     if (t.unitId !== unit.id) return false;
     const unitContractsForTenant = data.contracts.filter(
@@ -494,7 +552,7 @@ export default function UnitDetails() {
                               tenantName: tenant.name,
                               buildingName: building?.name || "",
                               unitName: unit.name,
-                              amount: unit.rentAmount.toLocaleString("ar-SA"),
+                  amount: unit.rentAmount.toLocaleString("en-US"),
                               dueDate: "",
                               contractEndDate: "",
                               ownerName: "",
@@ -1169,7 +1227,7 @@ export default function UnitDetails() {
                   payments: prev.payments.map((payment) => {
                     if (payment.id !== editPayment.id) return payment;
                     const grossAmount = values.amount;
-                    const collectionFeePercent = payment.collectionFeePercent ?? 0;
+                    const collectionFeePercent = getPaymentCollectionFeePercent(payment, building, unit);
                     const collectionFeeAmount = Math.round(grossAmount * collectionFeePercent) / 100;
                     const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
                     const paid = values.status === "paid";
@@ -1177,6 +1235,8 @@ export default function UnitDetails() {
                       ...payment,
                       ...values,
                       grossAmount,
+                      collectionFeePercent,
+                      collectionFeePercentage: collectionFeePercent,
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
                       maintenanceDeductionAmount: getPaymentMaintenanceDeductionAmount(prev, payment),
@@ -1435,17 +1495,64 @@ export default function UnitDetails() {
       {markReceived && (
         <MarkAsReceivedDialog
           payment={markReceived}
-          onConfirm={(receivedDate, method, feePercent, notes) => {
+          fallbackFeePercent={getResolvedCollectionFeePercent(building, unit)}
+          feeSuggestions={officeFeeSuggestions}
+          onConfirm={(receivedDate, method, feePercent, notes, settlements) => {
             const grossAmount = markReceived.grossAmount ?? markReceived.amount;
             const collectionFeeAmount = Math.round(grossAmount * feePercent) / 100;
             const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
+            const settlementTotal = settlements.reduce((sum, item) => sum + item.amount, 0);
             update((prev) => ({
               ...prev,
               payments: prev.payments.map((p) =>
                 p.id === markReceived.id
-                  ? normalizePaymentFinancials({ ...p, status: "paid" as PaymentStatus, receivedDate, paymentMethod: method === "office_collection" ? undefined : method, receiveMethod: method, notes: notes || p.notes, grossAmount, collectionFeePercent: feePercent, collectionFeePercentage: feePercent, collectionFeeAmount, netAmountAfterCollectionFee })
-                  : p,
+                  ? normalizePaymentFinancials({
+                      ...p,
+                      status: "paid" as PaymentStatus,
+                      receivedDate,
+                      paymentMethod: method === "office_collection" ? undefined : method,
+                      receiveMethod: method,
+                      notes: [notes || p.notes, settlementTotal > 0 ? `تم خصم ${formatMoney(settlementTotal)} لتسوية رسوم منصة إيجار لوحدات أخرى في نفس العقار بتاريخ ${receivedDate}.` : ""].filter(Boolean).join("\n"),
+                      grossAmount,
+                      collectionFeePercent: feePercent,
+                      collectionFeePercentage: feePercent,
+                      collectionFeeAmount,
+                      netAmountAfterCollectionFee,
+                    })
+                  : settlements.some((item) => item.paymentId === p.id)
+                    ? (() => {
+                        const settlement = settlements.find((item) => item.paymentId === p.id)!;
+                        const priorSettled = getCollectionFeeSettledAmount(prev, p);
+                        const newSettled = Math.min(p.collectionFeeAmount ?? 0, priorSettled + settlement.amount);
+                        const remaining = Math.max(0, Math.round(((p.collectionFeeAmount ?? 0) - newSettled) * 100) / 100);
+                        return {
+                          ...p,
+                          collectionFeeStatus: remaining <= 0 ? "settled" as const : "partially_settled" as const,
+                          collectionFeeSettledAmount: newSettled,
+                          collectionFeeRemainingAmount: remaining,
+                          collectionFeeSettledAt: remaining <= 0 ? receivedDate : p.collectionFeeSettledAt,
+                          collectionFeeSettlementNote: [p.collectionFeeSettlementNote, `تمت تسوية ${formatMoney(settlement.amount)} من دفعة ${unit.name} بتاريخ ${receivedDate}.`].filter(Boolean).join("\n"),
+                        };
+                      })()
+                    : p,
               ),
+              collectionFeeSettlements: [
+                ...prev.collectionFeeSettlements,
+                ...settlements.map((settlement) => ({
+                  settlementId: genId(),
+                  propertyId: unit.buildingId,
+                  paymentId: settlement.paymentId,
+                  sourcePaymentId: markReceived.id,
+                  sourceUnitId: unit.id,
+                  targetPaymentId: settlement.paymentId,
+                  targetUnitId: prev.payments.find((item) => item.id === settlement.paymentId)?.unitId,
+                  amount: settlement.amount,
+                  date: receivedDate,
+                  method: method === "office_collection" ? "cash" as const : method,
+                  note: `تسوية رسوم تحصيل منصة إيجار من دفعة ${unit.name}`,
+                  createdAt: new Date().toISOString(),
+                })),
+              ],
             }));
             setMarkReceived(null);
             showSuccess("تم تسجيل استلام الدفعة");
