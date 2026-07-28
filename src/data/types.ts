@@ -403,6 +403,12 @@ export interface Settings {
   maintenanceNotificationSound: NotificationSound;
   /** Due dates on or after this day belong to the following report month. */
   reportMonthCutoffDay: number | null;
+  /** Home dashboard: show contracts ending within this many days. */
+  homeContractDays?: number;
+  /** Home dashboard: show upcoming payments due within this many days. */
+  homeUpcomingPaymentDays?: number;
+  /** Home dashboard: max items per list. */
+  homeMaxItems?: number;
   whatsappTemplates: WhatsAppTemplates;
 }
 
@@ -450,6 +456,9 @@ export const DEFAULT_SETTINGS: Settings = {
   contractNotificationSound: "contract_reminder.wav",
   maintenanceNotificationSound: "default",
   reportMonthCutoffDay: 25,
+  homeContractDays: 90,
+  homeUpcomingPaymentDays: 30,
+  homeMaxItems: 5,
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
 };
 

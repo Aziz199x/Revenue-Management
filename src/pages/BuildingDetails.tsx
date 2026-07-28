@@ -124,6 +124,10 @@ export default function BuildingDetails() {
   const [statusFilter, setStatusFilter] = useState<UnitMonthStatus | "all">("all");
   const [receiveMethodFilter, setReceiveMethodFilter] = useState<PaymentReceiveMethod | "all">("all");
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [excelOpen, setExcelOpen] = useState(false);
+  const [excelFrom, setExcelFrom] = useState(`${new Date().getFullYear()}-01`);
+  const [excelTo, setExcelTo] = useState(monthKey(new Date()));
+  const [excelExporting, setExcelExporting] = useState(false);
   const activeTab = searchParams.get("tab") || "units";
   const setActiveTab = (value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -237,15 +241,7 @@ export default function BuildingDetails() {
               className="h-9 w-9 rounded-full"
               title="تصدير إكسل"
               aria-label="تصدير تقرير إكسل للعقار"
-              onClick={async () => {
-                try {
-                  await exportBuildingExcel(data, building);
-                  showSuccess("تم إنشاء ملف الإكسل");
-                } catch (err) {
-                  console.error("Excel export failed:", err);
-                  showError("تعذر تصدير ملف الإكسل");
-                }
-              }}
+              onClick={() => setExcelOpen(true)}
             >
               <FileSpreadsheet className="h-4 w-4" />
             </Button>
@@ -608,6 +604,61 @@ export default function BuildingDetails() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <FormSheet open={excelOpen} onOpenChange={setExcelOpen} title="تصدير تقرير إكسل">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            حدد الفترة المطلوبة — سيشمل التقرير الدفعات (حسب شهر الدفعة) وأعمال الصيانة خلالها، مع ملخص الوحدات والعقود وتواريخ التأجير.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">من شهر</label>
+              <input
+                type="month"
+                value={excelFrom}
+                onChange={(e) => setExcelFrom(e.target.value)}
+                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">إلى شهر</label>
+              <input
+                type="month"
+                value={excelTo}
+                onChange={(e) => setExcelTo(e.target.value)}
+                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <Button
+            className="w-full rounded-xl"
+            disabled={excelExporting}
+            onClick={async () => {
+              if (!/^\d{4}-\d{2}$/.test(excelFrom) || !/^\d{4}-\d{2}$/.test(excelTo)) {
+                showError("يرجى تحديد الفترة من والى");
+                return;
+              }
+              if (excelFrom > excelTo) {
+                showError("بداية الفترة يجب أن تسبق نهايتها");
+                return;
+              }
+              setExcelExporting(true);
+              try {
+                await exportBuildingExcel(data, building, { fromMonth: excelFrom, toMonth: excelTo });
+                setExcelOpen(false);
+                showSuccess("تم إنشاء ملف الإكسل");
+              } catch (err) {
+                console.error("Excel export failed:", err);
+                showError("تعذر تصدير ملف الإكسل");
+              } finally {
+                setExcelExporting(false);
+              }
+            }}
+          >
+            {excelExporting ? "جارٍ التصدير..." : "تصدير التقرير"}
+          </Button>
+        </div>
+      </FormSheet>
 
       <FormSheet open={addUnitOpen} onOpenChange={setAddUnitOpen} title="إضافة وحدة جديدة">
         <UnitForm

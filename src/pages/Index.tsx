@@ -100,15 +100,24 @@ export default function Index() {
     .slice(0, 8);
   const paymentCards = collectPaymentCards(dashboardData);
 
-  const upcomingPayments = paymentCards.filter((c) => c.status === "upcoming").slice(0, 5);
-  const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, 5);
-  const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, 8);
+  // Home display customization (Settings → تخصيص الشاشة الرئيسية)
+  const homeContractDays = data.settings.homeContractDays ?? 90;
+  const homeUpcomingDays = data.settings.homeUpcomingPaymentDays ?? 30;
+  const homeMaxItems = data.settings.homeMaxItems ?? 5;
+
+  const upcomingPayments = paymentCards
+    .filter((c) => c.status === "upcoming" && c.days <= homeUpcomingDays)
+    .slice(0, homeMaxItems);
+  const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, homeMaxItems);
+  const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, homeMaxItems);
   const nearestContracts = [
     ...contractExpiryReminders,
     ...nearestContractStatus.filter((item) =>
       !contractExpiryReminders.some((reminder) => reminder.contractId === item.id.replace(/^info-/, "")),
     ),
-  ].slice(0, 8);
+  ]
+    .filter((item) => (item.daysRemaining ?? 0) <= homeContractDays)
+    .slice(0, homeMaxItems);
 
   return (
     <div>

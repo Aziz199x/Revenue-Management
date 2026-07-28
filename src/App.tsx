@@ -21,6 +21,7 @@ import OwnerReportPage from "./pages/OwnerReportPage";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
+import HomeDisplaySettingsPage from "./pages/settings/HomeDisplaySettingsPage";
 import WhatsAppSettingsPage from "./pages/settings/WhatsAppSettingsPage";
 import TenantRequests from "./pages/TenantRequests";
 import RequestDetails from "./pages/RequestDetails";
@@ -138,6 +139,7 @@ const App = () => {
               <Route path="/reports/owner/:buildingId" element={<OwnerReportPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
+              <Route path="/settings/home" element={<HomeDisplaySettingsPage />} />
               <Route path="/settings/backup" element={<BackupPage />} />
               <Route path="/settings/whatsapp" element={<WhatsAppSettingsPage />} />
               <Route path="/backup" element={<BackupPage />} />

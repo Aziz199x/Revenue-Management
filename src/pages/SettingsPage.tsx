@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronLeft,
   Cloud,
+  LayoutDashboard,
   MessageCircle,
   ShieldCheck,
 } from "lucide-react";
@@ -14,6 +15,12 @@ const settingsItems = [
     icon: Bell,
     title: "الإشعارات والتنبيهات",
     description: "إعداد تنبيهات العقود والدفعات والصيانة",
+  },
+  {
+    to: "/settings/home",
+    icon: LayoutDashboard,
+    title: "تخصيص الشاشة الرئيسية",
+    description: "التحكم في العقود والدفعات الظاهرة في لوحة التحكم",
   },
   {
     to: "/settings/backup",
