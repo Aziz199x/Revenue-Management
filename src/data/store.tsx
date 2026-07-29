@@ -50,7 +50,8 @@ function migratePayments(payments: Payment[], units: Unit[], buildings: Building
     const maintenance = payment.maintenanceDeductionAmount ?? 0;
     const receiveMethod = normalizeStoredReceiveMethod(payment.receiveMethod ?? payment.paymentMethod);
     const contract = contracts.find((item) => item.id === payment.contractId);
-    const autoOwnerTransfer = payment.status === "paid"
+    const autoOwnerTransfer = !payment.ownerSettledByMaintenance
+      && payment.status === "paid"
       && receiveMethod === "ejar_platform"
       && (contract?.lessorCapacity ?? "owner") === "owner";
     const collectionFeeStatus = payment.status === "paid"
@@ -74,12 +75,20 @@ function migratePayments(payments: Payment[], units: Unit[], buildings: Building
       netAmountToTransferToOwner: payment.status !== "paid" && needsBuildingFee
         ? Math.round((gross - fee - maintenance) * 100) / 100
         : payment.netAmountToTransferToOwner ?? Math.round((gross - fee - maintenance) * 100) / 100,
-      ownerTransferred: autoOwnerTransfer || (payment.ownerTransferred ?? false),
-      ownerTransferDate: autoOwnerTransfer
+      ownerSettledByMaintenance: payment.ownerSettledByMaintenance ?? false,
+      maintenanceSettlementNote: payment.maintenanceSettlementNote,
+      ownerTransferred: payment.ownerSettledByMaintenance || autoOwnerTransfer || (payment.ownerTransferred ?? false),
+      ownerTransferDate: payment.ownerSettledByMaintenance
+        ? null
+        : autoOwnerTransfer
         ? payment.ownerTransferDate ?? payment.receivedDate ?? null
         : payment.ownerTransferDate ?? null,
-      ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : payment.ownerTransferMethod ?? null,
-      ownerTransferNotes: autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : payment.ownerTransferNotes ?? "",
+      ownerTransferMethod: payment.ownerSettledByMaintenance
+        ? null
+        : autoOwnerTransfer ? "ejar_platform" : payment.ownerTransferMethod ?? null,
+      ownerTransferNotes: payment.ownerSettledByMaintenance
+        ? payment.ownerTransferNotes || "تمت تسوية صافي الدفعة مقابل صيانة المبنى"
+        : autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : payment.ownerTransferNotes ?? "",
     };
     return { ...migrated, netAmountToTransferToOwner: netOwnerAmount(migrated) };
   });

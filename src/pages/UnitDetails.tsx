@@ -85,6 +85,8 @@ import {
   getPaymentReportMonth,
   isPaymentPaid,
   shouldAutoTransferEjarPayment,
+  findPotentialDuplicateReceivedPayments,
+  restoreMaintenanceDeductionsForPayment,
 } from "@/data/helpers";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
 import {
@@ -138,6 +140,8 @@ function MarkAsReceivedDialog({
     notes: string | undefined,
     settlements: Array<{ paymentId: string; amount: number }>,
     repairIds: string[],
+    settleWithBuildingMaintenance: boolean,
+    maintenanceExpenseNote: string | undefined,
   ) => void;
   onCancel: () => void;
 }) {
@@ -146,6 +150,8 @@ function MarkAsReceivedDialog({
   const [notes, setNotes] = useState("");
   const [selectedSettlements, setSelectedSettlements] = useState<Record<string, number>>({});
   const [selectedRepairIds, setSelectedRepairIds] = useState<string[]>([]);
+  const [settleWithBuildingMaintenance, setSettleWithBuildingMaintenance] = useState(false);
+  const [maintenanceExpenseNote, setMaintenanceExpenseNote] = useState("");
 
   const grossAmount = payment.grossAmount ?? payment.amount;
   // Legacy payments may not have stored a fee percentage. Reverting one of
@@ -155,12 +161,18 @@ function MarkAsReceivedDialog({
     ? fallbackFeePercent
     : storedFeePercent;
   const feeAmount = Math.round(grossAmount * feePercent) / 100;
-  const netAmount = Math.round((grossAmount - feeAmount) * 100) / 100;
+  const ownerDeductibleFee = method === "ejar_platform" ? 0 : feeAmount;
   const settlementTotal = Object.values(selectedSettlements).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
   const maintenanceTotal = repairSuggestions
     .filter(({ repair }) => selectedRepairIds.includes(repair.id))
     .reduce((sum, { repair }) => sum + repair.cost, 0);
-  const totalDeductions = feeAmount + settlementTotal + maintenanceTotal;
+  const manualMaintenanceSettlement = settleWithBuildingMaintenance
+    ? Math.max(0, Math.round((grossAmount - ownerDeductibleFee - maintenanceTotal) * 100) / 100)
+    : 0;
+  const totalDeductions = ownerDeductibleFee + settlementTotal + maintenanceTotal + manualMaintenanceSettlement;
+  const requiresMaintenanceNote = settleWithBuildingMaintenance
+    && selectedRepairIds.length === 0
+    && !maintenanceExpenseNote.trim();
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
@@ -189,7 +201,7 @@ function MarkAsReceivedDialog({
                 </div>
               </>
           </div>
-          {feeSuggestions.length > 0 && (
+          {feeSuggestions.length > 0 && !settleWithBuildingMaintenance && (
             <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs">
               <div>
                 <p className="font-bold text-amber-900">اقتراح ذكي لتسوية رسوم منصة إيجار</p>
@@ -251,6 +263,38 @@ function MarkAsReceivedDialog({
               {maintenanceTotal > 0 && <p className="font-bold text-sky-900">إجمالي خصم الصيانة: {formatMoney(maintenanceTotal)}</p>}
             </div>
           )}
+          <div className="space-y-2 rounded-2xl border border-violet-300 bg-violet-50 p-3 text-xs">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={settleWithBuildingMaintenance}
+                onChange={(event) => {
+                  setSettleWithBuildingMaintenance(event.target.checked);
+                  if (event.target.checked) setSelectedSettlements({});
+                  if (!event.target.checked) setMaintenanceExpenseNote("");
+                }}
+              />
+              <span>
+                <span className="block font-bold text-violet-900">تسوية صافي الدفعة مقابل صيانة المبنى</span>
+                <span className="mt-1 block text-violet-800">خيار اختياري يجعل الصافي المطلوب تحويله للمالك صفرًا، ويوثّق أن المبلغ استُخدم لمصروفات الصيانة.</span>
+              </span>
+            </label>
+            {settleWithBuildingMaintenance && (
+              <>
+                <p className="font-bold text-violet-900">مبلغ التسوية الإضافي: {formatMoney(manualMaintenanceSettlement)}</p>
+                <div className="space-y-1">
+                  <Label>تعليق المصروفات {selectedRepairIds.length === 0 ? "*" : "(اختياري)"}</Label>
+                  <Textarea
+                    value={maintenanceExpenseNote}
+                    onChange={(event) => setMaintenanceExpenseNote(event.target.value)}
+                    placeholder="مثال: تسوية أعمال السباكة والكهرباء العامة للمبنى"
+                    className="rounded-xl bg-white"
+                  />
+                  {requiresMaintenanceNote && <p className="font-semibold text-red-700">أضف وصف المصروفات لعدم وجود طلب صيانة محدد.</p>}
+                </div>
+              </>
+            )}
+          </div>
           {totalDeductions > grossAmount && (
             <p className="rounded-xl bg-red-50 p-2 text-xs font-semibold text-red-700">
               مجموع الخصومات يتجاوز مبلغ الدفعة. ألغِ بعض الخيارات للمتابعة.
@@ -296,7 +340,7 @@ function MarkAsReceivedDialog({
             </Button>
             <Button
               className="flex-1 rounded-xl"
-              disabled={totalDeductions > grossAmount}
+              disabled={totalDeductions > grossAmount || requiresMaintenanceNote}
               onClick={() => onConfirm(
                 receivedDate,
                 method,
@@ -304,6 +348,8 @@ function MarkAsReceivedDialog({
                 notes.trim() || undefined,
                 Object.entries(selectedSettlements).map(([paymentId, amount]) => ({ paymentId, amount })),
                 selectedRepairIds,
+                settleWithBuildingMaintenance,
+                maintenanceExpenseNote.trim() || undefined,
               )}
             >
               تأكيد الاستلام
@@ -752,6 +798,7 @@ export default function UnitDetails() {
                 const st = effectiveStatus(p);
                 const maintenanceDeductions = getPaymentMaintenanceDeductions(data, p.id);
                 const maintenanceDeductionAmount = getPaymentMaintenanceDeductionAmount(data, p);
+                const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
                 return (
                   <div
                     key={p.id}
@@ -807,14 +854,22 @@ export default function UnitDetails() {
                             تم خصم صيانة: {formatMoney(maintenanceDeductionAmount)}
                             {maintenanceDeductions.length > 0
                               ? ` - ${maintenanceDeductions.map((item) => `${item.repair.description}${item.unit?.name ? ` (${item.unit.name})` : ""}`).join("، ")}`
-                              : ""}
+                              : p.maintenanceSettlementNote ? ` - ${p.maintenanceSettlementNote}` : ""}
                           </span>
                         )}
                         <span className="text-muted-foreground">الصافي للمالك: {formatMoney(calculateNetAmountToTransferToOwner(normalizePaymentFinancials({ ...p, maintenanceDeductionAmount })))}</span>
                         <span className={p.ownerTransferred ? "text-emerald-700" : "text-amber-700"}>
-                          {p.ownerTransferred ? `تم التحويل للمالك${p.ownerTransferDate ? ` · ${formatDate(p.ownerTransferDate)}` : ""}` : "هل تم التحويل للمالك؟"}
+                          {p.ownerSettledByMaintenance
+                            ? "تمت تسوية الصافي مقابل صيانة المبنى"
+                            : p.ownerTransferred ? `تم التحويل للمالك${p.ownerTransferDate ? ` · ${formatDate(p.ownerTransferDate)}` : ""}` : "هل تم التحويل للمالك؟"}
                         </span>
                       </div>
+                    )}
+
+                    {duplicateReceipts.length > 0 && (
+                      <p className="rounded-xl border border-red-200 bg-red-50 p-2 text-xs font-bold text-red-700">
+                        تحذير: يوجد استلام آخر بنفس الشهر والمبلغ لهذه الوحدة. راجع السجل المكرر قبل متابعة التحويل.
+                      </p>
                     )}
 
                     {p.notes && (
@@ -1300,6 +1355,7 @@ export default function UnitDetails() {
       <FormSheet open={paymentOpen} onOpenChange={setPaymentOpen} title="تسجيل دفعة إيجار">
         <PaymentForm
           defaultAmount={unit.rentAmount}
+          unitId={unit.id}
           lessorCapacity={currentLessorCapacity}
           onSubmit={(values) => {
             const grossAmount = values.amount;
@@ -1343,7 +1399,9 @@ export default function UnitDetails() {
             onSubmit={async (values) => {
               try {
                 console.log("[Edit Payment] formData:", values);
-                await update((prev) => ({
+                await update((prev) => {
+                  const paid = values.status === "paid";
+                  return {
                   ...prev,
                   payments: prev.payments.map((payment) => {
                     if (payment.id !== editPayment.id) return payment;
@@ -1351,7 +1409,6 @@ export default function UnitDetails() {
                     const collectionFeePercent = getPaymentCollectionFeePercent(payment, building, unit);
                     const collectionFeeAmount = Math.round(grossAmount * collectionFeePercent) / 100;
                     const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
-                    const paid = values.status === "paid";
                     return normalizePaymentFinancials({
                       ...payment,
                       ...values,
@@ -1360,7 +1417,7 @@ export default function UnitDetails() {
                       collectionFeePercentage: collectionFeePercent,
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
-                      maintenanceDeductionAmount: getPaymentMaintenanceDeductionAmount(prev, payment),
+                      maintenanceDeductionAmount: paid ? getPaymentMaintenanceDeductionAmount(prev, payment) : 0,
                       receivedDate: paid ? values.receivedDate : undefined,
                       receivedAmount: paid ? values.amount : values.status === "partial" ? values.paidAmount : undefined,
                       paidAmount: values.status === "partial" ? values.paidAmount : undefined,
@@ -1376,9 +1433,15 @@ export default function UnitDetails() {
                       ownerTransferDate: paid ? (values.ownerTransferDate ?? null) : null,
                       ownerTransferMethod: paid ? (values.ownerTransferMethod ?? null) : null,
                       ownerTransferNotes: paid ? (payment.ownerTransferNotes ?? "") : "",
+                      ownerSettledByMaintenance: paid ? (values.ownerSettledByMaintenance ?? false) : false,
+                      maintenanceSettlementNote: paid ? values.maintenanceSettlementNote : undefined,
                     });
                   }),
-                }));
+                  repairs: paid
+                    ? prev.repairs
+                    : restoreMaintenanceDeductionsForPayment(prev.repairs, editPayment.id),
+                  };
+                });
                 setEditPayment(null);
                 showSuccess("تم تعديل الدفعة بنجاح");
               } catch (error) {
@@ -1644,17 +1707,37 @@ export default function UnitDetails() {
           lessorCapacity={data.contracts.find((contract) => contract.id === markReceived.contractId)?.lessorCapacity ?? currentLessorCapacity}
           feeSuggestions={officeFeeSuggestions}
           repairSuggestions={maintenanceSuggestions}
-          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds) => {
+          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseNote) => {
+            const duplicate = findPotentialDuplicateReceivedPayments(data, normalizePaymentFinancials({
+              ...markReceived,
+              status: "paid",
+              receivedDate,
+              receivedAmount: markReceived.grossAmount ?? markReceived.amount,
+              receiveMethod: method,
+            }))[0];
+            if (duplicate) {
+              showError(`تم تسجيل استلام مماثل لنفس الوحدة والشهر والمبلغ${duplicate.receivedDate ? ` بتاريخ ${formatDate(duplicate.receivedDate)}` : ""}. راجع الدفعة المكررة أولًا.`);
+              return;
+            }
             const grossAmount = markReceived.grossAmount ?? markReceived.amount;
             const collectionFeeAmount = Math.round(grossAmount * feePercent) / 100;
             const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
             const settlementTotal = settlements.reduce((sum, item) => sum + item.amount, 0);
             const selectedRepairs = data.repairs.filter((repair) => repairIds.includes(repair.id) && !repair.isDeductedFromOwnerTransfer);
-            const maintenanceDeductionAmount = selectedRepairs.reduce((sum, repair) => sum + repair.cost, 0);
-            const maintenanceNote = selectedRepairs.length > 0
-              ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${selectedRepairs.map((repair) => repair.description).join("، ")}.`
+            const linkedMaintenanceAmount = selectedRepairs.reduce((sum, repair) => sum + repair.cost, 0);
+            const ownerDeductibleFee = method === "ejar_platform" ? 0 : collectionFeeAmount;
+            const manualMaintenanceAmount = settleWithBuildingMaintenance
+              ? Math.max(0, Math.round((grossAmount - ownerDeductibleFee - linkedMaintenanceAmount) * 100) / 100)
+              : 0;
+            const maintenanceDeductionAmount = linkedMaintenanceAmount + manualMaintenanceAmount;
+            const maintenanceNote = maintenanceDeductionAmount > 0
+              ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${[
+                  ...selectedRepairs.map((repair) => repair.description),
+                  maintenanceExpenseNote,
+                ].filter(Boolean).join("، ")}.`
               : "";
-            const autoOwnerTransfer = shouldAutoTransferEjarPayment(data, markReceived, method);
+            const autoOwnerTransfer = !settleWithBuildingMaintenance
+              && shouldAutoTransferEjarPayment(data, markReceived, method);
             update((prev) => ({
               ...prev,
               payments: prev.payments.map((p) =>
@@ -1676,10 +1759,14 @@ export default function UnitDetails() {
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
                       maintenanceDeductionAmount,
-                      ownerTransferred: autoOwnerTransfer,
+                      ownerTransferred: settleWithBuildingMaintenance || autoOwnerTransfer,
                       ownerTransferDate: autoOwnerTransfer ? receivedDate : null,
                       ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : null,
-                      ownerTransferNotes: autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
+                      ownerTransferNotes: settleWithBuildingMaintenance
+                        ? `تمت تسوية صافي الدفعة مقابل صيانة المبنى بتاريخ ${receivedDate}.`
+                        : autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
+                      ownerSettledByMaintenance: settleWithBuildingMaintenance,
+                      maintenanceSettlementNote: settleWithBuildingMaintenance ? maintenanceExpenseNote : undefined,
                     })
                   : settlements.some((item) => item.paymentId === p.id)
                     ? (() => {

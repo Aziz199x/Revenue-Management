@@ -1,4 +1,4 @@
-import { AppData, Payment, Contract, Tenant, PaymentStatus, RentPeriod, RentPeriodNew, ContractDurationType, EjarImportPayment, Building, Unit, PaymentReceiveMethod, CollectionFeeStatus } from "./types";
+import { AppData, Payment, Contract, Tenant, PaymentStatus, RentPeriod, RentPeriodNew, ContractDurationType, EjarImportPayment, Building, Unit, PaymentReceiveMethod, CollectionFeeStatus, Repair } from "./types";
 import { genId } from "./store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
 import { normalizeId } from "./unitStatus";
@@ -129,9 +129,11 @@ export function normalizePaymentFinancials(payment: Payment, feePercent = paymen
       : payment.collectionFeeReason,
     netAmountAfterCollectionFee: payment.netAmountAfterCollectionFee ?? Math.round((grossAmount - collectionFeeAmount) * 100) / 100,
     maintenanceDeductionAmount,
-    ownerTransferred: payment.ownerTransferred ?? false,
-    ownerTransferDate: payment.ownerTransferDate ?? null,
-    ownerTransferMethod: payment.ownerTransferMethod ?? null,
+    ownerSettledByMaintenance: payment.ownerSettledByMaintenance ?? false,
+    maintenanceSettlementNote: payment.maintenanceSettlementNote,
+    ownerTransferred: payment.ownerSettledByMaintenance || (payment.ownerTransferred ?? false),
+    ownerTransferDate: payment.ownerSettledByMaintenance ? null : payment.ownerTransferDate ?? null,
+    ownerTransferMethod: payment.ownerSettledByMaintenance ? null : payment.ownerTransferMethod ?? null,
     ownerTransferNotes: payment.ownerTransferNotes ?? "",
   };
   return {
@@ -488,6 +490,31 @@ export function getPaymentReportMonth(
   return getPaymentReportYearMonth(dueDate, cutoffDay, payment.reportingMonthMode ?? "auto");
 }
 
+/**
+ * Finds another received record that appears to represent the same monthly
+ * obligation. Different explicit contracts are kept separate so a tenant
+ * transition in the same month is not incorrectly blocked.
+ */
+export function findPotentialDuplicateReceivedPayments(
+  data: Pick<AppData, "payments" | "settings">,
+  candidate: Payment,
+): Payment[] {
+  if (candidate.status !== "paid" && candidate.status !== "partial") return [];
+  const candidateCollected = getCollectedRentAmount(candidate);
+  if (candidateCollected <= 0) return [];
+  const reportMonth = getPaymentReportMonth(candidate, data.settings.reportMonthCutoffDay);
+  const candidateAmount = getPaymentAmount(candidate);
+
+  return data.payments.filter((payment) => {
+    if (payment.id === candidate.id || payment.deletedAt || payment.status === "cancelled") return false;
+    if (payment.status !== "paid" && payment.status !== "partial") return false;
+    if (normalizeId(payment.unitId) !== normalizeId(candidate.unitId)) return false;
+    if (candidate.contractId && payment.contractId && candidate.contractId !== payment.contractId) return false;
+    if (getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay) !== reportMonth) return false;
+    return Math.abs(getPaymentAmount(payment) - candidateAmount) < 0.01;
+  });
+}
+
 export function getPaymentMaintenanceDeductions(data: AppData, paymentId: string) {
   return data.repairs
     .filter((repair) => repair.deductedFromPaymentId === paymentId && repair.status !== "cancelled")
@@ -506,6 +533,12 @@ export function getPaymentMaintenanceDeductionAmount(data: AppData, payment: Pay
   const linkedTotal = getPaymentMaintenanceDeductions(data, payment.id)
     .reduce((sum, item) => sum + item.repair.cost, 0);
   return linkedTotal || payment.maintenanceDeductionAmount || 0;
+}
+
+export function restoreMaintenanceDeductionsForPayment(repairs: Repair[], paymentId: string): Repair[] {
+  return repairs.map((repair) => repair.deductedFromPaymentId === paymentId
+    ? { ...repair, isDeductedFromOwnerTransfer: false, deductedFromPaymentId: null }
+    : repair);
 }
 
 export function getPaymentLessorCapacity(

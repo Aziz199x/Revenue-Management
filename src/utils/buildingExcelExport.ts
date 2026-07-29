@@ -145,12 +145,12 @@ export async function exportBuildingExcel(
   ]);
 
   // ---- Sheet 3: payments matrix -------------------------------------------
-  // In the RTL sheet, the unit and tenant stay on the right. Each month owns
+  // In the RTL sheet, the unit and tenant share one compact column on the right. Each month owns
   // three columns: collected amount, receipt date, and owner-transfer date.
   const reportMonths = monthsBetween(fromMonth, toMonth);
   const paymentRows: SheetSpec["rows"] = [
-    ["الوحدة", "المستأجر", ...reportMonths.flatMap((month) => [monthLabel(month), "", ""])],
-    ["", "", ...reportMonths.flatMap(() => ["مبلغ السداد", "تاريخ السداد", "تاريخ التحويل للمالك"])],
+    ["الوحدة / المستأجر", ...reportMonths.flatMap((month) => [monthLabel(month), "", ""])],
+    ["", ...reportMonths.flatMap(() => ["مبلغ السداد", "تاريخ السداد", "تاريخ التحويل للمالك"])],
   ];
 
   const sortedUnits = units.slice().sort((a, b) => a.name.localeCompare(b.name, "ar", { numeric: true }));
@@ -168,7 +168,7 @@ export async function exportBuildingExcel(
       || contract?.tenantName
       || "شاغرة";
 
-    const row: SheetSpec["rows"][number] = [unit.name, tenantLabel];
+    const row: SheetSpec["rows"][number] = [`${unit.name} — ${tenantLabel}`];
     for (const month of reportMonths) {
       const monthPayments = unitPayments.filter((payment) => getPaymentReportMonth(payment, cutoff) === month);
       if (monthPayments.length === 0) {
@@ -186,18 +186,22 @@ export async function exportBuildingExcel(
       const receivedPayments = monthPayments.filter((payment) => getCollectedRentAmount(payment) > 0);
       const transferDates = Array.from(new Set(
         receivedPayments
-          .filter((payment) => payment.ownerTransferred)
+          .filter((payment) => payment.ownerTransferred && !payment.ownerSettledByMaintenance)
           .map((payment) => payment.ownerTransferDate)
           .filter((date): date is string => Boolean(date))
           .map(formatDate),
       ));
       const transferredWithoutDate = receivedPayments.some(
-        (payment) => payment.ownerTransferred && !payment.ownerTransferDate,
+        (payment) => payment.ownerTransferred && !payment.ownerSettledByMaintenance && !payment.ownerTransferDate,
       );
       const pendingTransferCount = receivedPayments.filter((payment) => !payment.ownerTransferred).length;
+      const maintenanceSettledCount = receivedPayments.filter((payment) => payment.ownerSettledByMaintenance).length;
       const transferParts = [
         ...transferDates,
         ...(transferredWithoutDate ? ["تم التحويل - التاريخ غير مسجل"] : []),
+        ...(maintenanceSettledCount > 0 ? [
+          maintenanceSettledCount === 1 ? "تسوية مقابل صيانة المبنى" : `${maintenanceSettledCount} دفعات سويت مقابل الصيانة`,
+        ] : []),
         ...(pendingTransferCount > 0 ? [
           pendingTransferCount === 1 ? "لم يتم التحويل" : `${pendingTransferCount} دفعات لم تحول`,
         ] : []),
@@ -211,7 +215,7 @@ export async function exportBuildingExcel(
     paymentRows.push(row);
   }
 
-  const totalsRow: SheetSpec["rows"][number] = ["الإجمالي", ""];
+  const totalsRow: SheetSpec["rows"][number] = ["الإجمالي"];
   for (const month of reportMonths) {
     const collected = payments
       .filter((payment) => getPaymentReportMonth(payment, cutoff) === month)
@@ -220,9 +224,9 @@ export async function exportBuildingExcel(
   }
   paymentRows.push(totalsRow);
 
-  const paymentMerges = ["A1:A2", "B1:B2"];
+  const paymentMerges = ["A1:A2"];
   reportMonths.forEach((_, index) => {
-    const firstColumnIndex = 2 + (index * 3);
+    const firstColumnIndex = 1 + (index * 3);
     paymentMerges.push(
       `${excelColumnRef(firstColumnIndex)}1:${excelColumnRef(firstColumnIndex + 2)}1`,
     );
@@ -278,11 +282,11 @@ export async function exportBuildingExcel(
     {
       name: "الدفعات",
       rows: paymentRows,
-      colWidths: [18, 24, ...reportMonths.flatMap(() => [15, 18, 20])],
+      colWidths: [32, ...reportMonths.flatMap(() => [15, 18, 20])],
       headerRows: 2,
       merges: paymentMerges,
       freezeRows: 2,
-      freezeColumns: 2,
+      freezeColumns: 1,
     },
     { name: "الصيانة", rows: maintenanceRows, colWidths: [5, 14, 14, 14, 30, 12, 12, 16, 16, 24] },
     { name: "العقود", rows: contractRows, colWidths: [14, 20, 16, 14, 14, 14, 12, 12] },

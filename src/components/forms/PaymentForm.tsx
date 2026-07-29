@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Payment, PaymentMethod, PaymentReceiveMethod, PaymentStatus } from "@/data/types";
 import { PAYMENT_RECEIVE_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/data/labels";
-import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPaymentLessorCapacity } from "@/data/helpers";
+import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments } from "@/data/helpers";
 import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -34,6 +34,8 @@ export interface PaymentFormValues {
   ownerTransferred?: boolean;
   ownerTransferDate?: string | null;
   ownerTransferMethod?: PaymentMethod | null;
+  ownerSettledByMaintenance?: boolean;
+  maintenanceSettlementNote?: string;
 }
 
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -53,11 +55,12 @@ const monthLabel = (yearMonth: string): string => {
 interface Props {
   initial?: Payment;
   defaultAmount?: number;
+  unitId?: string;
   lessorCapacity?: "owner" | "representative";
   onSubmit: (values: PaymentFormValues) => void;
 }
 
-export default function PaymentForm({ initial, defaultAmount, lessorCapacity, onSubmit }: Props) {
+export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapacity, onSubmit }: Props) {
   const { data } = useStore();
   const [amount, setAmount] = useState(
     initial?.amount?.toString() ?? (defaultAmount ? String(defaultAmount) : ""),
@@ -71,7 +74,10 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const resolvedLessorCapacity = lessorCapacity ?? (initial ? getPaymentLessorCapacity(data, initial) : "owner");
   const [ownerTransferred, setOwnerTransferred] = useState(initial?.ownerTransferred ?? false);
-  const [ownerTransferDate, setOwnerTransferDate] = useState(initial?.ownerTransferDate ?? initial?.receivedDate ?? todayISO());
+  const ownerSettledByMaintenance = initial?.ownerSettledByMaintenance ?? false;
+  const [ownerTransferDate, setOwnerTransferDate] = useState(
+    initial?.ownerTransferDate ?? (ownerSettledByMaintenance ? "" : initial?.receivedDate ?? todayISO()),
+  );
   const cutoffDay = data.settings.reportMonthCutoffDay;
   const initialPaymentDate = initial?.paymentDate ?? todayISO();
   const [reportMonth, setReportMonth] = useState<string>(() => {
@@ -93,7 +99,8 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
   const autoOwnerTransfer = status === "paid"
     && paymentMethod === "ejar_platform"
     && resolvedLessorCapacity === "owner";
-  const effectiveOwnerTransferred = status === "paid" && (autoOwnerTransfer || ownerTransferred);
+  const effectiveOwnerTransferred = status === "paid"
+    && (ownerSettledByMaintenance || autoOwnerTransfer || ownerTransferred);
 
   const buildValues = (): PaymentFormValues => ({
     amount: Number(amount) || 0,
@@ -116,10 +123,14 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
           : "auto",
     reportingYearMonth: reportMonth === "auto" ? undefined : reportMonth,
     ownerTransferred: effectiveOwnerTransferred,
-    ownerTransferDate: effectiveOwnerTransferred ? (ownerTransferDate || receivedDate) : null,
-    ownerTransferMethod: effectiveOwnerTransferred
+    ownerTransferDate: effectiveOwnerTransferred && !ownerSettledByMaintenance ? (ownerTransferDate || receivedDate) : null,
+    ownerTransferMethod: effectiveOwnerTransferred && !ownerSettledByMaintenance
       ? autoOwnerTransfer ? "ejar_platform" : initial?.ownerTransferMethod ?? "bank_transfer"
       : null,
+    ownerSettledByMaintenance: status === "paid" && ownerSettledByMaintenance,
+    maintenanceSettlementNote: status === "paid" && ownerSettledByMaintenance
+      ? initial?.maintenanceSettlementNote
+      : undefined,
   });
 
   const validate = (values: PaymentFormValues) => {
@@ -127,7 +138,7 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
     if (!isValidDate(values.paymentDate)) return "يرجى اختيار موعد سداد صحيح";
     if (values.status === "paid" && !values.receivedDate) return "يرجى اختيار تاريخ الاستلام";
     if (values.status === "paid" && !values.receiveMethod) return "يرجى اختيار طريقة الاستلام";
-    if (values.ownerTransferred && !values.ownerTransferDate) return "يرجى اختيار تاريخ التحويل للمالك";
+    if (values.ownerTransferred && !values.ownerSettledByMaintenance && !values.ownerTransferDate) return "يرجى اختيار تاريخ التحويل للمالك";
     return null;
   };
 
@@ -139,6 +150,22 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
         const values = buildValues();
         const error = validate(values);
         if (error) { showError(error); return; }
+        const resolvedUnitId = initial?.unitId ?? unitId;
+        if (values.status === "paid" && resolvedUnitId) {
+          const duplicate = findPotentialDuplicateReceivedPayments(data, {
+            ...(initial ?? {}),
+            id: initial?.id ?? "__new_payment__",
+            unitId: resolvedUnitId,
+            createdAt: initial?.createdAt ?? todayISO(),
+            ...values,
+            grossAmount: values.amount,
+            receivedAmount: values.receivedAmount,
+          } as Payment)[0];
+          if (duplicate) {
+            showError(`يوجد استلام مسجل لنفس الوحدة والشهر والمبلغ${duplicate.receivedDate ? ` بتاريخ ${duplicate.receivedDate}` : ""}. راجع الدفعة السابقة قبل الحفظ.`);
+            return;
+          }
+        }
         if (initial?.status === "paid" && status !== "paid") { setPendingValues(values); return; }
         onSubmit(values);
       }}
@@ -226,7 +253,11 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
             </div>
           </div>
           <div className={`space-y-2 rounded-2xl border p-3 ${autoOwnerTransfer ? "border-emerald-200 bg-emerald-50" : "border-border bg-muted/40"}`}>
-            {autoOwnerTransfer ? (
+            {ownerSettledByMaintenance ? (
+              <p className="text-xs font-semibold text-sky-800">
+                تمت تسوية صافي هذه الدفعة مقابل صيانة المبنى، لذلك لا يوجد مبلغ مطلوب تحويله للمالك.
+              </p>
+            ) : autoOwnerTransfer ? (
               <p className="text-xs font-semibold text-emerald-800">
                 تم التحويل للمالك تلقائيًا لأن التحصيل عبر منصة إيجار وصفة المؤجر «مالك العقار».
               </p>
@@ -236,7 +267,7 @@ export default function PaymentForm({ initial, defaultAmount, lessorCapacity, on
                 تم تحويل الدفعة للمالك
               </label>
             )}
-            {effectiveOwnerTransferred && (
+            {effectiveOwnerTransferred && !ownerSettledByMaintenance && (
               <div className="space-y-1.5">
                 <Label>تاريخ التحويل للمالك</Label>
                 <Input type="date" value={ownerTransferDate} onChange={(event) => setOwnerTransferDate(event.target.value)} className="rounded-xl bg-background" />

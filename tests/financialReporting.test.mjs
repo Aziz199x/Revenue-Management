@@ -172,3 +172,78 @@ test("cancelled contracts and duplicate records do not create false revenue", ()
   assert.equal(paidRow.collectedAmount, 1000);
   assert.deepEqual(paidRow.duplicatePaymentIds, ["p2"]);
 });
+
+test("duplicate receipt detection blocks the same unit, report month, contract, and amount", () => {
+  const existing = payment({ id: "paid-june", receivedDate: "2026-06-04" });
+  const duplicateCandidate = payment({
+    id: "candidate",
+    dueDateGregorian: "2026-05-31",
+    paymentDate: "2026-05-31",
+    receivedDate: "2026-06-12",
+  });
+  const differentContract = payment({
+    id: "new-tenant",
+    contractId: "c2",
+    dueDateGregorian: "2026-05-31",
+    paymentDate: "2026-05-31",
+    receivedDate: "2026-06-12",
+  });
+  const snapshot = data([existing]);
+
+  assert.deepEqual(
+    helpers.findPotentialDuplicateReceivedPayments(snapshot, duplicateCandidate).map((item) => item.id),
+    ["paid-june"],
+  );
+  assert.deepEqual(
+    helpers.findPotentialDuplicateReceivedPayments(snapshot, differentContract),
+    [],
+  );
+});
+
+test("reverting a received payment restores linked maintenance for future receipt suggestions", () => {
+  const repairs = [
+    {
+      id: "r1",
+      unitId: unit.id,
+      description: "صيانة سباكة",
+      repairDate: "2026-06-01",
+      cost: 390,
+      status: "completed",
+      createdAt: "2026-06-01",
+      isDeductedFromOwnerTransfer: true,
+      deductedFromPaymentId: "p1",
+    },
+    {
+      id: "r2",
+      unitId: unit.id,
+      description: "صيانة أخرى",
+      repairDate: "2026-06-02",
+      cost: 100,
+      status: "completed",
+      createdAt: "2026-06-02",
+    },
+  ];
+
+  const restored = helpers.restoreMaintenanceDeductionsForPayment(repairs, "p1");
+  assert.equal(restored[0].isDeductedFromOwnerTransfer, false);
+  assert.equal(restored[0].deductedFromPaymentId, null);
+  assert.deepEqual(restored[1], repairs[1]);
+});
+
+test("a full building-maintenance settlement closes the owner balance without a fake transfer date", () => {
+  const settled = helpers.normalizePaymentFinancials(payment({
+    collectionFeePercent: 5,
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "collected",
+    maintenanceDeductionAmount: 950,
+    ownerSettledByMaintenance: true,
+    maintenanceSettlementNote: "مصروفات صيانة عامة",
+    ownerTransferred: false,
+    ownerTransferDate: "2026-06-10",
+  }));
+
+  assert.equal(helpers.calculateNetAmountToTransferToOwner(settled), 0);
+  assert.equal(settled.ownerTransferred, true);
+  assert.equal(settled.ownerTransferDate, null);
+  assert.equal(settled.maintenanceSettlementNote, "مصروفات صيانة عامة");
+});

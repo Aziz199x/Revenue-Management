@@ -107,6 +107,10 @@ export interface Payment {
   collectionFeeSettlementNote?: string;
   netAmountAfterCollectionFee?: number;
   maintenanceDeductionAmount?: number;
+  /** True when the owner's net amount was settled against building maintenance instead of being transferred. */
+  ownerSettledByMaintenance?: boolean;
+  /** Audit note describing the maintenance expenses used for a manual settlement. */
+  maintenanceSettlementNote?: string;
   netAmountToTransferToOwner?: number;
   ownerTransferred?: boolean;
   ownerTransferDate?: string | null;
