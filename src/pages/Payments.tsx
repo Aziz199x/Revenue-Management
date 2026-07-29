@@ -43,6 +43,14 @@ function paymentSortDate(payment: Payment): string {
   return payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate;
 }
 
+function paymentNotesWithoutGeneratedMaintenance(payment: Payment): string {
+  return (payment.notes || "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("تم خصم صيانة بقيمة"))
+    .join("\n")
+    .trim();
+}
+
 function loadPaymentFilters() {
   try {
     const saved = localStorage.getItem(PAYMENT_FILTERS_KEY);
@@ -279,7 +287,10 @@ export default function Payments() {
                 mrNotes.trim() || p.notes,
                 settlementTotal > 0 ? `تم خصم مستحقات تحصيل سابقة من هذه الدفعة بمبلغ ${formatMoney(settlementTotal)} داخل نفس العقار.` : "",
                 maintenance > 0 ? `تم خصم صيانة بقيمة ${formatMoney(maintenance)}: ${[
-                  ...selectedRepairs.map((repair) => repair.description),
+                  ...selectedRepairs.map((repair) => {
+                    const repairUnit = data.units.find((item) => item.id === repair.unitId);
+                    return `${repair.description} (${repairUnit?.name || "صيانة عامة للعقار"} - ${formatMoney(repair.cost)})`;
+                  }),
                   maintenanceExpenseNote.trim(),
                 ].filter(Boolean).join("، ")}.` : "",
               ].filter(Boolean).join("\n"),
@@ -460,7 +471,16 @@ export default function Payments() {
       `${item.repair.description}${item.unit?.name ? ` - ${item.unit.name}` : ""}`,
     ).join("، ");
     const details = [linkedDetails, payment.maintenanceSettlementNote].filter(Boolean).join("، ");
-    return { amount, details };
+    return {
+      amount,
+      details,
+      items: deductions.map((item) => ({
+        id: item.repair.id,
+        description: item.repair.description,
+        unitName: item.unit?.name || "صيانة عامة للعقار",
+        cost: item.repair.cost,
+      })),
+    };
   };
 
   return (
@@ -539,6 +559,7 @@ export default function Payments() {
           rows.map(({ payment: p, unit, building, tenant, status }) => {
             const maintenanceNote = paymentMaintenanceNote(p);
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
+            const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
             return (
             <div
               key={p.id}
@@ -577,9 +598,9 @@ export default function Payments() {
                     </p>
                   )}
               </div>
-              {p.notes && (
+              {visibleNotes && (
                 <p className="min-w-0 rounded-2xl bg-muted p-2.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                  {p.notes}
+                  {visibleNotes}
                 </p>
               )}
               {status === "paid" && (
@@ -591,10 +612,20 @@ export default function Payments() {
                   )}
                   <span>خصم الصيانة: {formatMoney(maintenanceNote?.amount ?? 0)}</span>
                   {maintenanceNote && (
-                    <span className="col-span-2 rounded-2xl bg-amber-50 p-2 text-amber-700">
-                      تم خصم صيانة من هذه الدفعة: {formatMoney(maintenanceNote.amount)}
-                      {maintenanceNote.details ? ` - ${maintenanceNote.details}` : ""}
-                    </span>
+                    <div className="col-span-2 rounded-2xl bg-amber-50 p-2 text-amber-800">
+                      <p className="font-bold">تفاصيل الصيانة المخصومة: {formatMoney(maintenanceNote.amount)}</p>
+                      {maintenanceNote.items.length > 0 ? (
+                        <div className="mt-1 space-y-1">
+                          {maintenanceNote.items.map((item) => (
+                            <p key={item.id}>
+                              {item.description} · الوحدة: {item.unitName} · {formatMoney(item.cost)}
+                            </p>
+                          ))}
+                        </div>
+                      ) : maintenanceNote.details ? (
+                        <p className="mt-1">{maintenanceNote.details}</p>
+                      ) : null}
+                    </div>
                   )}
                   <span className="col-span-2 font-semibold text-primary">المبلغ المطلوب تحويله: {formatMoney(calculateNetAmountToTransferToOwner(normalizePaymentFinancials({ ...p, maintenanceDeductionAmount: maintenanceNote?.amount ?? p.maintenanceDeductionAmount ?? 0 })))}</span>
                   <span className={`col-span-2 ${p.ownerTransferred ? "text-emerald-700" : "text-amber-700"}`}>

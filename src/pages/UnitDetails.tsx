@@ -112,6 +112,13 @@ function isCorruptedDisplayName(value: string | undefined): boolean {
   if (/[ØÙÃÂ�]|\uFFFD/.test(value)) return true;
   return false;
 }
+function paymentNotesWithoutGeneratedMaintenance(payment: Payment): string {
+  return (payment.notes || "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("تم خصم صيانة بقيمة"))
+    .join("\n")
+    .trim();
+}
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
 import { buildPaymentReminderMessage, fillTemplate } from "@/utils/whatsapp";
@@ -799,6 +806,7 @@ export default function UnitDetails() {
                 const maintenanceDeductions = getPaymentMaintenanceDeductions(data, p.id);
                 const maintenanceDeductionAmount = getPaymentMaintenanceDeductionAmount(data, p);
                 const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
+                const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
                 return (
                   <div
                     key={p.id}
@@ -850,12 +858,20 @@ export default function UnitDetails() {
                         <span className="text-muted-foreground">طريقة الاستلام: {PAYMENT_RECEIVE_METHOD_LABELS[getPaymentReceiveMethod(p)]}</span>
                         <span className="text-muted-foreground">رسوم التحصيل: {formatMoney(p.collectionFeeAmount ?? 0)} - {COLLECTION_FEE_STATUS_LABELS[p.collectionFeeStatus ?? "uncollected"]}</span>
                         {maintenanceDeductionAmount > 0 && (
-                          <span className="rounded-2xl bg-amber-50 px-2 py-1 text-amber-700">
-                            تم خصم صيانة: {formatMoney(maintenanceDeductionAmount)}
-                            {maintenanceDeductions.length > 0
-                              ? ` - ${maintenanceDeductions.map((item) => `${item.repair.description}${item.unit?.name ? ` (${item.unit.name})` : ""}`).join("، ")}`
-                              : p.maintenanceSettlementNote ? ` - ${p.maintenanceSettlementNote}` : ""}
-                          </span>
+                          <div className="w-full rounded-2xl bg-amber-50 px-3 py-2 text-amber-800">
+                            <p className="font-bold">تفاصيل الصيانة المخصومة: {formatMoney(maintenanceDeductionAmount)}</p>
+                            {maintenanceDeductions.length > 0 ? (
+                              <div className="mt-1 space-y-1">
+                                {maintenanceDeductions.map((item) => (
+                                  <p key={item.repair.id}>
+                                    {item.repair.description} · الوحدة: {item.unit?.name || "صيانة عامة للعقار"} · {formatMoney(item.repair.cost)}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : p.maintenanceSettlementNote ? (
+                              <p className="mt-1">{p.maintenanceSettlementNote}</p>
+                            ) : null}
+                          </div>
                         )}
                         <span className="text-muted-foreground">الصافي للمالك: {formatMoney(calculateNetAmountToTransferToOwner(normalizePaymentFinancials({ ...p, maintenanceDeductionAmount })))}</span>
                         <span className={p.ownerTransferred ? "text-emerald-700" : "text-amber-700"}>
@@ -872,9 +888,9 @@ export default function UnitDetails() {
                       </p>
                     )}
 
-                    {p.notes && (
+                    {visibleNotes && (
                       <p className="min-w-0 rounded-2xl bg-muted p-2.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                        {p.notes}
+                        {visibleNotes}
                       </p>
                     )}
 
@@ -1732,7 +1748,10 @@ export default function UnitDetails() {
             const maintenanceDeductionAmount = linkedMaintenanceAmount + manualMaintenanceAmount;
             const maintenanceNote = maintenanceDeductionAmount > 0
               ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${[
-                  ...selectedRepairs.map((repair) => repair.description),
+                  ...selectedRepairs.map((repair) => {
+                    const repairUnit = data.units.find((item) => item.id === repair.unitId);
+                    return `${repair.description} (${repairUnit?.name || "صيانة عامة للعقار"} - ${formatMoney(repair.cost)})`;
+                  }),
                   maintenanceExpenseNote,
                 ].filter(Boolean).join("، ")}.`
               : "";
