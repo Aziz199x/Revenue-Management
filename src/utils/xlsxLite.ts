@@ -8,9 +8,15 @@
 
 export interface SheetSpec {
   name: string;
-  /** First row is treated as the header (bold). */
+  /** Number of leading rows styled as headers. Defaults to one. */
+  headerRows?: number;
   rows: (string | number | null | undefined)[][];
   colWidths?: number[];
+  /** A1 ranges to merge, for example ["C1:D1"]. */
+  merges?: string[];
+  /** Frozen rows/columns. Defaults to the configured header rows and zero columns. */
+  freezeRows?: number;
+  freezeColumns?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +48,9 @@ function sanitizeSheetName(name: string, index: number): string {
 }
 
 function sheetXml(spec: SheetSpec): string {
+  const headerRows = spec.headerRows ?? 1;
+  const freezeRows = spec.freezeRows ?? headerRows;
+  const freezeColumns = spec.freezeColumns ?? 0;
   const cols = spec.colWidths?.length
     ? `<cols>${spec.colWidths
         .map((width, i) => `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`)
@@ -54,7 +63,7 @@ function sheetXml(spec: SheetSpec): string {
         .map((value, colIndex) => {
           if (value === null || value === undefined || value === "") return "";
           const ref = `${columnRef(colIndex)}${rowIndex + 1}`;
-          const style = rowIndex === 0 ? ' s="1"' : "";
+          const style = rowIndex < headerRows ? ' s="1"' : "";
           if (typeof value === "number" && Number.isFinite(value)) {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
           }
@@ -65,8 +74,15 @@ function sheetXml(spec: SheetSpec): string {
     })
     .join("");
 
+  const pane = freezeRows > 0 || freezeColumns > 0
+    ? `<pane${freezeColumns > 0 ? ` xSplit="${freezeColumns}"` : ""}${freezeRows > 0 ? ` ySplit="${freezeRows}"` : ""} topLeftCell="${columnRef(freezeColumns)}${freezeRows + 1}" activePane="${freezeColumns > 0 && freezeRows > 0 ? "bottomRight" : freezeColumns > 0 ? "topRight" : "bottomLeft"}" state="frozen"/>`
+    : "";
+  const merges = spec.merges?.length
+    ? `<mergeCells count="${spec.merges.length}">${spec.merges.map((ref) => `<mergeCell ref="${escapeXml(ref)}"/>`).join("")}</mergeCells>`
+    : "";
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/>${cols}<sheetData>${rows}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0">${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="20"/>${cols}<sheetData>${rows}</sheetData>${merges}</worksheet>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,7 +211,7 @@ export function buildXlsx(sheets: SheetSpec[]): Uint8Array {
     .join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf xfId="0"/><xf xfId="0" fontId="1" applyFont="1"/></cellXfs></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF168F85"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"><color rgb="FFD5E5E2"/></left><right style="thin"><color rgb="FFD5E5E2"/></right><top style="thin"><color rgb="FFD5E5E2"/></top><bottom style="thin"><color rgb="FFD5E5E2"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf xfId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs></styleSheet>`;
 
   const entries: ZipEntry[] = [
     { path: "[Content_Types].xml", data: encoder.encode(contentTypes) },
