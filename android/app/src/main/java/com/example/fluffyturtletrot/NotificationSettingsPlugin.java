@@ -55,6 +55,63 @@ public class NotificationSettingsPlugin extends Plugin {
     }
 
     /**
+     * Opens the OEM "autostart / background launch" management screen.
+     * On MIUI/ColorOS/FuntouchOS/EMUI-style ROMs, alarms and broadcasts are
+     * blocked for apps without this permission even when battery is
+     * unrestricted. Tries known OEM activities, falls back to app details.
+     */
+    @PluginMethod
+    public void openAutoStartSettings(PluginCall call) {
+        final String[][] components = {
+            // Xiaomi / Redmi / Poco (MIUI, HyperOS)
+            {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
+            // Huawei
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"},
+            // Honor
+            {"com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+            // Oppo / Realme (ColorOS)
+            {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+            {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
+            // Vivo / iQOO (FuntouchOS)
+            {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
+            {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"},
+            // OnePlus
+            {"com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"},
+            // Samsung (battery / sleeping apps)
+            {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
+            // Asus
+            {"com.asus.mobilemanager", "com.asus.mobilemanager.autostart.AutoStartActivity"},
+        };
+        for (String[] component : components) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName(component[0], component[1]);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                JSObject result = new JSObject();
+                result.put("opened", component[0]);
+                call.resolve(result);
+                return;
+            } catch (Exception ignored) {
+                // try the next known OEM screen
+            }
+        }
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("opened", "app_details");
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Unable to open autostart settings", e);
+        }
+    }
+
+    /**
      * Opens the system dialog asking the user to exempt the app from battery
      * optimization (Doze restrictions). Falls back to the optimization list
      * screen, then to app details, if the direct request is unavailable.
@@ -98,6 +155,7 @@ public class NotificationSettingsPlugin extends Plugin {
         if (powerManager != null) {
             result.put("batteryUnrestricted", powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName()));
         }
+        result.put("manufacturer", Build.MANUFACTURER);
 
         String channelId = call.getString("channelId");
         if (channelId != null && !channelId.isEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

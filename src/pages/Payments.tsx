@@ -628,7 +628,7 @@ export default function Payments() {
 
       {/* Mark as Received Dialog */}
       <Dialog open={!!markReceived} onOpenChange={(o) => !o && setMarkReceived(null)}>
-        <DialogContent className="max-w-[90vw] rounded-3xl dialog-safe">
+        <DialogContent className="max-h-[88vh] max-w-[90vw] overflow-y-auto rounded-3xl dialog-safe">
           <DialogHeader className="text-right">
             <DialogTitle className="text-right">تأكيد استلام الدفعة</DialogTitle>
           </DialogHeader>

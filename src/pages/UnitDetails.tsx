@@ -82,7 +82,9 @@ import {
   getPaymentMaintenanceDeductions,
   getCollectionFeeRemainingAmount,
   getCollectionFeeSettledAmount,
+  getPaymentReportMonth,
 } from "@/data/helpers";
+import { formatYearMonthLabel } from "@/reporting/dateUtils";
 import {
   UNIT_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -122,7 +124,7 @@ function MarkAsReceivedDialog({
 }: {
   payment: Payment;
   fallbackFeePercent: number;
-  feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number }>;
+  feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number; monthLabel: string; dueDateLabel: string }>;
   onConfirm: (receivedDate: string, method: PaymentReceiveMethod, feePercent: number, notes: string | undefined, settlements: Array<{ paymentId: string; amount: number }>) => void;
   onCancel: () => void;
 }) {
@@ -144,7 +146,7 @@ function MarkAsReceivedDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-[90vw] rounded-3xl dialog-safe">
+      <DialogContent className="max-h-[88vh] max-w-[90vw] overflow-y-auto rounded-3xl dialog-safe">
         <DialogHeader className="text-right">
           <DialogTitle className="text-right">تأكيد استلام الدفعة</DialogTitle>
         </DialogHeader>
@@ -175,27 +177,30 @@ function MarkAsReceivedDialog({
                 <p className="font-bold text-amber-900">اقتراح ذكي لتسوية رسوم منصة إيجار</p>
                 <p className="mt-1 text-amber-800">اختر رسوم مكتب لم تُحصّل من وحدات أخرى في نفس العقار. سيُحفظ مرجع التسوية في الدفعتين.</p>
               </div>
-              {feeSuggestions.map((suggestion) => {
-                const selected = selectedSettlements[suggestion.payment.id] || 0;
-                return (
-                  <label key={suggestion.payment.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
-                    <input
-                      type="checkbox"
-                      checked={selected > 0}
-                      onChange={(event) => setSelectedSettlements((current) => {
-                        const next = { ...current };
-                        if (event.target.checked) next[suggestion.payment.id] = Math.min(suggestion.remaining, Math.max(0, grossAmount - settlementTotal));
-                        else delete next[suggestion.payment.id];
-                        return next;
-                      })}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-semibold">{suggestion.unitName} - {suggestion.tenantName}</span>
-                      <span className="text-muted-foreground">المتبقي للمكتب: {formatMoney(suggestion.remaining)}</span>
-                    </span>
-                  </label>
-                );
-              })}
+              <div className="max-h-44 space-y-2 overflow-y-auto pl-1">
+                {feeSuggestions.map((suggestion) => {
+                  const selected = selectedSettlements[suggestion.payment.id] || 0;
+                  return (
+                    <label key={suggestion.payment.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
+                      <input
+                        type="checkbox"
+                        checked={selected > 0}
+                        onChange={(event) => setSelectedSettlements((current) => {
+                          const next = { ...current };
+                          if (event.target.checked) next[suggestion.payment.id] = Math.min(suggestion.remaining, Math.max(0, grossAmount - settlementTotal));
+                          else delete next[suggestion.payment.id];
+                          return next;
+                        })}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{suggestion.unitName} - {suggestion.tenantName}</span>
+                        <span className="block text-muted-foreground">دفعة {suggestion.monthLabel} · استحقاق {suggestion.dueDateLabel}</span>
+                        <span className="text-muted-foreground">المتبقي للمكتب: {formatMoney(suggestion.remaining)}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
               {settlementTotal > 0 && <p className="font-bold text-amber-900">إجمالي التسوية: {formatMoney(settlementTotal)}</p>}
             </div>
           )}
@@ -303,6 +308,8 @@ export default function UnitDetails() {
       unitName: data.units.find((item) => item.id === payment.unitId)?.name || payment.unitName || "وحدة غير محددة",
       tenantName: data.tenants.find((item) => item.id === payment.tenantId || item.unitId === payment.unitId)?.name || payment.tenantName || "مستأجر غير محدد",
       remaining: getCollectionFeeRemainingAmount(data, payment),
+      monthLabel: formatYearMonthLabel(getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)),
+      dueDateLabel: formatDate(payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate),
     })) : [];
   const visibleTenants = data.tenants.filter((t) => {
     if (t.unitId !== unit.id) return false;

@@ -37,6 +37,7 @@ interface NotificationSettingsPlugin {
   openChannel(options: { channelId: string }): Promise<void>;
   openAppSettings(): Promise<void>;
   openBatteryOptimizationSettings(): Promise<void>;
+  openAutoStartSettings(): Promise<{ opened?: string }>;
   getStatus(options?: { channelId?: string }): Promise<NativeNotificationStatus>;
 }
 
@@ -50,6 +51,9 @@ const NativeNotificationSettings = registerPlugin<NotificationSettingsPlugin>("N
     },
     openBatteryOptimizationSettings: async () => {
       throw new Error("Battery optimization settings are only available in the native Android app");
+    },
+    openAutoStartSettings: async () => {
+      throw new Error("Autostart settings are only available in the native Android app");
     },
     getStatus: async () => ({ notificationsEnabled: notificationsSupported() && Notification.permission === "granted" }),
   }),
@@ -134,6 +138,8 @@ export interface NativeNotificationStatus {
   sdkInt?: number;
   /** True when the app is exempt from battery optimization (Doze). */
   batteryUnrestricted?: boolean;
+  /** Device manufacturer (used to hint OEM autostart requirements). */
+  manufacturer?: string;
   channelId?: string;
   channelExists?: boolean;
   channelImportance?: number;
@@ -355,6 +361,13 @@ export async function openAppNotificationSettings(): Promise<boolean> {
 export async function openBatteryOptimizationSettings(): Promise<boolean> {
   if (!isNative()) return false;
   await NativeNotificationSettings.openBatteryOptimizationSettings();
+  return true;
+}
+
+/** Opens the OEM autostart/background-launch screen (MIUI, ColorOS, ...). */
+export async function openAutoStartSettings(): Promise<boolean> {
+  if (!isNative()) return false;
+  await NativeNotificationSettings.openAutoStartSettings();
   return true;
 }
 

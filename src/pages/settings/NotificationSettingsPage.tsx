@@ -21,6 +21,7 @@ import {
   NotificationDiagnostics,
   notificationsSupported,
   openAppNotificationSettings,
+  openAutoStartSettings,
   openBatteryOptimizationSettings,
   openSystemNotificationSoundSettings,
   requestNotificationPermission,
@@ -458,6 +459,30 @@ export default function NotificationSettingsPage() {
               <p>قد يؤخر هذا وصول التذكيرات عند إغلاق التطبيق. اضغط الزر أدناه واختر «السماح» لإعفاء التطبيق من قيود البطارية.</p>
             </div>
           )}
+          <div className="rounded-2xl bg-sky-50 p-3 text-xs leading-6 text-sky-900">
+            <p className="font-bold">التنبيهات لا تصل والتطبيق مغلق؟ (مهم لأجهزة شاومي/أوبو/فيفو/هواوي/هونر)</p>
+            <p>حتى مع إلغاء تقييد البطارية، بعض الشركات تمنع التطبيق من العمل في الخلفية ما لم تفعّل له «التشغيل التلقائي / Autostart». افعل ثلاثة أشياء:</p>
+            <p>1. اضغط «فتح إعدادات التشغيل التلقائي» أدناه وفعّل الخيار للتطبيق.</p>
+            <p>2. من شاشة التطبيقات الأخيرة، اضغط مطولًا على التطبيق واختر «قفل» 🔒 حتى لا يزيله «مسح الكل».</p>
+            <p>3. لا تستخدم «فرض الإيقاف» إطلاقًا — يوقف كل المنبهات حتى تفتح التطبيق يدويًا.</p>
+            {diagnostics?.nativeStatus?.manufacturer && (
+              <p className="mt-1 opacity-70">جهازك: {diagnostics.nativeStatus.manufacturer}</p>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            className="w-full rounded-xl text-xs"
+            onClick={async () => {
+              try {
+                const opened = await openAutoStartSettings();
+                if (!opened) showError("متاح داخل تطبيق Android فقط");
+              } catch {
+                showError("تعذر فتح إعدادات التشغيل التلقائي");
+              }
+            }}
+          >
+            فتح إعدادات التشغيل التلقائي (Autostart)
+          </Button>
           <Button
             variant="outline"
             className="w-full rounded-xl text-xs"
