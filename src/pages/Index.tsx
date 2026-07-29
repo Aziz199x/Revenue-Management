@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Gavel,
   Search,
+  Send,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -32,6 +33,9 @@ import {
   buildContractExpiryReminders,
   getContractEndDate,
   getActiveContractsNeedingAttention,
+  isPaymentPaid,
+  normalizePaymentFinancials,
+  calculateNetAmountToTransferToOwner,
 } from "@/data/helpers";
 import { fillTemplate } from "@/utils/whatsapp";
 import { useMemo, useState } from "react";
@@ -45,6 +49,7 @@ const kindIcons = {
   bill: Zap,
   request: ClipboardList,
   eviction: Gavel,
+  owner_transfer: Send,
 };
 
 const kindColors = {
@@ -54,6 +59,7 @@ const kindColors = {
   bill: "bg-sky-100 text-sky-700",
   request: "bg-purple-100 text-purple-700",
   eviction: "bg-red-100 text-red-700",
+  owner_transfer: "bg-cyan-100 text-cyan-700",
 };
 
 export default function Index() {
@@ -77,7 +83,7 @@ export default function Index() {
     };
   }, [data, safeProperty]);
   const stats = globalStats(dashboardData);
-  const reminders = collectReminders(dashboardData).filter((reminder) => reminder.kind !== "contract").slice(0, 6);
+  const reminders = collectReminders(dashboardData).filter((reminder) => reminder.kind !== "contract");
   const contractExpiryReminders = buildContractExpiryReminders(dashboardData.contracts, dashboardData.units, dashboardData.buildings, dashboardData.settings.contractReminderDays);
   const nearestContractStatus = getActiveContractsNeedingAttention(dashboardData.contracts)
     .map((contract) => {
@@ -110,6 +116,12 @@ export default function Index() {
     .slice(0, homeMaxItems);
   const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, homeMaxItems);
   const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, homeMaxItems);
+  const pendingOwnerTransfers = dashboardData.payments
+    .filter((payment) => !payment.deletedAt && isPaymentPaid(payment) && !payment.ownerTransferred);
+  const pendingOwnerTransferAmount = pendingOwnerTransfers.reduce(
+    (sum, payment) => sum + calculateNetAmountToTransferToOwner(normalizePaymentFinancials(payment)),
+    0,
+  );
   const nearestContracts = [
     ...contractExpiryReminders,
     ...nearestContractStatus.filter((item) =>
@@ -235,6 +247,25 @@ export default function Index() {
           </Link>
         )}
 
+        {pendingOwnerTransfers.length > 0 && (
+          <Link
+            to="/payments"
+            className="flex items-center gap-3 rounded-3xl border border-cyan-200 bg-cyan-50 p-4 animate-fade-up"
+            style={{ animationDelay: "170ms" }}
+          >
+            <div className="rounded-full bg-cyan-100 p-2.5">
+              <Send className="h-5 w-5 text-cyan-700" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-cyan-800">دفعات بانتظار التحويل للمالك</p>
+              <p className="text-xs text-cyan-700">
+                {pendingOwnerTransfers.length} دفعة · {formatMoney(pendingOwnerTransferAmount)}
+              </p>
+            </div>
+            <ChevronLeft className="h-5 w-5 text-cyan-500" />
+          </Link>
+        )}
+
         <Tabs defaultValue="payments" dir="rtl" className="animate-fade-up" style={{ animationDelay: "180ms" }}>
           <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1">
             <TabsTrigger value="contracts" className="rounded-xl py-2 text-[11px] font-bold">
@@ -300,7 +331,7 @@ export default function Index() {
 
           <TabsContent value="general" className="mt-3 space-y-2">
             {generalReminders.length === 0 ? (
-              <EmptyState icon={Bell} title="لا توجد تذكيرات عامة" description="ستظهر هنا تذكيرات الصيانة والفواتير والطلبات" />
+              <EmptyState icon={Bell} title="لا توجد تذكيرات عامة" description="ستظهر هنا الصيانة والفواتير والتحويلات المعلقة" />
             ) : (
               generalReminders.map((r) => {
                 const Icon = kindIcons[r.kind];

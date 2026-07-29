@@ -24,7 +24,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import { useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
-import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth } from "@/data/helpers";
+import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
@@ -226,15 +226,17 @@ export default function Payments() {
       })
       .filter(Boolean) as Array<(typeof eligibleOfficeFees)[number] & { amount: number }>;
     const settlementTotal = selectedFeeSettlements.reduce((sum, item) => sum + item.amount, 0);
-    if (settlementTotal > gross) {
-      showError("مستحقات التحصيل المختارة لا يمكن أن تتجاوز مبلغ الدفعة الحالية");
+    if (fee + settlementTotal + maintenance > gross) {
+      showError("مجموع رسوم التحصيل والصيانة المختارة لا يمكن أن يتجاوز مبلغ الدفعة الحالية");
       return;
     }
     update((prev) => ({
       ...prev,
       payments: prev.payments.map((p) =>
         p.id === markReceived.id
-          ? normalizePaymentFinancials({
+          ? (() => {
+            const autoOwnerTransfer = shouldAutoTransferEjarPayment(prev, p, mrMethod);
+            return normalizePaymentFinancials({
               ...p,
               status: "paid" as PaymentStatus,
               receivedDate: mrDate,
@@ -250,8 +252,12 @@ export default function Payments() {
               collectionFeePercentage: mrFeePercent,
               collectionFeeAmount: fee,
               maintenanceDeductionAmount: maintenance,
-              ownerTransferred: false,
-            })
+              ownerTransferred: autoOwnerTransfer,
+              ownerTransferDate: autoOwnerTransfer ? mrDate : null,
+              ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : null,
+              ownerTransferNotes: autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
+            });
+          })()
           : selectedFeeSettlements.some((item) => item.payment.id === p.id)
             ? (() => {
                 const selected = selectedFeeSettlements.find((item) => item.payment.id === p.id)!;
@@ -708,9 +714,31 @@ export default function Payments() {
               </div>
             )}
             {eligibleRepairs.length > 0 && (
-              <div className="space-y-2"><Label>خصم الصيانة</Label>{eligibleRepairs.map((repair) => (
-                <label key={repair.id} className="flex items-center gap-2 rounded-xl border p-2 text-xs"><input type="checkbox" checked={selectedRepairIds.includes(repair.id)} onChange={(e) => setSelectedRepairIds((ids) => e.target.checked ? [...ids, repair.id] : ids.filter((id) => id !== repair.id))} /><span className="min-w-0 flex-1">{repair.description}</span><span>{formatMoney(repair.cost)}</span></label>
-              ))}</div>
+              <div className="space-y-2 rounded-2xl border border-sky-300 bg-sky-50 p-3">
+                <div>
+                  <p className="text-xs font-bold text-sky-900">اقتراح خصم تكاليف الصيانة</p>
+                  <p className="mt-1 text-[11px] text-sky-800">اختر مصروفات الصيانة غير المخصومة من نفس العقار. هذا الاقتراح مستقل عن تسوية رسوم التحصيل.</p>
+                </div>
+                {eligibleRepairs.map((repair) => {
+                  const repairUnit = data.units.find((unit) => unit.id === repair.unitId);
+                  return (
+                    <label key={repair.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedRepairIds.includes(repair.id)}
+                        onChange={(event) => setSelectedRepairIds((ids) =>
+                          event.target.checked ? [...ids, repair.id] : ids.filter((id) => id !== repair.id),
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{repair.description}</span>
+                        <span className="text-muted-foreground">{repairUnit?.name || "صيانة العقار"} · {formatDate(repair.repairDate)}</span>
+                      </span>
+                      <span className="shrink-0 font-bold text-sky-800">{formatMoney(repair.cost)}</span>
+                    </label>
+                  );
+                })}
+              </div>
             )}
             <div className="space-y-1.5">
               <Label>تاريخ الاستلام *</Label>
@@ -735,6 +763,23 @@ export default function Payments() {
                 </SelectContent>
               </Select>
             </div>
+            {markReceived && mrMethod === "ejar_platform" && (
+              <div className={`rounded-2xl border p-3 text-xs ${
+                getPaymentLessorCapacity(data, data.payments.find((payment) => payment.id === markReceived.id) || {
+                  unitId: markReceived.unitId,
+                  paymentDate: mrDate,
+                }) === "owner"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}>
+                {getPaymentLessorCapacity(data, data.payments.find((payment) => payment.id === markReceived.id) || {
+                  unitId: markReceived.unitId,
+                  paymentDate: mrDate,
+                }) === "owner"
+                  ? "سيتم تسجيل التحويل للمالك تلقائيًا بتاريخ الاستلام لأن صفة المؤجر «مالك العقار»."
+                  : "صفة المؤجر «ممثل المالك»، لذلك يلزم تسجيل التحويل للمالك يدويًا."}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>ملاحظات</Label>
               <Textarea value={mrNotes} onChange={(e) => setMrNotes(e.target.value)} className="rounded-xl" />

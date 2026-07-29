@@ -69,8 +69,9 @@ function data(payments, contracts = [contract]) {
     bills: [],
     repairs: [],
     requests: [],
+    tenantRequests: [],
     collectionFeeSettlements: [],
-    settings: { reportMonthCutoffDay: 25 },
+    settings: { reportMonthCutoffDay: 25, contractReminderDays: 80 },
   };
 }
 
@@ -105,6 +106,24 @@ test("money and dates use Western digits", () => {
   assert.equal(helpers.formatMoney(1234567.89), "1,234,567.89 ر.س");
   assert.doesNotMatch(helpers.formatMoney(1234567.89), /[٠-٩۰-۹]/);
   assert.doesNotMatch(helpers.formatDate("2026-07-13"), /[٠-٩۰-۹]/);
+});
+
+test("a received payment remains in reminders until it is transferred to the owner", () => {
+  const pending = data([payment({ receivedDate: "2026-07-01", ownerTransferred: false })]);
+  const completed = data([payment({ receivedDate: "2026-07-01", ownerTransferred: true })]);
+
+  assert.equal(helpers.collectReminders(pending).filter((item) => item.kind === "owner_transfer").length, 1);
+  assert.equal(helpers.collectReminders(completed).filter((item) => item.kind === "owner_transfer").length, 0);
+});
+
+test("Ejar auto-transfer follows the lessor capacity on the contract", () => {
+  const ownerContract = { ...contract, lessorCapacity: "owner" };
+  const representativeContract = { ...contract, lessorCapacity: "representative" };
+  const record = payment({ receiveMethod: "ejar_platform" });
+
+  assert.equal(helpers.shouldAutoTransferEjarPayment(data([record], [ownerContract]), record, "ejar_platform"), true);
+  assert.equal(helpers.shouldAutoTransferEjarPayment(data([record], [representativeContract]), record, "ejar_platform"), false);
+  assert.equal(helpers.shouldAutoTransferEjarPayment(data([record], [ownerContract]), record, "bank_transfer"), false);
 });
 
 test("early May collection for a June installment is counted in June", () => {

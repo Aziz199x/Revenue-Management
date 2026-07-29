@@ -33,7 +33,7 @@ function netOwnerAmount(payment: Payment): number {
   return Math.round((gross - (deductFee ? fee : 0) - maintenance) * 100) / 100;
 }
 
-function migratePayments(payments: Payment[], units: Unit[], buildings: Building[]): Payment[] {
+function migratePayments(payments: Payment[], units: Unit[], buildings: Building[], contracts: Contract[]): Payment[] {
   return payments.map((payment) => {
     const gross = payment.grossAmount ?? payment.amount;
     const unit = units.find((item) => item.id === payment.unitId);
@@ -49,6 +49,10 @@ function migratePayments(payments: Payment[], units: Unit[], buildings: Building
       : payment.collectionFeePercent === undefined ? calculatedFee : payment.collectionFeeAmount ?? calculatedFee;
     const maintenance = payment.maintenanceDeductionAmount ?? 0;
     const receiveMethod = normalizeStoredReceiveMethod(payment.receiveMethod ?? payment.paymentMethod);
+    const contract = contracts.find((item) => item.id === payment.contractId);
+    const autoOwnerTransfer = payment.status === "paid"
+      && receiveMethod === "ejar_platform"
+      && (contract?.lessorCapacity ?? "owner") === "owner";
     const collectionFeeStatus = payment.status === "paid"
       ? feeStatusForReceiveMethod(receiveMethod, payment.collectionFeeStatus)
       : payment.collectionFeeStatus;
@@ -70,10 +74,12 @@ function migratePayments(payments: Payment[], units: Unit[], buildings: Building
       netAmountToTransferToOwner: payment.status !== "paid" && needsBuildingFee
         ? Math.round((gross - fee - maintenance) * 100) / 100
         : payment.netAmountToTransferToOwner ?? Math.round((gross - fee - maintenance) * 100) / 100,
-      ownerTransferred: payment.ownerTransferred ?? false,
-      ownerTransferDate: payment.ownerTransferDate ?? null,
-      ownerTransferMethod: payment.ownerTransferMethod ?? null,
-      ownerTransferNotes: payment.ownerTransferNotes ?? "",
+      ownerTransferred: autoOwnerTransfer || (payment.ownerTransferred ?? false),
+      ownerTransferDate: autoOwnerTransfer
+        ? payment.ownerTransferDate ?? payment.receivedDate ?? null
+        : payment.ownerTransferDate ?? null,
+      ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : payment.ownerTransferMethod ?? null,
+      ownerTransferNotes: autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : payment.ownerTransferNotes ?? "",
     };
     return { ...migrated, netAmountToTransferToOwner: netOwnerAmount(migrated) };
   });
@@ -113,7 +119,12 @@ function migrateContracts(contracts: Contract[]): Contract[] {
     const startDate = normalizeIsoDate(contract.startDate);
     const endDate = normalizeIsoDate(contract.endDate);
     if (!endDate && contract.endDate) console.warn("[Contract Migration] could not normalize end date:", contract.id, contract.endDate);
-    return { ...contract, startDate: startDate ?? contract.startDate, endDate: endDate ?? contract.endDate };
+    return {
+      ...contract,
+      lessorCapacity: contract.lessorCapacity ?? "owner",
+      startDate: startDate ?? contract.startDate,
+      endDate: endDate ?? contract.endDate,
+    };
   });
 }
 
@@ -132,13 +143,14 @@ function loadData(): AppData {
       collectionFeePercent: building.collectionFeePercent ?? legacyFee,
     })) as Building[];
     const units: Unit[] = parsed.units || [];
+    const contracts = migrateContracts(parsed.contracts || []);
     return withComputedUnitStatuses({
       ...EMPTY_DATA,
       ...parsed,
       buildings,
       units,
-      contracts: migrateContracts(parsed.contracts || []),
-      payments: migratePayments(parsed.payments || [], units, buildings),
+      contracts,
+      payments: migratePayments(parsed.payments || [], units, buildings, contracts),
       repairs: (parsed.repairs || []).map((repair: AppData["repairs"][number]) => ({
         ...repair,
         isDeductedFromOwnerTransfer: repair.isDeductedFromOwnerTransfer ?? false,

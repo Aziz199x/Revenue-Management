@@ -146,6 +146,8 @@ export interface Contract {
   securityDeposit?: number;
   brokerageFee?: number;
   lessorName?: string;
+  /** Determines whether Ejar pays the owner directly or pays an office representative. */
+  lessorCapacity?: "owner" | "representative";
   lessorIdType?: string;
   lessorIdNumber?: string;
   lessorPhone?: string;

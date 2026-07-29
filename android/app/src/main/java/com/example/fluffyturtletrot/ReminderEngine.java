@@ -241,6 +241,12 @@ public final class ReminderEngine {
         Calendar due = parseIsoDate(reminder.optString("dueDate"));
         if (due == null) return null;
         String kind = reminder.optString("kind");
+        if ("owner_transfer".equals(kind)) {
+            Calendar start = todayMidnight();
+            Calendar end = (Calendar) start.clone();
+            end.add(Calendar.DAY_OF_MONTH, OVERDUE_RENT_TAIL_DAYS);
+            return new long[] { start.getTimeInMillis(), end.getTimeInMillis() };
+        }
         boolean isContract = "contract".equals(kind) || "eviction".equals(kind);
         int window = reminder.has("reminderWindow") && !reminder.isNull("reminderWindow")
                 ? reminder.optInt("reminderWindow")
@@ -352,6 +358,7 @@ public final class ReminderEngine {
         }
         if ("rent".equals(kind)) return days < 0 ? "دفعة متأخرة" : "موعد سداد الإيجار";
         if ("maintenance".equals(kind)) return "طلب صيانة معلق";
+        if ("owner_transfer".equals(kind)) return "تحويل للمالك مطلوب";
         String title = reminder.optString("title", "");
         return title.isEmpty() ? "تذكير" : title;
     }
@@ -374,6 +381,10 @@ public final class ReminderEngine {
         if ("rent".equals(kind) && days < 0) {
             String amount = formatArabicNumber(reminder.optDouble("amount", 0));
             return "لديك دفعة إيجار متأخرة للوحدة " + unitName + " بمبلغ " + amount + " ر.س.";
+        }
+        if ("owner_transfer".equals(kind)) {
+            String amount = formatArabicNumber(reminder.optDouble("amount", 0));
+            return "دفعة مستلمة للوحدة " + unitName + " بقيمة " + amount + " ر.س لم تُحوّل للمالك بعد.";
         }
         String title = reminder.optString("title", "");
         String prefix = "موعد سداد الإيجار".equals(title) || "rent".equals(kind) ? "دفعة إيجار" : title;

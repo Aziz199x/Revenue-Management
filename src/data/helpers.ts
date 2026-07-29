@@ -508,6 +508,33 @@ export function getPaymentMaintenanceDeductionAmount(data: AppData, payment: Pay
   return linkedTotal || payment.maintenanceDeductionAmount || 0;
 }
 
+export function getPaymentLessorCapacity(
+  data: AppData,
+  payment: Pick<Payment, "contractId" | "unitId" | "paymentDate" | "dueDateGregorian" | "nextDueDate">,
+): "owner" | "representative" {
+  const dueDate = payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate;
+  const contract = (payment.contractId
+    ? data.contracts.find((item) => item.id === payment.contractId)
+    : undefined)
+    ?? data.contracts.find((item) => {
+      if (normalizeId(item.unitId) !== normalizeId(payment.unitId) || item.deletedAt || item.status === "cancelled") return false;
+      const endDate = getContractEndDate(item) || item.endDate;
+      return !!item.startDate && item.startDate <= dueDate && (!endDate || endDate >= dueDate);
+    });
+  // Existing contracts predate this field. Owner is the safest migration
+  // default because Ejar normally deposits directly to the registered lessor.
+  return contract?.lessorCapacity ?? "owner";
+}
+
+export function shouldAutoTransferEjarPayment(
+  data: AppData,
+  payment: Pick<Payment, "contractId" | "unitId" | "paymentDate" | "dueDateGregorian" | "nextDueDate">,
+  receiveMethod?: PaymentReceiveMethod,
+): boolean {
+  return normalizeReceiveMethod(receiveMethod) === "ejar_platform"
+    && getPaymentLessorCapacity(data, payment) === "owner";
+}
+
 /** Display-only projection. It never mutates or removes stored installments. */
 export function getVisiblePaymentsByContract(
   payments: Payment[],
@@ -733,7 +760,7 @@ export function requestStats(data: AppData) {
 
 export interface ReminderItem {
   id: string;
-  kind: "rent" | "contract" | "eviction" | "maintenance" | "bill" | "request";
+  kind: "rent" | "contract" | "eviction" | "maintenance" | "bill" | "request" | "owner_transfer";
   title: string;
   subtitle: string;
   date: string;
@@ -766,6 +793,23 @@ export function collectReminders(data: AppData): ReminderItem[] {
       days: daysUntil(dueDate),
       unitId: p.unitId,
       amount: getRemainingPaymentAmount(p),
+      tenantName: p.tenantName,
+      unitName: data.units.find((unit) => normalizeId(unit.id) === normalizeId(p.unitId))?.name,
+    });
+  }
+
+  for (const p of data.payments) {
+    if (p.deletedAt || !isPaymentPaid(p) || p.ownerTransferred) continue;
+    const receivedDate = p.receivedDate || p.paymentDate || todayISO();
+    items.push({
+      id: `owner-transfer-${p.id}`,
+      kind: "owner_transfer",
+      title: "دفعة مستلمة لم تُحوّل للمالك",
+      subtitle: `${unitName(p.unitId)} · تم الاستلام ${formatDate(receivedDate)}`,
+      date: receivedDate,
+      days: daysUntil(receivedDate),
+      unitId: p.unitId,
+      amount: calculateNetAmountToTransferToOwner(normalizePaymentFinancials(p)),
       tenantName: p.tenantName,
       unitName: data.units.find((unit) => normalizeId(unit.id) === normalizeId(p.unitId))?.name,
     });

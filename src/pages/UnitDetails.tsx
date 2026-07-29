@@ -83,6 +83,8 @@ import {
   getCollectionFeeRemainingAmount,
   getCollectionFeeSettledAmount,
   getPaymentReportMonth,
+  isPaymentPaid,
+  shouldAutoTransferEjarPayment,
 } from "@/data/helpers";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
 import {
@@ -119,19 +121,31 @@ function MarkAsReceivedDialog({
   payment,
   fallbackFeePercent,
   feeSuggestions,
+  repairSuggestions,
+  lessorCapacity,
   onConfirm,
   onCancel,
 }: {
   payment: Payment;
   fallbackFeePercent: number;
+  lessorCapacity: "owner" | "representative";
   feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number; monthLabel: string; dueDateLabel: string }>;
-  onConfirm: (receivedDate: string, method: PaymentReceiveMethod, feePercent: number, notes: string | undefined, settlements: Array<{ paymentId: string; amount: number }>) => void;
+  repairSuggestions: Array<{ repair: Repair; unitName: string }>;
+  onConfirm: (
+    receivedDate: string,
+    method: PaymentReceiveMethod,
+    feePercent: number,
+    notes: string | undefined,
+    settlements: Array<{ paymentId: string; amount: number }>,
+    repairIds: string[],
+  ) => void;
   onCancel: () => void;
 }) {
   const [receivedDate, setReceivedDate] = useState(todayISO());
   const [method, setMethod] = useState<PaymentReceiveMethod>("bank_transfer");
   const [notes, setNotes] = useState("");
   const [selectedSettlements, setSelectedSettlements] = useState<Record<string, number>>({});
+  const [selectedRepairIds, setSelectedRepairIds] = useState<string[]>([]);
 
   const grossAmount = payment.grossAmount ?? payment.amount;
   // Legacy payments may not have stored a fee percentage. Reverting one of
@@ -143,6 +157,10 @@ function MarkAsReceivedDialog({
   const feeAmount = Math.round(grossAmount * feePercent) / 100;
   const netAmount = Math.round((grossAmount - feeAmount) * 100) / 100;
   const settlementTotal = Object.values(selectedSettlements).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+  const maintenanceTotal = repairSuggestions
+    .filter(({ repair }) => selectedRepairIds.includes(repair.id))
+    .reduce((sum, { repair }) => sum + repair.cost, 0);
+  const totalDeductions = feeAmount + settlementTotal + maintenanceTotal;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
@@ -167,7 +185,7 @@ function MarkAsReceivedDialog({
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">الصافي بعد رسوم التحصيل</span>
-                  <span className="font-semibold">{formatMoney(netAmount - settlementTotal)}</span>
+                  <span className="font-semibold">{formatMoney(grossAmount - totalDeductions)}</span>
                 </div>
               </>
           </div>
@@ -204,6 +222,40 @@ function MarkAsReceivedDialog({
               {settlementTotal > 0 && <p className="font-bold text-amber-900">إجمالي التسوية: {formatMoney(settlementTotal)}</p>}
             </div>
           )}
+          {repairSuggestions.length > 0 && (
+            <div className="space-y-2 rounded-2xl border border-sky-300 bg-sky-50 p-3 text-xs">
+              <div>
+                <p className="font-bold text-sky-900">اقتراح خصم تكاليف الصيانة</p>
+                <p className="mt-1 text-sky-800">توجد تكاليف صيانة لم تُخصم بعد داخل العقار. اختر ما تريد خصمه من هذه الدفعة.</p>
+              </div>
+              <div className="max-h-44 space-y-2 overflow-y-auto pl-1">
+                {repairSuggestions.map(({ repair, unitName }) => (
+                  <label key={repair.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedRepairIds.includes(repair.id)}
+                      onChange={(event) => setSelectedRepairIds((current) =>
+                        event.target.checked
+                          ? [...current, repair.id]
+                          : current.filter((id) => id !== repair.id),
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{repair.description}</span>
+                      <span className="block text-muted-foreground">{unitName} · {formatDate(repair.repairDate)}</span>
+                    </span>
+                    <span className="shrink-0 font-bold text-sky-800">{formatMoney(repair.cost)}</span>
+                  </label>
+                ))}
+              </div>
+              {maintenanceTotal > 0 && <p className="font-bold text-sky-900">إجمالي خصم الصيانة: {formatMoney(maintenanceTotal)}</p>}
+            </div>
+          )}
+          {totalDeductions > grossAmount && (
+            <p className="rounded-xl bg-red-50 p-2 text-xs font-semibold text-red-700">
+              مجموع الخصومات يتجاوز مبلغ الدفعة. ألغِ بعض الخيارات للمتابعة.
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label>تاريخ الاستلام</Label>
             <Input
@@ -227,6 +279,13 @@ function MarkAsReceivedDialog({
               </SelectContent>
             </Select>
           </div>
+          {method === "ejar_platform" && (
+            <div className={`rounded-2xl border p-3 text-xs ${lessorCapacity === "owner" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+              {lessorCapacity === "owner"
+                ? "سيتم تسجيل التحويل للمالك تلقائيًا بتاريخ الاستلام لأن صفة المؤجر في العقد «مالك العقار»."
+                : "صفة المؤجر في العقد «ممثل المالك»، لذلك ستبقى الدفعة بانتظار تسجيل التحويل للمالك يدويًا."}
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>ملاحظات</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-xl" />
@@ -235,7 +294,18 @@ function MarkAsReceivedDialog({
             <Button variant="outline" className="flex-1 rounded-xl" onClick={onCancel}>
               إلغاء
             </Button>
-            <Button className="flex-1 rounded-xl" disabled={settlementTotal > grossAmount} onClick={() => onConfirm(receivedDate, method, feePercent, notes.trim() || undefined, Object.entries(selectedSettlements).map(([paymentId, amount]) => ({ paymentId, amount })))}>
+            <Button
+              className="flex-1 rounded-xl"
+              disabled={totalDeductions > grossAmount}
+              onClick={() => onConfirm(
+                receivedDate,
+                method,
+                feePercent,
+                notes.trim() || undefined,
+                Object.entries(selectedSettlements).map(([paymentId, amount]) => ({ paymentId, amount })),
+                selectedRepairIds,
+              )}
+            >
               تأكيد الاستلام
             </Button>
           </div>
@@ -273,6 +343,7 @@ export default function UnitDetails() {
   const [editRequest, setEditRequest] = useState<TenantRequest | null>(null);
   const [markReceived, setMarkReceived] = useState<Payment | null>(null);
   const [showAllContractPayments, setShowAllContractPayments] = useState(false);
+  const [showReceivedPayments, setShowReceivedPayments] = useState(false);
   const [ejarImportOpen, setEjarImportOpen] = useState(false);
   const [pendingContractUpdate, setPendingContractUpdate] = useState<{
     original: Contract;
@@ -311,6 +382,16 @@ export default function UnitDetails() {
       monthLabel: formatYearMonthLabel(getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)),
       dueDateLabel: formatDate(payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate),
     })) : [];
+  const maintenanceSuggestions = markReceived ? data.repairs
+    .filter((repair) =>
+      !repair.isDeductedFromOwnerTransfer
+      && repair.status !== "cancelled"
+      && (repair.buildingId === unit.buildingId || (repair.unitId ? buildingUnitIds.has(repair.unitId) : false)),
+    )
+    .map((repair) => ({
+      repair,
+      unitName: data.units.find((item) => item.id === repair.unitId)?.name || building?.name || "صيانة العقار",
+    })) : [];
   const visibleTenants = data.tenants.filter((t) => {
     if (t.unitId !== unit.id) return false;
     const unitContractsForTenant = data.contracts.filter(
@@ -332,13 +413,22 @@ export default function UnitDetails() {
   const payments = data.payments
     .filter((p) => p.unitId === unit.id)
     .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
-  const collapsedPayments = getVisiblePaymentsByContract(payments, { includePaidHistory: true });
-  const visiblePayments = showAllContractPayments
-    ? payments.filter((payment) => !payment.deletedAt)
-    : collapsedPayments;
+  const cleanPayments = payments.filter((payment) => !payment.deletedAt);
+  const collapsedUnreceivedPayments = getVisiblePaymentsByContract(cleanPayments);
+  const allUnreceivedPayments = cleanPayments.filter((payment) => !isPaymentPaid(payment));
+  const receivedPayments = cleanPayments.filter((payment) => isPaymentPaid(payment));
+  const pendingOwnerTransferPayments = receivedPayments.filter((payment) => !payment.ownerTransferred);
+  const visiblePayments = [
+    ...(showAllContractPayments ? allUnreceivedPayments : collapsedUnreceivedPayments),
+    ...(showReceivedPayments ? receivedPayments : pendingOwnerTransferPayments),
+  ]
+    .filter((payment, index, list) => list.findIndex((item) => item.id === payment.id) === index)
+    .sort((a, b) => (b.dueDateGregorian || b.nextDueDate || b.paymentDate)
+      .localeCompare(a.dueDateGregorian || a.nextDueDate || a.paymentDate));
   const contracts = data.contracts
     .filter((c) => c.unitId === unit.id && !c.deletedAt)
     .sort((a, b) => b.endDate.localeCompare(a.endDate));
+  const currentLessorCapacity = contracts.find((contract) => isActiveContract(contract))?.lessorCapacity ?? "owner";
   const bills = data.bills
     .filter((b) => b.unitId === unit.id)
     .sort((a, b) => b.billDate.localeCompare(a.billDate));
@@ -637,13 +727,26 @@ export default function UnitDetails() {
             <Button className="w-full rounded-xl" onClick={() => setPaymentOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> تسجيل دفعة إيجار
             </Button>
-            {payments.length > collapsedPayments.length && (
-              <Button variant="outline" size="sm" className="w-full rounded-xl text-xs" onClick={() => setShowAllContractPayments((current) => !current)}>
-                {showAllContractPayments ? "إخفاء الدفعات المستقبلية" : "عرض كل دفعات العقد"}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={showAllContractPayments ? "secondary" : "outline"}
+                size="sm"
+                className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
+                onClick={() => setShowAllContractPayments((current) => !current)}
+              >
+                {showAllContractPayments ? "إخفاء المستقبلية" : "كل دفعات العقد"}
               </Button>
-            )}
+              <Button
+                variant={showReceivedPayments ? "secondary" : "outline"}
+                size="sm"
+                className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
+                onClick={() => setShowReceivedPayments((current) => !current)}
+              >
+                {showReceivedPayments ? "إخفاء المستلمة" : `الدفعات المستلمة (${receivedPayments.length})`}
+              </Button>
+            </div>
             {visiblePayments.length === 0 ? (
-              <EmptyState icon={Wallet} title="لا توجد دفعات مسجلة" description="أضف عقداً لإنشاء الدفعات تلقائياً" />
+              <EmptyState icon={Wallet} title="لا توجد دفعات تحتاج إجراء" description="استخدم الزرين أعلاه لعرض الدفعات المستقبلية أو المستلمة" />
             ) : (
               visiblePayments.map((p) => {
                 const st = effectiveStatus(p);
@@ -722,7 +825,7 @@ export default function UnitDetails() {
 
                     <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        {(st === "unpaid" || st === "overdue") && (
+                        {(st === "unpaid" || st === "overdue" || st === "partial") && (
                         <Button
                           size="sm"
                           className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"
@@ -732,7 +835,7 @@ export default function UnitDetails() {
                           تم الاستلام
                         </Button>
                         )}
-                      {(st === "unpaid" || st === "overdue") && (
+                      {(st === "unpaid" || st === "overdue" || st === "partial") && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -848,6 +951,13 @@ export default function UnitDetails() {
                           {c.autoRenewal && (
                             <span className="inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700">{AUTO_RENEWAL_LABEL}</span>
                           )}
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                            (c.lessorCapacity ?? "owner") === "owner"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-800"
+                          }`}>
+                            صفة المؤجر: {(c.lessorCapacity ?? "owner") === "owner" ? "مالك" : "ممثل"}
+                          </span>
                           {(c.status === "eviction_needed" || c.status === "eviction_filed" || c.tenantDidNotLeave) && (
                             <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-semibold text-red-700">يحتاج إخلاء</span>
                           )}
@@ -1190,6 +1300,7 @@ export default function UnitDetails() {
       <FormSheet open={paymentOpen} onOpenChange={setPaymentOpen} title="تسجيل دفعة إيجار">
         <PaymentForm
           defaultAmount={unit.rentAmount}
+          lessorCapacity={currentLessorCapacity}
           onSubmit={(values) => {
             const grossAmount = values.amount;
             const collectionFeePercent = getResolvedCollectionFeePercent(building, unit);
@@ -1201,7 +1312,9 @@ export default function UnitDetails() {
                 grossAmount, collectionFeePercent, collectionFeeAmount,
                 netAmountAfterCollectionFee: grossAmount - collectionFeeAmount,
                 maintenanceDeductionAmount: 0,
-                ownerTransferred: false,
+                ownerTransferred: values.ownerTransferred ?? false,
+                ownerTransferDate: values.ownerTransferDate ?? null,
+                ownerTransferMethod: values.ownerTransferMethod ?? null,
               })],
             }));
             setPaymentOpen(false);
@@ -1226,6 +1339,7 @@ export default function UnitDetails() {
             )}
             <PaymentForm
             initial={editPayment}
+            lessorCapacity={data.contracts.find((contract) => contract.id === editPayment.contractId)?.lessorCapacity ?? currentLessorCapacity}
             onSubmit={async (values) => {
               try {
                 console.log("[Edit Payment] formData:", values);
@@ -1258,9 +1372,9 @@ export default function UnitDetails() {
                       collectionFeeSettlementNote: paid ? payment.collectionFeeSettlementNote : undefined,
                       collectionFeeSettledAmount: paid ? payment.collectionFeeSettledAmount : undefined,
                       collectionFeeRemainingAmount: paid ? payment.collectionFeeRemainingAmount : undefined,
-                      ownerTransferred: paid ? (payment.ownerTransferred ?? false) : false,
-                      ownerTransferDate: paid ? payment.ownerTransferDate : null,
-                      ownerTransferMethod: paid ? payment.ownerTransferMethod : null,
+                      ownerTransferred: paid ? (values.ownerTransferred ?? false) : false,
+                      ownerTransferDate: paid ? (values.ownerTransferDate ?? null) : null,
+                      ownerTransferMethod: paid ? (values.ownerTransferMethod ?? null) : null,
                       ownerTransferNotes: paid ? (payment.ownerTransferNotes ?? "") : "",
                     });
                   }),
@@ -1374,6 +1488,30 @@ export default function UnitDetails() {
                     const expectedKeys = new Set(expected.map(dueKey));
                     merged = expected.map((generated) => byDue.get(dueKey(generated)) ?? generated);
                     merged.push(...existing.filter((payment) => (payment.status === "paid" || !!payment.receivedDate) && !expectedKeys.has(dueKey(payment))));
+                  }
+                  if (editContract.lessorCapacity !== values.lessorCapacity) {
+                    merged = merged.map((payment) => {
+                      if (!isPaymentPaid(payment) || getPaymentReceiveMethod(payment) !== "ejar_platform") return payment;
+                      if (values.lessorCapacity === "owner") {
+                        return {
+                          ...payment,
+                          ownerTransferred: true,
+                          ownerTransferDate: payment.ownerTransferDate || payment.receivedDate || todayISO(),
+                          ownerTransferMethod: "ejar_platform",
+                          ownerTransferNotes: "تحويل تلقائي عبر منصة إيجار",
+                        };
+                      }
+                      if (payment.ownerTransferNotes === "تحويل تلقائي عبر منصة إيجار") {
+                        return {
+                          ...payment,
+                          ownerTransferred: false,
+                          ownerTransferDate: null,
+                          ownerTransferMethod: null,
+                          ownerTransferNotes: "",
+                        };
+                      }
+                      return payment;
+                    });
                   }
                   contract.numberOfPayments = paymentFieldsChanged ? expected.length : editContract.numberOfPayments;
                   contract.totalContractValue = paymentFieldsChanged ? expected.reduce((sum, payment) => sum + payment.amount, 0) : editContract.totalContractValue;
@@ -1503,12 +1641,20 @@ export default function UnitDetails() {
         <MarkAsReceivedDialog
           payment={markReceived}
           fallbackFeePercent={getResolvedCollectionFeePercent(building, unit)}
+          lessorCapacity={data.contracts.find((contract) => contract.id === markReceived.contractId)?.lessorCapacity ?? currentLessorCapacity}
           feeSuggestions={officeFeeSuggestions}
-          onConfirm={(receivedDate, method, feePercent, notes, settlements) => {
+          repairSuggestions={maintenanceSuggestions}
+          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds) => {
             const grossAmount = markReceived.grossAmount ?? markReceived.amount;
             const collectionFeeAmount = Math.round(grossAmount * feePercent) / 100;
             const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
             const settlementTotal = settlements.reduce((sum, item) => sum + item.amount, 0);
+            const selectedRepairs = data.repairs.filter((repair) => repairIds.includes(repair.id) && !repair.isDeductedFromOwnerTransfer);
+            const maintenanceDeductionAmount = selectedRepairs.reduce((sum, repair) => sum + repair.cost, 0);
+            const maintenanceNote = selectedRepairs.length > 0
+              ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${selectedRepairs.map((repair) => repair.description).join("، ")}.`
+              : "";
+            const autoOwnerTransfer = shouldAutoTransferEjarPayment(data, markReceived, method);
             update((prev) => ({
               ...prev,
               payments: prev.payments.map((p) =>
@@ -1519,12 +1665,21 @@ export default function UnitDetails() {
                       receivedDate,
                       paymentMethod: method === "office_collection" ? undefined : method,
                       receiveMethod: method,
-                      notes: [notes || p.notes, settlementTotal > 0 ? `تم خصم ${formatMoney(settlementTotal)} لتسوية رسوم منصة إيجار لوحدات أخرى في نفس العقار بتاريخ ${receivedDate}.` : ""].filter(Boolean).join("\n"),
+                      notes: [
+                        notes || p.notes,
+                        settlementTotal > 0 ? `تم خصم ${formatMoney(settlementTotal)} لتسوية رسوم منصة إيجار لوحدات أخرى في نفس العقار بتاريخ ${receivedDate}.` : "",
+                        maintenanceNote,
+                      ].filter(Boolean).join("\n"),
                       grossAmount,
                       collectionFeePercent: feePercent,
                       collectionFeePercentage: feePercent,
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
+                      maintenanceDeductionAmount,
+                      ownerTransferred: autoOwnerTransfer,
+                      ownerTransferDate: autoOwnerTransfer ? receivedDate : null,
+                      ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : null,
+                      ownerTransferNotes: autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
                     })
                   : settlements.some((item) => item.paymentId === p.id)
                     ? (() => {
@@ -1543,6 +1698,9 @@ export default function UnitDetails() {
                       })()
                     : p,
               ),
+              repairs: prev.repairs.map((repair) => repairIds.includes(repair.id)
+                ? { ...repair, isDeductedFromOwnerTransfer: true, deductedFromPaymentId: markReceived.id }
+                : repair),
               collectionFeeSettlements: [
                 ...prev.collectionFeeSettlements,
                 ...settlements.map((settlement) => ({

@@ -34,6 +34,7 @@ export interface ContractFormValues {
   notes?: string;
   contractNumber?: string;
   collectionFeePercent?: number;
+  lessorCapacity: "owner" | "representative";
 }
 
 interface Props {
@@ -59,6 +60,7 @@ export default function ContractForm({
   const [tenantIdNumber, setTenantIdNumber] = useState(initial?.tenantIdNumber ?? "");
   const [tenantEmail, setTenantEmail] = useState(initial?.tenantEmail ?? "");
   const [contractNumber, setContractNumber] = useState(initial?.contractNumber ?? "");
+  const [lessorCapacity, setLessorCapacity] = useState<"owner" | "representative">(initial?.lessorCapacity ?? "owner");
   const [rentAmount, setRentAmount] = useState(
     initial?.rentAmount?.toString() ?? (defaultRentAmount ? String(defaultRentAmount) : ""),
   );
@@ -132,6 +134,7 @@ export default function ContractForm({
         tenantIdNumber: tenantIdNumber.trim() || undefined,
         tenantEmail: tenantEmail.trim() || undefined,
         contractNumber: contractNumber.trim() || undefined,
+        lessorCapacity,
         rentAmount: Number(rentAmount),
         paymentFrequency,
         startDate,
@@ -176,6 +179,20 @@ export default function ContractForm({
       <div className="space-y-1.5">
         <Label>رقم العقد</Label>
         <Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} placeholder="رقم عقد الإيجار" className="rounded-xl" />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>صفة المؤجر في العقد</Label>
+        <Select value={lessorCapacity} onValueChange={(value) => setLessorCapacity(value as "owner" | "representative")}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="owner">مالك العقار</SelectItem>
+            <SelectItem value="representative">ممثل المالك / المكتب</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          عند اختيار «مالك العقار»، تُعتبر دفعات منصة إيجار محولة للمالك تلقائيًا. أما «ممثل المالك» فتحتاج تسجيل تحويل يدوي.
+        </p>
       </div>
 
       <div className="space-y-1.5">

@@ -658,6 +658,7 @@ function reminderTitle(r: ReminderItem): string {
   if (r.kind === "rent" && r.days < 0) return "دفعة متأخرة";
   if (r.kind === "rent") return "موعد سداد الإيجار";
   if (r.kind === "maintenance") return "طلب صيانة معلق";
+  if (r.kind === "owner_transfer") return "تحويل للمالك مطلوب";
   return r.title;
 }
 
@@ -677,6 +678,9 @@ function reminderBody(r: ReminderItem): string {
   }
   if (r.kind === "rent" && r.days < 0) {
     return `لديك دفعة إيجار متأخرة للوحدة ${r.unitName || r.subtitle} بمبلغ ${(r.amount ?? 0).toLocaleString("en-US")} ر.س.`;
+  }
+  if (r.kind === "owner_transfer") {
+    return `دفعة مستلمة للوحدة ${r.unitName || r.subtitle} بقيمة ${(r.amount ?? 0).toLocaleString("en-US")} ر.س لم تُحوّل للمالك بعد.`;
   }
   const prefix = r.title === "موعد سداد الإيجار" ? "دفعة إيجار" : r.title;
   if (r.days < 0) return `${prefix}: ${r.subtitle} — متأخر منذ ${-r.days} يوم`;
@@ -704,7 +708,7 @@ function buildDesiredNotifications(data: AppData): DesiredNotification[] {
     // Skip if too far in the future
     if (r.days > windowDays) continue;
     // Skip stale non-rent reminders older than a few days
-    if (r.days < -3 && r.kind !== "rent") continue;
+    if (r.days < -3 && r.kind !== "rent" && r.kind !== "owner_transfer") continue;
 
     const times = buildReminderScheduleTimes(r, data.settings);
     for (const at of times) {
@@ -741,7 +745,7 @@ function buildReminderPlan(data: AppData): string {
     .filter((r) => {
       if (r.kind === "rent" && r.days < 0 && !data.settings.overduePaymentNotificationsEnabled) return false;
       // Drop stale non-rent reminders (same rule as the legacy builder)
-      if (r.days < -3 && r.kind !== "rent") return false;
+      if (r.days < -3 && r.kind !== "rent" && r.kind !== "owner_transfer") return false;
       // Cap zombie overdue rent at the configured tail (engine enforces the same)
       if (r.kind === "rent" && r.days < -getOverdueTailDays(data.settings)) return false;
       return true;
@@ -1301,6 +1305,7 @@ function checkAndNotifyWeb(data: AppData) {
     const shouldNotify =
       (r.days >= 0 && r.days <= windowDays) ||
       (r.kind === "rent" && r.days < 0) ||
+      (r.kind === "owner_transfer") ||
       (r.kind !== "rent" && r.days < 0 && r.days >= -3);
     if (!shouldNotify) continue;
     if (notified[r.id] === today) continue;

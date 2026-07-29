@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Payment, PaymentMethod, PaymentReceiveMethod, PaymentStatus } from "@/data/types";
 import { PAYMENT_RECEIVE_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/data/labels";
-import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth } from "@/data/helpers";
+import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPaymentLessorCapacity } from "@/data/helpers";
 import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -31,6 +31,9 @@ export interface PaymentFormValues {
   notes?: string;
   reportingMonthMode?: "auto" | "due_month" | "next_month";
   reportingYearMonth?: string;
+  ownerTransferred?: boolean;
+  ownerTransferDate?: string | null;
+  ownerTransferMethod?: PaymentMethod | null;
 }
 
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -50,10 +53,12 @@ const monthLabel = (yearMonth: string): string => {
 interface Props {
   initial?: Payment;
   defaultAmount?: number;
+  lessorCapacity?: "owner" | "representative";
   onSubmit: (values: PaymentFormValues) => void;
 }
 
-export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props) {
+export default function PaymentForm({ initial, defaultAmount, lessorCapacity, onSubmit }: Props) {
+  const { data } = useStore();
   const [amount, setAmount] = useState(
     initial?.amount?.toString() ?? (defaultAmount ? String(defaultAmount) : ""),
   );
@@ -64,7 +69,9 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
   const [receivedDate, setReceivedDate] = useState(initial?.receivedDate ?? todayISO());
   const [paymentMethod, setPaymentMethod] = useState<PaymentReceiveMethod | "">(initial?.receiveMethod ?? initial?.paymentMethod ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
-  const { data } = useStore();
+  const resolvedLessorCapacity = lessorCapacity ?? (initial ? getPaymentLessorCapacity(data, initial) : "owner");
+  const [ownerTransferred, setOwnerTransferred] = useState(initial?.ownerTransferred ?? false);
+  const [ownerTransferDate, setOwnerTransferDate] = useState(initial?.ownerTransferDate ?? initial?.receivedDate ?? todayISO());
   const cutoffDay = data.settings.reportMonthCutoffDay;
   const initialPaymentDate = initial?.paymentDate ?? todayISO();
   const [reportMonth, setReportMonth] = useState<string>(() => {
@@ -83,6 +90,10 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
     return options;
   })();
   const autoMonth = getPaymentReportYearMonth(isValidDate(paymentDate) ? paymentDate : todayISO(), cutoffDay, "auto");
+  const autoOwnerTransfer = status === "paid"
+    && paymentMethod === "ejar_platform"
+    && resolvedLessorCapacity === "owner";
+  const effectiveOwnerTransferred = status === "paid" && (autoOwnerTransfer || ownerTransferred);
 
   const buildValues = (): PaymentFormValues => ({
     amount: Number(amount) || 0,
@@ -104,6 +115,11 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
           ? "next_month"
           : "auto",
     reportingYearMonth: reportMonth === "auto" ? undefined : reportMonth,
+    ownerTransferred: effectiveOwnerTransferred,
+    ownerTransferDate: effectiveOwnerTransferred ? (ownerTransferDate || receivedDate) : null,
+    ownerTransferMethod: effectiveOwnerTransferred
+      ? autoOwnerTransfer ? "ejar_platform" : initial?.ownerTransferMethod ?? "bank_transfer"
+      : null,
   });
 
   const validate = (values: PaymentFormValues) => {
@@ -111,6 +127,7 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
     if (!isValidDate(values.paymentDate)) return "يرجى اختيار موعد سداد صحيح";
     if (values.status === "paid" && !values.receivedDate) return "يرجى اختيار تاريخ الاستلام";
     if (values.status === "paid" && !values.receiveMethod) return "يرجى اختيار طريقة الاستلام";
+    if (values.ownerTransferred && !values.ownerTransferDate) return "يرجى اختيار تاريخ التحويل للمالك";
     return null;
   };
 
@@ -175,10 +192,61 @@ export default function PaymentForm({ initial, defaultAmount, onSubmit }: Props)
         </div>
       </div>
       {status === "paid" && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5"><Label>تاريخ الاستلام</Label><Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className="rounded-xl" /></div>
-          <div className="space-y-1.5"><Label>طريقة الاستلام</Label><Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentReceiveMethod)}><SelectTrigger className="rounded-xl"><SelectValue placeholder="اختر الطريقة" /></SelectTrigger><SelectContent>{(["office_collection", "bank_transfer", "cash", "ejar_platform", "other"] as PaymentReceiveMethod[]).map((method) => <SelectItem key={method} value={method}>{PAYMENT_RECEIVE_METHOD_LABELS[method]}</SelectItem>)}</SelectContent></Select></div>
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>تاريخ الاستلام</Label>
+              <Input
+                type="date"
+                value={receivedDate}
+                onChange={(event) => {
+                  const previous = receivedDate;
+                  setReceivedDate(event.target.value);
+                  if (autoOwnerTransfer && (!ownerTransferDate || ownerTransferDate === previous)) {
+                    setOwnerTransferDate(event.target.value);
+                  }
+                }}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>طريقة الاستلام</Label>
+              <Select
+                value={paymentMethod}
+                onValueChange={(value) => {
+                  setPaymentMethod(value as PaymentReceiveMethod);
+                  if (value === "ejar_platform" && resolvedLessorCapacity === "owner") {
+                    setOwnerTransferDate(receivedDate);
+                  }
+                }}
+              >
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="اختر الطريقة" /></SelectTrigger>
+                <SelectContent>{(["office_collection", "bank_transfer", "cash", "ejar_platform", "other"] as PaymentReceiveMethod[]).map((method) => <SelectItem key={method} value={method}>{PAYMENT_RECEIVE_METHOD_LABELS[method]}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className={`space-y-2 rounded-2xl border p-3 ${autoOwnerTransfer ? "border-emerald-200 bg-emerald-50" : "border-border bg-muted/40"}`}>
+            {autoOwnerTransfer ? (
+              <p className="text-xs font-semibold text-emerald-800">
+                تم التحويل للمالك تلقائيًا لأن التحصيل عبر منصة إيجار وصفة المؤجر «مالك العقار».
+              </p>
+            ) : (
+              <label className="flex items-center gap-2 text-xs font-semibold">
+                <input type="checkbox" checked={ownerTransferred} onChange={(event) => setOwnerTransferred(event.target.checked)} />
+                تم تحويل الدفعة للمالك
+              </label>
+            )}
+            {effectiveOwnerTransferred && (
+              <div className="space-y-1.5">
+                <Label>تاريخ التحويل للمالك</Label>
+                <Input type="date" value={ownerTransferDate} onChange={(event) => setOwnerTransferDate(event.target.value)} className="rounded-xl bg-background" />
+              </div>
+            )}
+            {paymentMethod === "ejar_platform" && resolvedLessorCapacity === "representative" && (
+              <p className="text-[11px] text-amber-700">صفة المؤجر «ممثل»، لذلك يلزم تأكيد التحويل للمالك يدويًا.</p>
+            )}
+          </div>
+        </>
       )}
       <div className="space-y-1.5">
         <Label>ملاحظات</Label>

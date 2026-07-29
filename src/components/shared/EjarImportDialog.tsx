@@ -138,6 +138,7 @@ export default function EjarImportDialog({
         electricityMeterNumber: electricityMeterNumber && electricityMeterNumber !== "-" ? electricityMeterNumber : undefined,
         waterMeterNumber: waterMeterNumber && waterMeterNumber !== "-" ? waterMeterNumber : undefined,
         importedFromEjar: true,
+        lessorCapacity: "owner",
         collectionFeePercent,
       };
 
