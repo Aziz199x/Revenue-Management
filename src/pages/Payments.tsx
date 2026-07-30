@@ -24,7 +24,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import { useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
-import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments } from "@/data/helpers";
+import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
@@ -227,6 +227,12 @@ export default function Payments() {
   const manualMaintenanceSettlement = markReceived && settleWithBuildingMaintenance
     ? Math.max(0, Math.round((markReceived.amount - ownerDeductibleFee - selectedMaintenanceTotal) * 100) / 100)
     : 0;
+  const markReceivedSource = markReceived
+    ? data.payments.find((payment) => payment.id === markReceived.id)
+    : undefined;
+  const earlierOutstandingPayments = markReceivedSource
+    ? findEarlierUnreceivedPayments(data, markReceivedSource)
+    : [];
 
   const handleMarkReceived = () => {
     if (!markReceived) return;
@@ -242,6 +248,15 @@ export default function Payments() {
     if (duplicate) {
       showError(`تم تسجيل استلام مماثل لنفس الوحدة والشهر والمبلغ${duplicate.receivedDate ? ` بتاريخ ${formatDate(duplicate.receivedDate)}` : ""}. راجع الدفعة المكررة أولًا.`);
       return;
+    }
+    if (earlierOutstandingPayments.length > 0) {
+      const oldest = earlierOutstandingPayments[0];
+      const shouldContinue = window.confirm(
+        `يوجد خطأ محتمل في تسلسل الدفعات: ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
+        + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+        + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
+      );
+      if (!shouldContinue) return;
     }
     if (settleWithBuildingMaintenance && selectedRepairIds.length === 0 && !maintenanceExpenseNote.trim()) {
       showError("أضف تعليقًا يوضح مصروفات الصيانة قبل تسوية الدفعة");
@@ -728,6 +743,17 @@ export default function Payments() {
             <DialogTitle className="text-right">تأكيد استلام الدفعة</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
+            {earlierOutstandingPayments.length > 0 && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-bold">تنبيه: يوجد خلل محتمل في تسلسل الدفعات</p>
+                <p className="mt-1">
+                  توجد {earlierOutstandingPayments.length} دفعة أقدم لم تُستلم. أقدمها بتاريخ{" "}
+                  {formatDate(earlierOutstandingPayments[0].dueDateGregorian || earlierOutstandingPayments[0].nextDueDate || earlierOutstandingPayments[0].paymentDate)}
+                  {" "}والمتبقي {formatMoney(getRemainingPaymentAmount(earlierOutstandingPayments[0]))}.
+                </p>
+                <p className="mt-1 font-semibold">راجع الدفعة الأقدم أو أكد المتابعة إذا كان التسجيل مقصودًا.</p>
+              </div>
+            )}
             {markReceived && (
               <div className="rounded-2xl bg-muted p-3 text-xs space-y-1">
                 <p>المبلغ الإجمالي: {formatMoney(markReceived.amount)}</p>

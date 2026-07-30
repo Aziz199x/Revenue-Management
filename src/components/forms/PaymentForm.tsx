@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Payment, PaymentMethod, PaymentReceiveMethod, PaymentStatus } from "@/data/types";
 import { PAYMENT_RECEIVE_METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/data/labels";
-import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments } from "@/data/helpers";
+import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, formatDate, formatMoney, getRemainingPaymentAmount } from "@/data/helpers";
 import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -152,7 +152,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
         if (error) { showError(error); return; }
         const resolvedUnitId = initial?.unitId ?? unitId;
         if (values.status === "paid" && resolvedUnitId) {
-          const duplicate = findPotentialDuplicateReceivedPayments(data, {
+          const candidate = {
             ...(initial ?? {}),
             id: initial?.id ?? "__new_payment__",
             unitId: resolvedUnitId,
@@ -160,10 +160,21 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
             ...values,
             grossAmount: values.amount,
             receivedAmount: values.receivedAmount,
-          } as Payment)[0];
+          } as Payment;
+          const duplicate = findPotentialDuplicateReceivedPayments(data, candidate)[0];
           if (duplicate) {
             showError(`يوجد استلام مسجل لنفس الوحدة والشهر والمبلغ${duplicate.receivedDate ? ` بتاريخ ${duplicate.receivedDate}` : ""}. راجع الدفعة السابقة قبل الحفظ.`);
             return;
+          }
+          const earlierOutstanding = findEarlierUnreceivedPayments(data, candidate);
+          if (earlierOutstanding.length > 0) {
+            const oldest = earlierOutstanding[0];
+            const shouldContinue = window.confirm(
+              `تنبيه في تسلسل الدفعات:\nتوجد ${earlierOutstanding.length} دفعة أقدم لم تُستلم بعد.\n`
+              + `أقدم دفعة مستحقة بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+              + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد تسجيل الدفعة الحالية رغم ذلك؟`,
+            );
+            if (!shouldContinue) return;
           }
         }
         if (initial?.status === "paid" && status !== "paid") { setPendingValues(values); return; }

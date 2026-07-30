@@ -92,6 +92,7 @@ export default function Index() {
         const endDate = getContractEndDate(contract) || contract.endDate;
         return {
           id: `info-${contract.id}`,
+          contractId: contract.id,
           unitId: String(contract.unitId),
           tenantName: contract.tenantName || "غير محدد",
           unitName: unit?.name || "غير محددة",
@@ -284,7 +285,7 @@ export default function Index() {
               <EmptyState icon={CalendarClock} title="لا توجد عقود قريبة" description="ستظهر هنا أقرب العقود للانتهاء" />
             ) : (
               nearestContracts.map((reminder) => (
-                <Link key={reminder.id} to={`/units/${reminder.unitId}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${reminder.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+                <Link key={reminder.id} to={`/units/${encodeURIComponent(reminder.unitId)}?tab=contract&item=${encodeURIComponent(reminder.contractId)}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${reminder.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <p className={`text-xs font-semibold ${reminder.autoRenewal ? "text-sky-700" : "text-amber-800"}`}>{reminder.autoRenewal ? "عقد سيتجدد تلقائيا" : "عقد قريب من الانتهاء"}</p>
@@ -308,7 +309,7 @@ export default function Index() {
               [...overduePayments, ...upcomingPayments].map((pc) => (
                 <Link
                   key={pc.id}
-                  to={`/units/${data.payments.find((p) => p.id === pc.paymentId)?.unitId || ""}`}
+                  to={pc.route}
                   className={`block rounded-3xl border p-3.5 transition-transform active:scale-[0.98] ${pc.status === "overdue" ? "border-red-200 bg-red-50" : "border-border bg-card"}`}
                 >
                   <div className="flex items-start justify-between">
@@ -336,7 +337,7 @@ export default function Index() {
               generalReminders.map((r) => {
                 const Icon = kindIcons[r.kind];
                 return (
-                  <Link key={r.id} to={`/units/${r.unitId}`} className="flex items-center gap-3 rounded-3xl border border-border bg-card p-3.5 transition-transform active:scale-[0.98]">
+                  <Link key={r.id} to={r.route} className="flex items-center gap-3 rounded-3xl border border-border bg-card p-3.5 transition-transform active:scale-[0.98]">
                     <div className={`rounded-2xl p-2.5 ${r.kind === "contract" && r.autoRenewal ? "bg-sky-100 text-sky-700" : kindColors[r.kind]}`}>
                       <Icon className="h-5 w-5" />
                     </div>
@@ -370,7 +371,7 @@ export default function Index() {
                   className="rounded-3xl border border-red-200 bg-red-50 p-3.5 transition-transform active:scale-[0.98]"
                 >
                   <Link
-                    to={`/units/${data.payments.find((p) => p.id === pc.paymentId)?.unitId || ""}`}
+                    to={pc.route}
                     className="block"
                   >
                     <div className="flex items-start justify-between">
@@ -428,7 +429,7 @@ export default function Index() {
               {upcomingPayments.map((pc) => (
                 <Link
                   key={pc.id}
-                  to={`/units/${data.payments.find((p) => p.id === pc.paymentId)?.unitId || ""}`}
+                  to={pc.route}
                   className="block rounded-3xl border border-border bg-card p-3.5 transition-transform active:scale-[0.98]"
                 >
                   <div className="flex items-start justify-between">
@@ -458,7 +459,7 @@ export default function Index() {
             <h2 className="mb-2 flex items-center gap-2 font-bold"><CalendarClock className="h-4 w-4 text-amber-600" /> تذكيرات العقود الأقرب للانتهاء</h2>
             <div className="space-y-2">
               {contractExpiryReminders.slice(0, 5).map((reminder) => (
-                <Link key={reminder.id} to={`/units/${reminder.unitId}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${reminder.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+                <Link key={reminder.id} to={`/units/${encodeURIComponent(reminder.unitId)}?tab=contract&item=${encodeURIComponent(reminder.contractId)}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${reminder.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
                   <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <p className={`text-xs font-semibold ${reminder.autoRenewal ? "text-sky-700" : "text-amber-800"}`}>{reminder.autoRenewal ? "عقد سيتجدد تلقائيًا" : "عقد يحتاج إجراء"}</p>
@@ -480,7 +481,7 @@ export default function Index() {
             <h2 className="mb-2 flex items-center gap-2 font-bold"><CalendarClock className="h-4 w-4 text-primary" /> أقرب العقود للانتهاء</h2>
             <div className="space-y-2">
               {nearestContractStatus.map((item) => (
-                <Link key={item.id} to={`/units/${item.unitId}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${item.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+                <Link key={item.id} to={`/units/${encodeURIComponent(item.unitId)}?tab=contract&item=${encodeURIComponent(item.contractId)}`} className={`block overflow-hidden rounded-2xl border px-3 py-2.5 ${item.autoRenewal ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
                   <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <p className={`text-xs font-semibold ${item.autoRenewal ? "text-sky-700" : "text-amber-800"}`}>
@@ -518,7 +519,7 @@ export default function Index() {
                 return (
                   <Link
                     key={r.id}
-                    to={`/units/${r.unitId}`}
+                    to={r.route}
                     className="flex items-center gap-3 rounded-3xl border border-border bg-card p-3.5 transition-transform active:scale-[0.98]"
                   >
                     <div className={`rounded-2xl p-2.5 ${r.kind === "contract" && r.autoRenewal ? "bg-sky-100 text-sky-700" : kindColors[r.kind]}`}>

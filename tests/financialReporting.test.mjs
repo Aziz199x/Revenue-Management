@@ -200,6 +200,67 @@ test("duplicate receipt detection blocks the same unit, report month, contract, 
   );
 });
 
+test("receiving a later installment detects older unreceived obligations in the same contract", () => {
+  const olderUnpaid = payment({
+    id: "may-unpaid",
+    status: "unpaid",
+    receivedAmount: undefined,
+    paidAmount: undefined,
+    dueDateGregorian: "2026-05-01",
+    paymentDate: "2026-05-01",
+  });
+  const olderPartial = payment({
+    id: "june-partial",
+    status: "partial",
+    receivedAmount: 250,
+    paidAmount: 250,
+    dueDateGregorian: "2026-06-01",
+    paymentDate: "2026-06-01",
+  });
+  const laterCandidate = payment({
+    id: "july-received",
+    dueDateGregorian: "2026-07-01",
+    paymentDate: "2026-07-01",
+  });
+  const otherContract = payment({
+    id: "other-contract-old",
+    contractId: "c2",
+    status: "unpaid",
+    receivedAmount: undefined,
+    dueDateGregorian: "2026-04-01",
+    paymentDate: "2026-04-01",
+  });
+
+  assert.deepEqual(
+    helpers.findEarlierUnreceivedPayments(
+      data([olderPartial, otherContract, olderUnpaid]),
+      laterCandidate,
+    ).map((item) => item.id),
+    ["may-unpaid", "june-partial"],
+  );
+});
+
+test("reminders carry a precise route to their payment or request", () => {
+  assert.equal(
+    helpers.buildReminderRoute("rent", "unit 1", "payment/1"),
+    "/units/unit%201?tab=payments&item=payment%2F1",
+  );
+  assert.equal(
+    helpers.buildReminderRoute("request", "unit 1", "request/1"),
+    "/requests/request%2F1",
+  );
+
+  const unpaid = payment({
+    id: "payment-route",
+    status: "unpaid",
+    receivedAmount: undefined,
+  });
+  const reminder = helpers.collectReminders(data([unpaid]))
+    .find((item) => item.id === "pay-payment-route");
+  assert.equal(reminder?.paymentId, "payment-route");
+  assert.equal(reminder?.route, "/units/u1?tab=payments&item=payment-route");
+});
+
 test("reverting a received payment restores linked maintenance for future receipt suggestions", () => {
   const repairs = [
     {

@@ -515,6 +515,30 @@ export function findPotentialDuplicateReceivedPayments(
   });
 }
 
+/**
+ * Returns older obligations that are still not fully received before the
+ * candidate installment. Explicitly different contracts are kept separate so
+ * an old tenant's balance does not block a new tenant's receipt flow.
+ */
+export function findEarlierUnreceivedPayments(
+  data: Pick<AppData, "payments">,
+  candidate: Payment,
+): Payment[] {
+  const candidateDueDate = paymentDueDateValue(candidate);
+  if (!candidateDueDate) return [];
+
+  return data.payments
+    .filter((payment) => {
+      if (payment.id === candidate.id || payment.deletedAt || payment.status === "cancelled") return false;
+      if (isPaymentPaid(payment) || getRemainingPaymentAmount(payment) <= 0) return false;
+      if (normalizeId(payment.unitId) !== normalizeId(candidate.unitId)) return false;
+      if (candidate.contractId && payment.contractId && candidate.contractId !== payment.contractId) return false;
+      const dueDate = paymentDueDateValue(payment);
+      return !!dueDate && dueDate < candidateDueDate;
+    })
+    .sort((a, b) => paymentDueDateValue(a).localeCompare(paymentDueDateValue(b)));
+}
+
 export function getPaymentMaintenanceDeductions(data: AppData, paymentId: string) {
   return data.repairs
     .filter((repair) => repair.deductedFromPaymentId === paymentId && repair.status !== "cancelled")
@@ -804,6 +828,30 @@ export interface ReminderItem {
   tenantName?: string;
   autoRenewal?: boolean;
   unitName?: string;
+  paymentId?: string;
+  contractId?: string;
+  repairId?: string;
+  billId?: string;
+  requestId?: string;
+  route: string;
+}
+
+export function buildReminderRoute(
+  kind: ReminderItem["kind"],
+  unitId: string,
+  itemId: string,
+): string {
+  if (kind === "request") return `/requests/${encodeURIComponent(itemId)}`;
+  const tab = kind === "rent" || kind === "owner_transfer"
+    ? "payments"
+    : kind === "contract" || kind === "eviction"
+      ? "contract"
+      : kind === "maintenance"
+        ? "repairs"
+        : kind === "bill"
+          ? "bills"
+          : "tenant";
+  return `/units/${encodeURIComponent(unitId)}?tab=${tab}&item=${encodeURIComponent(itemId)}`;
 }
 
 export function collectReminders(data: AppData): ReminderItem[] {
@@ -828,6 +876,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
       amount: getRemainingPaymentAmount(p),
       tenantName: p.tenantName,
       unitName: data.units.find((unit) => normalizeId(unit.id) === normalizeId(p.unitId))?.name,
+      paymentId: p.id,
+      route: buildReminderRoute("rent", p.unitId, p.id),
     });
   }
 
@@ -845,6 +895,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
       amount: calculateNetAmountToTransferToOwner(normalizePaymentFinancials(p)),
       tenantName: p.tenantName,
       unitName: data.units.find((unit) => normalizeId(unit.id) === normalizeId(p.unitId))?.name,
+      paymentId: p.id,
+      route: buildReminderRoute("owner_transfer", p.unitId, p.id),
     });
   }
 
@@ -863,6 +915,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
           date: endDate,
           days,
           unitId: String(c.unitId),
+          contractId: c.id,
+          route: buildReminderRoute("eviction", String(c.unitId), c.id),
         });
       }
     }
@@ -888,6 +942,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
       reminderWindow: r.reminderWindow,
       autoRenewal: r.autoRenewal,
       unitName: data.units.find((unit) => normalizeId(unit.id) === normalizeId(r.unitId))?.name,
+      contractId: r.contractId,
+      route: buildReminderRoute("contract", r.unitId, r.contractId),
     });
   }
 
@@ -901,6 +957,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
       date: r.repairDate,
       days: daysUntil(r.repairDate),
       unitId: r.unitId,
+      repairId: r.id,
+      route: buildReminderRoute("maintenance", r.unitId, r.id),
     });
   }
 
@@ -914,6 +972,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
       date: b.dueDate,
       days: daysUntil(b.dueDate),
       unitId: b.unitId,
+      billId: b.id,
+      route: buildReminderRoute("bill", b.unitId, b.id),
     });
   }
 
@@ -928,6 +988,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
         date: r.requestDate,
         days: daysUntil(r.requestDate),
         unitId: r.unitId,
+        requestId: r.id,
+        route: buildReminderRoute("request", r.unitId, r.id),
       });
     }
     if (r.expectedCompletionDate && r.status !== "completed") {
@@ -941,6 +1003,8 @@ export function collectReminders(data: AppData): ReminderItem[] {
           date: r.expectedCompletionDate,
           days: ed,
           unitId: r.unitId,
+          requestId: r.id,
+          route: buildReminderRoute("request", r.unitId, r.id),
         });
       }
     }
@@ -959,6 +1023,7 @@ export interface PaymentCard {
   dueDate: string;
   days: number;
   status: "upcoming" | "overdue";
+  route: string;
 }
 
 export function collectPaymentCards(data: AppData): PaymentCard[] {
@@ -984,6 +1049,7 @@ export function collectPaymentCards(data: AppData): PaymentCard[] {
       dueDate,
       days,
       status: days < 0 ? "overdue" : "upcoming",
+      route: buildReminderRoute("rent", p.unitId, p.id),
     });
   }
 

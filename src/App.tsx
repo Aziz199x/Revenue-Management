@@ -90,6 +90,60 @@ function BackButtonHandler() {
   return null;
 }
 
+function reminderRouteFromUrl(url?: string): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const route = parsed.searchParams.get("route");
+    return route && route.startsWith("/") && !route.startsWith("//") ? route : null;
+  } catch {
+    return null;
+  }
+}
+
+function NotificationNavigationHandler() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let appUrlListener: { remove: () => Promise<void> } | undefined;
+    let notificationListener: { remove: () => Promise<void> } | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      const [{ App }, { LocalNotifications }] = await Promise.all([
+        import("@capacitor/app"),
+        import("@capacitor/local-notifications"),
+      ]);
+
+      const openRoute = (route: unknown) => {
+        if (cancelled || typeof route !== "string" || !route.startsWith("/") || route.startsWith("//")) return;
+        navigate(route);
+      };
+
+      appUrlListener = await App.addListener("appUrlOpen", ({ url }) => {
+        openRoute(reminderRouteFromUrl(url));
+      });
+      notificationListener = await LocalNotifications.addListener("localNotificationActionPerformed", ({ notification }) => {
+        openRoute((notification.extra as { route?: unknown } | undefined)?.route);
+      });
+
+      const launchUrl = await App.getLaunchUrl();
+      openRoute(reminderRouteFromUrl(launchUrl?.url));
+    })().catch((error) => {
+      console.error("[Notifications] Failed to initialize reminder navigation", error);
+    });
+
+    return () => {
+      cancelled = true;
+      void appUrlListener?.remove();
+      void notificationListener?.remove();
+    };
+  }, [navigate]);
+
+  return null;
+}
+
 const App = () => {
   useEffect(() => {
     setupStatusBar();
@@ -127,6 +181,7 @@ const App = () => {
         <NotificationChecker />
         <BrowserRouter>
           <BackButtonHandler />
+          <NotificationNavigationHandler />
           <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Index />} />

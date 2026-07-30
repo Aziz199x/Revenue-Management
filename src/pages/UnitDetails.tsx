@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Pencil,
   Trash2,
@@ -86,6 +86,8 @@ import {
   isPaymentPaid,
   shouldAutoTransferEjarPayment,
   findPotentialDuplicateReceivedPayments,
+  findEarlierUnreceivedPayments,
+  getRemainingPaymentAmount,
   restoreMaintenanceDeductionsForPayment,
 } from "@/data/helpers";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
@@ -126,11 +128,14 @@ import { validatePhone } from "@/utils/whatsapp";
 import { formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
 import { showSuccess, showError } from "@/utils/toast";
 
+const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
+
 function MarkAsReceivedDialog({
   payment,
   fallbackFeePercent,
   feeSuggestions,
   repairSuggestions,
+  earlierOutstandingPayments,
   lessorCapacity,
   onConfirm,
   onCancel,
@@ -140,6 +145,7 @@ function MarkAsReceivedDialog({
   lessorCapacity: "owner" | "representative";
   feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number; monthLabel: string; dueDateLabel: string }>;
   repairSuggestions: Array<{ repair: Repair; unitName: string }>;
+  earlierOutstandingPayments: Payment[];
   onConfirm: (
     receivedDate: string,
     method: PaymentReceiveMethod,
@@ -188,6 +194,17 @@ function MarkAsReceivedDialog({
           <DialogTitle className="text-right">تأكيد استلام الدفعة</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
+          {earlierOutstandingPayments.length > 0 && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <p className="font-bold">تنبيه: يوجد خلل محتمل في تسلسل الدفعات</p>
+              <p className="mt-1">
+                توجد {earlierOutstandingPayments.length} دفعة أقدم لم تُستلم. أقدمها بتاريخ{" "}
+                {formatDate(earlierOutstandingPayments[0].dueDateGregorian || earlierOutstandingPayments[0].nextDueDate || earlierOutstandingPayments[0].paymentDate)}
+                {" "}والمتبقي {formatMoney(getRemainingPaymentAmount(earlierOutstandingPayments[0]))}.
+              </p>
+              <p className="mt-1 font-semibold">راجع الدفعة الأقدم أو أكد المتابعة إذا كان التسجيل مقصودًا.</p>
+            </div>
+          )}
           <div className="rounded-2xl bg-muted p-3 space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">المبلغ المستلم</span>
@@ -371,7 +388,13 @@ function MarkAsReceivedDialog({
 export default function UnitDetails() {
   const { unitId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data, update } = useStore();
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(
+    requestedTab && UNIT_DETAIL_TABS.includes(requestedTab) ? requestedTab : "tenant",
+  );
+  const focusedItemId = searchParams.get("item");
 
   const [editUnitOpen, setEditUnitOpen] = useState(false);
   const [tenantOpen, setTenantOpen] = useState(false);
@@ -405,6 +428,19 @@ export default function UnitDetails() {
   const [savingRegenerate, setSavingRegenerate] = useState(false);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (requestedTab && UNIT_DETAIL_TABS.includes(requestedTab)) setActiveTab(requestedTab);
+  }, [requestedTab]);
+
+  useEffect(() => {
+    if (!focusedItemId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`reminder-target-${focusedItemId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, focusedItemId]);
 
   const unit = data.units.find((u) => u.id === unitId);
   if (!unit) {
@@ -491,6 +527,9 @@ export default function UnitDetails() {
   const requests = data.tenantRequests
     .filter((r) => r.unitId === unit.id)
     .sort((a, b) => b.requestDate.localeCompare(a.requestDate));
+  const earlierOutstandingPayments = markReceived
+    ? findEarlierUnreceivedPayments(data, markReceived)
+    : [];
 
   const maintenanceTotal = repairs
     .filter((r) => r.status !== "cancelled")
@@ -642,7 +681,7 @@ export default function UnitDetails() {
           )}
         </div>
 
-        <Tabs defaultValue="tenant" dir="rtl">
+        <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
           <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1">
             <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
               <User className="h-4 w-4" /> المستأجر
@@ -810,9 +849,10 @@ export default function UnitDetails() {
                 return (
                   <div
                     key={p.id}
+                    id={`reminder-target-${p.id}`}
                     className={`flex min-w-0 flex-col gap-2 overflow-hidden rounded-2xl border px-3 py-2.5 ${
                       st === "overdue" ? "border-red-200 bg-red-50/50" : "border-border bg-card"
-                    }`}
+                    } ${focusedItemId === p.id ? "ring-2 ring-primary ring-offset-2" : ""}`}
                   >
                     <div className="flex w-full min-w-0 items-start justify-between gap-2">
                       <p className="min-w-0 flex-1 whitespace-normal text-base font-bold text-primary [overflow-wrap:anywhere]">
@@ -1012,7 +1052,11 @@ export default function UnitDetails() {
                   ? c.tenantName
                   : "مستأجر غير محدد";
                 return (
-                  <div key={c.id} className="rounded-3xl border border-border bg-card p-4">
+                  <div
+                    key={c.id}
+                    id={`reminder-target-${c.id}`}
+                    className={`rounded-3xl border border-border bg-card p-4 ${focusedItemId === c.id ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="space-y-1 text-sm">
                         <div className="flex flex-wrap gap-1.5">
@@ -1113,7 +1157,11 @@ export default function UnitDetails() {
               <EmptyState icon={ClipboardList} title="لا توجد طلبات" description="أضف طلبات المستأجر من هنا" />
             ) : (
               requests.map((r) => (
-                <div key={r.id} className="rounded-3xl border border-border bg-card p-4">
+                <div
+                  key={r.id}
+                  id={`reminder-target-${r.id}`}
+                  className={`rounded-3xl border border-border bg-card p-4 ${focusedItemId === r.id ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                >
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="font-bold">{r.title}</p>
@@ -1159,7 +1207,11 @@ export default function UnitDetails() {
               <EmptyState icon={Zap} title="لا توجد فواتير مسجلة" />
             ) : (
               bills.map((b) => (
-                <div key={b.id} className="rounded-3xl border border-border bg-card p-4">
+                <div
+                  key={b.id}
+                  id={`reminder-target-${b.id}`}
+                  className={`rounded-3xl border border-border bg-card p-4 ${focusedItemId === b.id ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="font-bold">
@@ -1215,7 +1267,11 @@ export default function UnitDetails() {
                   ? data.units.find((item) => item.id === deductedPayment.unitId)
                   : undefined;
                 return (
-                <div key={r.id} className="rounded-3xl border border-border bg-card p-4">
+                <div
+                  key={r.id}
+                  id={`reminder-target-${r.id}`}
+                  className={`rounded-3xl border border-border bg-card p-4 ${focusedItemId === r.id ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="font-bold">{r.description}</p>
@@ -1723,6 +1779,7 @@ export default function UnitDetails() {
           lessorCapacity={data.contracts.find((contract) => contract.id === markReceived.contractId)?.lessorCapacity ?? currentLessorCapacity}
           feeSuggestions={officeFeeSuggestions}
           repairSuggestions={maintenanceSuggestions}
+          earlierOutstandingPayments={earlierOutstandingPayments}
           onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseNote) => {
             const duplicate = findPotentialDuplicateReceivedPayments(data, normalizePaymentFinancials({
               ...markReceived,
@@ -1734,6 +1791,15 @@ export default function UnitDetails() {
             if (duplicate) {
               showError(`تم تسجيل استلام مماثل لنفس الوحدة والشهر والمبلغ${duplicate.receivedDate ? ` بتاريخ ${formatDate(duplicate.receivedDate)}` : ""}. راجع الدفعة المكررة أولًا.`);
               return;
+            }
+            if (earlierOutstandingPayments.length > 0) {
+              const oldest = earlierOutstandingPayments[0];
+              const shouldContinue = window.confirm(
+                `يوجد خطأ محتمل في تسلسل الدفعات: ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
+                + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+                + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
+              );
+              if (!shouldContinue) return;
             }
             const grossAmount = markReceived.grossAmount ?? markReceived.amount;
             const collectionFeeAmount = Math.round(grossAmount * feePercent) / 100;

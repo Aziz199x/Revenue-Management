@@ -26,7 +26,7 @@ const NATIVE_ENGINE_MIGRATED_KEY = "rental-manager-native-engine-migrated-v1";
 const WEB_NOTIFIED_KEY = "rental-manager-notified-v3";
 const LAST_SYNC_FINGERPRINT_KEY = "rental-manager-notification-fingerprint-v1";
 const LAST_SYNC_RESULT_KEY = "rental-manager-last-sync-result-v1";
-const NOTIFICATION_ENGINE_VERSION = "2026-07-12-explicit-unpaid-reminders";
+const NOTIFICATION_ENGINE_VERSION = "2026-07-30-targeted-reminder-navigation";
 const MAX_NATIVE_SCHEDULED_NOTIFICATIONS = 64;
 const MAX_SCHEDULES_PER_REMINDER = 4;
 
@@ -156,6 +156,7 @@ interface DesiredNotification {
   sound: string;
   schedule: { at: Date };
   reminderId: string;
+  route: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -724,6 +725,7 @@ function buildDesiredNotifications(data: AppData): DesiredNotification[] {
         sound,
         schedule: { at },
         reminderId: r.id,
+        route: r.route,
       });
     }
   }
@@ -759,6 +761,7 @@ function buildReminderPlan(data: AppData): string {
       dueDate: r.date,
       amount: r.amount ?? 0,
       autoRenewal: r.autoRenewal === true,
+      route: r.route,
       ...(r.reminderWindow != null ? { reminderWindow: r.reminderWindow } : {}),
     }));
 

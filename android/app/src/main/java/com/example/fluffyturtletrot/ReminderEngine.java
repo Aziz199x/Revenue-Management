@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
@@ -187,9 +188,16 @@ public final class ReminderEngine {
 
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-        PendingIntent contentIntent = launch != null
-                ? PendingIntent.getActivity(context, 0, launch, piFlags)
-                : null;
+        PendingIntent contentIntent = null;
+        if (launch != null) {
+            String route = reminder.optString("route", "/");
+            String reminderId = reminder.optString("id", "reminder");
+            launch.setData(Uri.parse("revenuemanagement://navigate?route=" + Uri.encode(route)));
+            launch.putExtra("notificationRoute", route);
+            launch.putExtra("notificationReminderId", reminderId);
+            launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            contentIntent = PendingIntent.getActivity(context, hashId(reminderId), launch, piFlags);
+        }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(context.getResources().getIdentifier("ic_notification", "drawable", context.getPackageName()))
