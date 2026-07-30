@@ -50,9 +50,14 @@ import ExecutiveDashboard from "@/components/reports/ExecutiveDashboard";
 import MonthlyExceptionsCard from "@/components/reports/MonthlyExceptionsCard";
 import LateCollectionsList from "@/components/reports/LateCollectionsList";
 import { UnitMonthStatus, UnitMonthRow } from "@/reporting/types";
+import { formatYearMonthLabel } from "@/reporting/dateUtils";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isoYearMonth(value?: string): string {
+  return /^\d{4}-\d{2}/.test(value || "") ? String(value).slice(0, 7) : "";
 }
 
 function paymentDueDate(payment: { dueDateGregorian?: string; nextDueDate?: string; paymentDate: string }): string {
@@ -126,6 +131,7 @@ export default function BuildingDetails() {
   const [excelExporting, setExcelExporting] = useState(false);
   const [addBuildingRepairOpen, setAddBuildingRepairOpen] = useState(false);
   const [editBuildingRepair, setEditBuildingRepair] = useState<Repair | null>(null);
+  const [maintenanceMonthFilter, setMaintenanceMonthFilter] = useState("all");
   const requestedTab = searchParams.get("tab");
   const activeTab = requestedTab === "overdue" ? "units" : requestedTab || "units";
   const focusedItemId = searchParams.get("item");
@@ -167,6 +173,15 @@ export default function BuildingDetails() {
   const buildingRepairs = data.repairs
     .filter((repair) => repair.buildingId === building.id && !repair.unitId)
     .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
+  const maintenanceMonths = Array.from(new Set(
+    buildingRepairs.map((repair) => isoYearMonth(repair.repairDate)).filter(Boolean),
+  )).sort((a, b) => b.localeCompare(a));
+  const filteredBuildingRepairs = maintenanceMonthFilter === "all"
+    ? buildingRepairs
+    : buildingRepairs.filter((repair) => isoYearMonth(repair.repairDate) === maintenanceMonthFilter);
+  const filteredMaintenanceTotal = filteredBuildingRepairs
+    .filter((repair) => repair.status !== "cancelled")
+    .reduce((sum, repair) => sum + repair.cost, 0);
   const overdueUnitSummaries = units
     .map((unit) => {
       const overduePayments = data.payments
@@ -516,7 +531,7 @@ export default function BuildingDetails() {
                   صيانة عامة على العقار وغير مرتبطة بوحدة محددة
                 </p>
                 <p className="mt-1 text-sm font-bold text-amber-900">
-                  الإجمالي: {formatMoney(buildingRepairs.filter((repair) => repair.status !== "cancelled").reduce((sum, repair) => sum + repair.cost, 0))}
+                  {maintenanceMonthFilter === "all" ? "الإجمالي" : `إجمالي ${formatYearMonthLabel(maintenanceMonthFilter)}`}: {formatMoney(filteredMaintenanceTotal)}
                 </p>
               </div>
               <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAddBuildingRepairOpen(true)}>
@@ -524,53 +539,142 @@ export default function BuildingDetails() {
                 إضافة صيانة
               </Button>
             </div>
+            {buildingRepairs.length > 0 && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold">فلترة حسب شهر الصيانة</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {filteredBuildingRepairs.length} بند صيانة ظاهر
+                  </p>
+                </div>
+                <Select value={maintenanceMonthFilter} onValueChange={setMaintenanceMonthFilter}>
+                  <SelectTrigger className="h-9 w-[155px] shrink-0 rounded-xl text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل الشهور</SelectItem>
+                    {maintenanceMonths.map((yearMonth) => (
+                      <SelectItem key={yearMonth} value={yearMonth}>
+                        {formatYearMonthLabel(yearMonth)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {buildingRepairs.length === 0 ? (
               <EmptyState icon={Wrench} title="لا توجد صيانة عامة للمبنى" description="أضف أعمال الصيانة التي تخص العقار كاملًا من هنا" />
+            ) : filteredBuildingRepairs.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-border bg-card p-6 text-center">
+                <Wrench className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="mt-2 text-sm font-bold">لا توجد أعمال صيانة في هذا الشهر</p>
+                <Button variant="link" size="sm" onClick={() => setMaintenanceMonthFilter("all")}>
+                  عرض كل الشهور
+                </Button>
+              </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {buildingRepairs.map((repair) => (
-                  <div
-                    key={repair.id}
-                    id={`building-repair-${repair.id}`}
-                    className={`rounded-3xl border border-border bg-card p-4 text-xs ${
-                      focusedItemId === repair.id ? "ring-2 ring-primary ring-offset-2" : ""
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold">{repair.description}</p>
-                        <p className="mt-1 text-muted-foreground">{formatDate(repair.repairDate)}</p>
-                        {repair.contractor && <p className="mt-1 text-muted-foreground">المنفذ: {repair.contractor}</p>}
+                {filteredBuildingRepairs.map((repair) => {
+                  const linkedPayment = repair.deductedFromPaymentId
+                    ? data.payments.find((payment) => payment.id === repair.deductedFromPaymentId)
+                    : undefined;
+                  const linkedUnit = linkedPayment
+                    ? data.units.find((unit) => unit.id === linkedPayment.unitId)
+                    : undefined;
+                  const linkedTenant = linkedPayment?.tenantId
+                    ? data.tenants.find((tenant) => tenant.id === linkedPayment.tenantId)
+                    : undefined;
+                  const paymentSeries = linkedPayment
+                    ? data.payments
+                        .filter((payment) => {
+                          if (payment.deletedAt) return false;
+                          if (linkedPayment.contractId) return payment.contractId === linkedPayment.contractId;
+                          return payment.unitId === linkedPayment.unitId;
+                        })
+                        .sort((a, b) => paymentDueDate(a).localeCompare(paymentDueDate(b)))
+                    : [];
+                  const inferredPaymentIndex = linkedPayment
+                    ? paymentSeries.findIndex((payment) => payment.id === linkedPayment.id)
+                    : -1;
+                  const linkedPaymentNumber = linkedPayment?.paymentNumber
+                    ?? (inferredPaymentIndex >= 0 ? inferredPaymentIndex + 1 : undefined);
+                  const linkedPaymentMonth = linkedPayment
+                    ? getPaymentReportMonth(linkedPayment, data.settings.reportMonthCutoffDay)
+                    : "";
+
+                  return (
+                    <div
+                      key={repair.id}
+                      id={`building-repair-${repair.id}`}
+                      className={`rounded-3xl border border-border bg-card p-4 text-xs ${
+                        focusedItemId === repair.id ? "ring-2 ring-primary ring-offset-2" : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-bold">{repair.description}</p>
+                          <p className="mt-1 text-muted-foreground">{formatDate(repair.repairDate)}</p>
+                          {repair.contractor && <p className="mt-1 text-muted-foreground">المنفذ: {repair.contractor}</p>}
+                        </div>
+                        <div className="shrink-0 text-left">
+                          <StatusBadge status={repair.status} label={REPAIR_STATUS_LABELS[repair.status]} />
+                          <p className="mt-2 font-bold text-amber-700">{formatMoney(repair.cost)}</p>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-left">
-                        <StatusBadge status={repair.status} label={REPAIR_STATUS_LABELS[repair.status]} />
-                        <p className="mt-2 font-bold text-amber-700">{formatMoney(repair.cost)}</p>
+                      {repair.notes && <p className="mt-3 rounded-2xl bg-muted p-2.5 text-muted-foreground">{repair.notes}</p>}
+                      {linkedPayment ? (
+                        <div className="mt-2 rounded-2xl border border-violet-100 bg-violet-50 p-3 text-violet-900">
+                          <p className="font-bold">
+                            خُصم من إيجار {linkedUnit?.name || linkedPayment.unitName || "وحدة غير محددة"}
+                          </p>
+                          <p className="mt-1">
+                            المستأجر: {linkedPayment.tenantName || linkedTenant?.name || "غير محدد"}
+                          </p>
+                          <p className="mt-1">
+                            {linkedPaymentNumber ? `الدفعة رقم ${linkedPaymentNumber}` : "دفعة إيجار"}
+                            {linkedPaymentMonth ? ` · دفعة ${formatYearMonthLabel(linkedPaymentMonth)}` : ""}
+                          </p>
+                          <p className="mt-1 text-violet-700">
+                            موعد الاستحقاق: {formatDate(paymentDueDate(linkedPayment))}
+                          </p>
+                          {linkedPayment.receivedDate && (
+                            <p className="mt-1 text-violet-700">
+                              تاريخ الاستلام: {formatDate(linkedPayment.receivedDate)}
+                            </p>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 h-8 rounded-full border-violet-200 bg-white text-[11px] text-violet-800"
+                            onClick={() => navigate(`/units/${encodeURIComponent(linkedPayment.unitId)}?tab=payments&item=${encodeURIComponent(linkedPayment.id)}`)}
+                          >
+                            عرض الدفعة
+                          </Button>
+                        </div>
+                      ) : repair.isDeductedFromOwnerTransfer ? (
+                        <p className="mt-2 rounded-2xl bg-violet-50 p-2.5 font-semibold text-violet-800">
+                          تم خصم هذا البند من دفعة إيجار قديمة، لكن سجل الدفعة المرتبط غير موجود
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditBuildingRepair(repair)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-full text-destructive"
+                          onClick={() => {
+                            update((prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }));
+                            showSuccess("تم حذف بند الصيانة");
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
-                    {repair.notes && <p className="mt-3 rounded-2xl bg-muted p-2.5 text-muted-foreground">{repair.notes}</p>}
-                    {repair.isDeductedFromOwnerTransfer && (
-                      <p className="mt-2 rounded-2xl bg-violet-50 p-2.5 font-semibold text-violet-800">
-                        تم خصم هذا البند من دفعة إيجار
-                      </p>
-                    )}
-                    <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditBuildingRepair(repair)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full text-destructive"
-                        onClick={() => {
-                          update((prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }));
-                          showSuccess("تم حذف بند الصيانة");
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </TabsContent>
