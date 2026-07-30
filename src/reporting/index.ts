@@ -7,3 +7,4 @@ export * from "./exceptionsEngine";
 export * from "./paymentTimelineService";
 export * from "./reportBundle";
 export * from "./portfolioReportService";
+export * from "./monthCloseService";

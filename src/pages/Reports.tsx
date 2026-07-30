@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { BarChart3, Building2, FileSpreadsheet, Wallet, Wrench, TrendingUp } from "lucide-react";
+import { BarChart3, Building2, FileSpreadsheet, LockKeyhole, Wallet, Wrench, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -54,6 +54,24 @@ export default function Reports() {
         }
       />
       <div className="space-y-4 p-4">
+        <Link
+          to="/reports/month-close"
+          className="flex items-center justify-between gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 transition-transform active:scale-[0.98]"
+        >
+          <div className="flex items-center gap-3">
+            <span className="rounded-2xl bg-emerald-100 p-2.5 text-emerald-700">
+              <LockKeyhole className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-emerald-900">مراجعة وإقفال الشهر المالي</p>
+              <p className="mt-1 text-[11px] text-emerald-700">
+                افحص الدفعات والتحويلات والرسوم والصيانة قبل اعتماد التقرير
+              </p>
+            </div>
+          </div>
+          <span className="text-lg text-emerald-700">‹</span>
+        </Link>
+
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-3xl bg-primary p-4 text-primary-foreground">

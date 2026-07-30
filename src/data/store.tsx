@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract } from "./types";
 import { withComputedUnitStatuses } from "./unitStatus";
+import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAudit";
 
 function normalizeStoredReceiveMethod(method?: string | null): Payment["receiveMethod"] {
   const value = String(method || "").trim().toLowerCase();
@@ -185,7 +186,7 @@ function saveData(data: AppData) {
 
 interface StoreContextValue {
   data: AppData;
-  update: (updater: (prev: AppData) => AppData) => Promise<void>;
+  update: (updater: (prev: AppData) => AppData, context?: FinancialAuditContext) => Promise<void>;
   replaceAll: (data: AppData) => void;
 }
 
@@ -198,17 +199,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     saveData(data);
   }, [data]);
 
-  const update = useCallback((updater: (prev: AppData) => AppData) => {
+  const update = useCallback((updater: (prev: AppData) => AppData, context: FinancialAuditContext = {}) => {
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       setData((prev) => {
         try {
           const next = withComputedUnitStatuses(updater(prev));
+          const auditEntries = buildFinancialAuditEntries(prev, next, context);
+          const nextWithAudit = auditEntries.length > 0
+            ? {
+                ...next,
+                financialAuditLog: [...(next.financialAuditLog || []), ...auditEntries],
+              }
+            : next;
           if (!settled) {
             settled = true;
             queueMicrotask(resolve);
           }
-          return next;
+          return nextWithAudit;
         } catch (error) {
           if (!settled) {
             settled = true;

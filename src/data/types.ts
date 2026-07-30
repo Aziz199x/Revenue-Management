@@ -381,6 +381,72 @@ export interface CollectionFeeSettlement {
   createdAt: string;
 }
 
+export type FinancialAuditAction =
+  | "payment_created"
+  | "payment_received"
+  | "payment_updated"
+  | "payment_deleted"
+  | "owner_transferred"
+  | "maintenance_deducted"
+  | "maintenance_updated"
+  | "maintenance_deleted"
+  | "settlement_created"
+  | "settlement_updated"
+  | "settlement_deleted";
+
+export type FinancialAuditEntityType = "payment" | "repair" | "collection_fee_settlement";
+
+export interface FinancialAuditEntry {
+  id: string;
+  /** Groups every entity changed by one user action so undo remains atomic. */
+  transactionId: string;
+  createdAt: string;
+  action: FinancialAuditAction;
+  entityType: FinancialAuditEntityType;
+  entityId: string;
+  yearMonth?: string;
+  buildingId?: string;
+  unitId?: string;
+  label: string;
+  reason: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  isPostCloseAdjustment: boolean;
+  undoneAt?: string;
+}
+
+export interface FinancialMonthCloseBuildingSnapshot {
+  buildingId: string;
+  buildingName: string;
+  expectedRent: number;
+  collectedRent: number;
+  outstanding: number;
+  officeFeesOutstanding: number;
+  maintenanceCost: number;
+  pendingOwnerTransfers: number;
+}
+
+export interface FinancialMonthCloseSnapshot {
+  expectedRent: number;
+  collectedRent: number;
+  outstanding: number;
+  officeFeesOutstanding: number;
+  maintenanceCost: number;
+  pendingOwnerTransfers: number;
+  blockingIssues: number;
+  warningIssues: number;
+  informationalIssues: number;
+  buildings: FinancialMonthCloseBuildingSnapshot[];
+}
+
+export interface FinancialMonthClose {
+  id: string;
+  yearMonth: string;
+  closedAt: string;
+  notes?: string;
+  snapshot: FinancialMonthCloseSnapshot;
+}
+
 export interface WhatsAppTemplates {
   paymentReminder: string;
   overduePayment: string;
@@ -431,6 +497,8 @@ export interface AppData {
   tenantRequests: TenantRequest[];
   contractAttachments: ContractAttachment[];
   collectionFeeSettlements: CollectionFeeSettlement[];
+  financialAuditLog: FinancialAuditEntry[];
+  financialMonthClosures: FinancialMonthClose[];
   settings: Settings;
 }
 
@@ -479,5 +547,7 @@ export const EMPTY_DATA: AppData = {
   tenantRequests: [],
   contractAttachments: [],
   collectionFeeSettlements: [],
+  financialAuditLog: [],
+  financialMonthClosures: [],
   settings: DEFAULT_SETTINGS,
 };

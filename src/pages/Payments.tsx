@@ -110,6 +110,19 @@ export default function Payments() {
   const [transferNotes, setTransferNotes] = useState("");
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
 
+  const deletePayment = (payment: Payment) => {
+    const reportMonth = getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay);
+    if (data.financialMonthClosures.some((closure) => closure.yearMonth === reportMonth)) {
+      showError("لا يمكن حذف دفعة من شهر مالي مقفل. افتح الدفعة وعدّلها مع كتابة سبب التسوية.");
+      return;
+    }
+    update((prev) => ({
+      ...prev,
+      payments: prev.payments.filter((item) => item.id !== payment.id),
+    }));
+    showSuccess("تم حذف الدفعة");
+  };
+
   function updateFilters(partial: Record<string, string>) {
     setFilters((prev) => {
       const next = { ...prev, ...partial };
@@ -753,7 +766,7 @@ export default function Payments() {
                     </button>
                   )}
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => deletePayment(p)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
               {status === "paid" && !p.ownerTransferred && (
@@ -763,7 +776,7 @@ export default function Payments() {
                     <Button variant="outline" size="sm" className="h-8 rounded-full text-xs" onClick={() => setFeeSettlement(p)}>تسوية رسوم المكتب</Button>
                   )}
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => deletePayment(p)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
               {status === "paid" && p.ownerTransferred && (
@@ -775,7 +788,7 @@ export default function Payments() {
                     <Button variant="outline" size="sm" className="h-8 rounded-full text-xs" onClick={() => setFeeSettlement(p)}>تسوية رسوم المكتب</Button>
                   )}
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => deletePayment(p)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>

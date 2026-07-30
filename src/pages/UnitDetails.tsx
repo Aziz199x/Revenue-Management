@@ -550,6 +550,18 @@ export default function UnitDetails() {
   };
 
   const removeItem = (key: "payments" | "contracts" | "bills" | "repairs" | "tenants", id: string) => {
+    if (key === "payments") {
+      const payment = data.payments.find((item) => item.id === id);
+      const closedMonth = payment
+        ? data.financialMonthClosures.find(
+            (closure) => closure.yearMonth === getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay),
+          )
+        : undefined;
+      if (closedMonth) {
+        showError("لا يمكن حذف دفعة من شهر مالي مقفل. افتح تعديل الدفعة وسجّل سبب التسوية بدل الحذف.");
+        return;
+      }
+    }
     update((prev) => ({
       ...prev,
       [key]: (prev[key] as { id: string }[]).filter((x) => x.id !== id),
@@ -1468,52 +1480,56 @@ export default function UnitDetails() {
             <PaymentForm
             initial={editPayment}
             lessorCapacity={data.contracts.find((contract) => contract.id === editPayment.contractId)?.lessorCapacity ?? currentLessorCapacity}
+            requiresAuditReason={data.financialMonthClosures.some(
+              (closure) => closure.yearMonth === getPaymentReportMonth(editPayment, data.settings.reportMonthCutoffDay),
+            )}
             onSubmit={async (values) => {
               try {
                 console.log("[Edit Payment] formData:", values);
+                const { auditReason, ...paymentValues } = values;
                 await update((prev) => {
-                  const paid = values.status === "paid";
+                  const paid = paymentValues.status === "paid";
                   return {
                   ...prev,
                   payments: prev.payments.map((payment) => {
                     if (payment.id !== editPayment.id) return payment;
-                    const grossAmount = values.amount;
+                    const grossAmount = paymentValues.amount;
                     const collectionFeePercent = getPaymentCollectionFeePercent(payment, building, unit);
                     const collectionFeeAmount = Math.round(grossAmount * collectionFeePercent) / 100;
                     const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
                     return normalizePaymentFinancials({
                       ...payment,
-                      ...values,
+                      ...paymentValues,
                       grossAmount,
                       collectionFeePercent,
                       collectionFeePercentage: collectionFeePercent,
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
                       maintenanceDeductionAmount: paid ? getPaymentMaintenanceDeductionAmount(prev, payment) : 0,
-                      receivedDate: paid ? values.receivedDate : undefined,
-                      receivedAmount: paid ? values.amount : values.status === "partial" ? values.paidAmount : undefined,
-                      paidAmount: values.status === "partial" ? values.paidAmount : undefined,
-                      paymentMethod: paid ? values.paymentMethod : undefined,
-                      receiveMethod: paid ? values.receiveMethod : undefined,
+                      receivedDate: paid ? paymentValues.receivedDate : undefined,
+                      receivedAmount: paid ? paymentValues.amount : paymentValues.status === "partial" ? paymentValues.paidAmount : undefined,
+                      paidAmount: paymentValues.status === "partial" ? paymentValues.paidAmount : undefined,
+                      paymentMethod: paid ? paymentValues.paymentMethod : undefined,
+                      receiveMethod: paid ? paymentValues.receiveMethod : undefined,
                       collectionFeeStatus: paid ? payment.collectionFeeStatus : undefined,
                       collectionFeeReason: paid ? payment.collectionFeeReason : undefined,
                       collectionFeeSettledAt: paid ? payment.collectionFeeSettledAt : undefined,
                       collectionFeeSettlementNote: paid ? payment.collectionFeeSettlementNote : undefined,
                       collectionFeeSettledAmount: paid ? payment.collectionFeeSettledAmount : undefined,
                       collectionFeeRemainingAmount: paid ? payment.collectionFeeRemainingAmount : undefined,
-                      ownerTransferred: paid ? (values.ownerTransferred ?? false) : false,
-                      ownerTransferDate: paid ? (values.ownerTransferDate ?? null) : null,
-                      ownerTransferMethod: paid ? (values.ownerTransferMethod ?? null) : null,
+                      ownerTransferred: paid ? (paymentValues.ownerTransferred ?? false) : false,
+                      ownerTransferDate: paid ? (paymentValues.ownerTransferDate ?? null) : null,
+                      ownerTransferMethod: paid ? (paymentValues.ownerTransferMethod ?? null) : null,
                       ownerTransferNotes: paid ? (payment.ownerTransferNotes ?? "") : "",
-                      ownerSettledByMaintenance: paid ? (values.ownerSettledByMaintenance ?? false) : false,
-                      maintenanceSettlementNote: paid ? values.maintenanceSettlementNote : undefined,
+                      ownerSettledByMaintenance: paid ? (paymentValues.ownerSettledByMaintenance ?? false) : false,
+                      maintenanceSettlementNote: paid ? paymentValues.maintenanceSettlementNote : undefined,
                     });
                   }),
                   repairs: paid
                     ? prev.repairs
                     : restoreMaintenanceDeductionsForPayment(prev.repairs, editPayment.id),
                   };
-                });
+                }, { reason: auditReason });
                 setEditPayment(null);
                 showSuccess("تم تعديل الدفعة بنجاح");
               } catch (error) {

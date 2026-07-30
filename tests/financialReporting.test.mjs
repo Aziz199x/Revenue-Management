@@ -7,6 +7,8 @@ let reporting;
 let finance;
 let helpers;
 let maintenanceItems;
+let monthClose;
+let financialAudit;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -14,6 +16,8 @@ test.before(async () => {
   finance = await server.ssrLoadModule("/src/reporting/financialReportEngine.ts");
   helpers = await server.ssrLoadModule("/src/data/helpers.ts");
   maintenanceItems = await server.ssrLoadModule("/src/data/maintenanceExpenseItems.ts");
+  monthClose = await server.ssrLoadModule("/src/reporting/monthCloseService.ts");
+  financialAudit = await server.ssrLoadModule("/src/data/financialAudit.ts");
 });
 
 test.after(async () => {
@@ -342,4 +346,152 @@ test("a full building-maintenance settlement closes the owner balance without a 
   assert.equal(settled.ownerTransferred, true);
   assert.equal(settled.ownerTransferDate, null);
   assert.equal(settled.maintenanceSettlementNote, "مصروفات صيانة عامة");
+});
+
+test("month close review blocks duplicate receipts and unfinished owner actions", () => {
+  const first = payment({
+    id: "p1",
+    receivedDate: "2026-06-01",
+    ownerTransferred: false,
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "uncollected",
+  });
+  const duplicate = payment({
+    id: "p2",
+    receivedDate: "2026-06-02",
+    ownerTransferred: false,
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "uncollected",
+  });
+  const review = monthClose.buildMonthCloseReview(data([first, duplicate]), "2026-06");
+  const kinds = new Set(review.issues.map((issue) => issue.kind));
+
+  assert.equal(kinds.has("duplicate_payment"), true);
+  assert.equal(kinds.has("owner_transfer"), true);
+  assert.equal(kinds.has("collection_fee"), true);
+  assert.ok(review.blockingIssues >= 3);
+});
+
+test("a reconciled month can be closed with a stable financial snapshot", () => {
+  const complete = payment({
+    receivedDate: "2026-06-01",
+    ownerTransferred: true,
+    ownerTransferDate: "2026-06-02",
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "collected",
+  });
+  const review = monthClose.buildMonthCloseReview(data([complete]), "2026-06");
+  const snapshot = monthClose.createMonthCloseSnapshot(review);
+
+  assert.equal(review.blockingIssues, 0);
+  assert.equal(snapshot.expectedRent, 1000);
+  assert.equal(snapshot.collectedRent, 1000);
+  assert.equal(snapshot.pendingOwnerTransfers, 0);
+});
+
+test("financial audit stores before and after values and marks post-close adjustments", () => {
+  const unpaid = payment({
+    status: "unpaid",
+    receivedAmount: undefined,
+    receivedDate: undefined,
+  });
+  const base = {
+    ...data([unpaid]),
+    financialAuditLog: [],
+    financialMonthClosures: [{
+      id: "close-1",
+      yearMonth: "2026-06",
+      closedAt: "2026-07-01T00:00:00.000Z",
+      snapshot: {
+        expectedRent: 1000,
+        collectedRent: 0,
+        outstanding: 1000,
+        officeFeesOutstanding: 0,
+        maintenanceCost: 0,
+        pendingOwnerTransfers: 0,
+        blockingIssues: 0,
+        warningIssues: 0,
+        informationalIssues: 0,
+        buildings: [],
+      },
+    }],
+  };
+  const received = {
+    ...base,
+    payments: [{
+      ...unpaid,
+      status: "paid",
+      receivedAmount: 1000,
+      receivedDate: "2026-06-05",
+    }],
+  };
+  const entries = financialAudit.buildFinancialAuditEntries(base, received, { reason: "تصحيح استلام قديم" });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].action, "payment_received");
+  assert.equal(entries[0].reason, "تصحيح استلام قديم");
+  assert.equal(entries[0].isPostCloseAdjustment, true);
+  assert.equal(entries[0].before.status, "unpaid");
+  assert.equal(entries[0].after.status, "paid");
+
+  const restored = financialAudit.undoFinancialAuditEntry(
+    { ...received, financialAuditLog: entries },
+    entries[0],
+  );
+  assert.equal(restored.payments[0].status, "unpaid");
+  assert.ok(restored.financialAuditLog[0].undoneAt);
+});
+
+test("undo restores every payment and maintenance change from the same transaction", () => {
+  const unpaid = payment({
+    status: "unpaid",
+    receivedAmount: undefined,
+    receivedDate: undefined,
+    maintenanceDeductionAmount: 0,
+  });
+  const repair = {
+    id: "r-atomic",
+    buildingId: "b1",
+    description: "صيانة المصعد",
+    repairDate: "2026-06-02",
+    cost: 200,
+    status: "completed",
+    createdAt: "2026-06-02",
+    isDeductedFromOwnerTransfer: false,
+    deductedFromPaymentId: null,
+  };
+  const base = {
+    ...data([unpaid]),
+    repairs: [repair],
+    financialAuditLog: [],
+    financialMonthClosures: [],
+  };
+  const changed = {
+    ...base,
+    payments: [{
+      ...unpaid,
+      status: "paid",
+      receivedAmount: 1000,
+      receivedDate: "2026-06-05",
+      maintenanceDeductionAmount: 200,
+    }],
+    repairs: [{
+      ...repair,
+      isDeductedFromOwnerTransfer: true,
+      deductedFromPaymentId: unpaid.id,
+    }],
+  };
+  const entries = financialAudit.buildFinancialAuditEntries(base, changed);
+  const restored = financialAudit.undoFinancialAuditEntry(
+    { ...changed, financialAuditLog: entries },
+    entries[0],
+  );
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].transactionId, entries[1].transactionId);
+  assert.equal(restored.payments[0].status, "unpaid");
+  assert.equal(restored.payments[0].maintenanceDeductionAmount, 0);
+  assert.equal(restored.repairs[0].isDeductedFromOwnerTransfer, false);
+  assert.equal(restored.repairs[0].deductedFromPaymentId, null);
+  assert.equal(restored.financialAuditLog.every((entry) => entry.undoneAt), true);
 });

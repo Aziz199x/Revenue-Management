@@ -36,6 +36,7 @@ export interface PaymentFormValues {
   ownerTransferMethod?: PaymentMethod | null;
   ownerSettledByMaintenance?: boolean;
   maintenanceSettlementNote?: string;
+  auditReason?: string;
 }
 
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -57,10 +58,11 @@ interface Props {
   defaultAmount?: number;
   unitId?: string;
   lessorCapacity?: "owner" | "representative";
+  requiresAuditReason?: boolean;
   onSubmit: (values: PaymentFormValues) => void;
 }
 
-export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapacity, onSubmit }: Props) {
+export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapacity, requiresAuditReason = false, onSubmit }: Props) {
   const { data } = useStore();
   const [amount, setAmount] = useState(
     initial?.amount?.toString() ?? (defaultAmount ? String(defaultAmount) : ""),
@@ -72,6 +74,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
   const [receivedDate, setReceivedDate] = useState(initial?.receivedDate ?? todayISO());
   const [paymentMethod, setPaymentMethod] = useState<PaymentReceiveMethod | "">(initial?.receiveMethod ?? initial?.paymentMethod ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [auditReason, setAuditReason] = useState("");
   const resolvedLessorCapacity = lessorCapacity ?? (initial ? getPaymentLessorCapacity(data, initial) : "owner");
   const [ownerTransferred, setOwnerTransferred] = useState(initial?.ownerTransferred ?? false);
   const ownerSettledByMaintenance = initial?.ownerSettledByMaintenance ?? false;
@@ -131,6 +134,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
     maintenanceSettlementNote: status === "paid" && ownerSettledByMaintenance
       ? initial?.maintenanceSettlementNote
       : undefined,
+    auditReason: requiresAuditReason ? auditReason.trim() || undefined : undefined,
   });
 
   const validate = (values: PaymentFormValues) => {
@@ -139,6 +143,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
     if (values.status === "paid" && !values.receivedDate) return "يرجى اختيار تاريخ الاستلام";
     if (values.status === "paid" && !values.receiveMethod) return "يرجى اختيار طريقة الاستلام";
     if (values.ownerTransferred && !values.ownerSettledByMaintenance && !values.ownerTransferDate) return "يرجى اختيار تاريخ التحويل للمالك";
+    if (requiresAuditReason && !values.auditReason?.trim()) return "يرجى كتابة سبب تعديل الدفعة لأن شهرها المالي مقفل";
     return null;
   };
 
@@ -294,6 +299,21 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
         <Label>ملاحظات</Label>
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-xl" />
       </div>
+      {requiresAuditReason && (
+        <div className="space-y-1.5 rounded-2xl border border-violet-200 bg-violet-50 p-3">
+          <Label className="font-bold text-violet-900">سبب التسوية بعد إقفال الشهر *</Label>
+          <Textarea
+            value={auditReason}
+            onChange={(event) => setAuditReason(event.target.value)}
+            className="rounded-xl bg-background"
+            placeholder="مثال: تصحيح تاريخ الاستلام بناءً على إيصال التحويل"
+            required
+          />
+          <p className="text-[10px] text-violet-700">
+            سيظهر هذا السبب في سجل التدقيق، ولن يتغير سجل الإقفال بصمت.
+          </p>
+        </div>
+      )}
       <Button type="submit" className="w-full rounded-xl">
         {initial ? "حفظ التعديلات" : "تسجيل الدفعة"}
       </Button>
