@@ -123,6 +123,14 @@ function paymentNotesWithoutGeneratedMaintenance(payment: Payment): string {
 }
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
+import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
+import {
+  createMaintenanceExpenseItemDraft,
+  hasInvalidMaintenanceExpenseItems,
+  MaintenanceExpenseItem,
+  MaintenanceExpenseItemDraft,
+  normalizeMaintenanceExpenseItems,
+} from "@/data/maintenanceExpenseItems";
 import { buildPaymentReminderMessage, fillTemplate } from "@/utils/whatsapp";
 import { validatePhone } from "@/utils/whatsapp";
 import { formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
@@ -154,7 +162,7 @@ function MarkAsReceivedDialog({
     settlements: Array<{ paymentId: string; amount: number }>,
     repairIds: string[],
     settleWithBuildingMaintenance: boolean,
-    maintenanceExpenseNote: string | undefined,
+    maintenanceExpenseItems: MaintenanceExpenseItem[],
   ) => void;
   onCancel: () => void;
 }) {
@@ -164,7 +172,7 @@ function MarkAsReceivedDialog({
   const [selectedSettlements, setSelectedSettlements] = useState<Record<string, number>>({});
   const [selectedRepairIds, setSelectedRepairIds] = useState<string[]>([]);
   const [settleWithBuildingMaintenance, setSettleWithBuildingMaintenance] = useState(false);
-  const [maintenanceExpenseNote, setMaintenanceExpenseNote] = useState("");
+  const [maintenanceExpenseItems, setMaintenanceExpenseItems] = useState<MaintenanceExpenseItemDraft[]>([]);
 
   const grossAmount = payment.grossAmount ?? payment.amount;
   // Legacy payments may not have stored a fee percentage. Reverting one of
@@ -179,13 +187,14 @@ function MarkAsReceivedDialog({
   const maintenanceTotal = repairSuggestions
     .filter(({ repair }) => selectedRepairIds.includes(repair.id))
     .reduce((sum, { repair }) => sum + repair.cost, 0);
-  const manualMaintenanceSettlement = settleWithBuildingMaintenance
-    ? Math.max(0, Math.round((grossAmount - ownerDeductibleFee - maintenanceTotal) * 100) / 100)
-    : 0;
+  const normalizedMaintenanceExpenseItems = settleWithBuildingMaintenance
+    ? normalizeMaintenanceExpenseItems(maintenanceExpenseItems)
+    : [];
+  const manualMaintenanceSettlement = normalizedMaintenanceExpenseItems
+    .reduce((sum, item) => sum + item.cost, 0);
   const totalDeductions = ownerDeductibleFee + settlementTotal + maintenanceTotal + manualMaintenanceSettlement;
-  const requiresMaintenanceNote = settleWithBuildingMaintenance
-    && selectedRepairIds.length === 0
-    && !maintenanceExpenseNote.trim();
+  const requiresMaintenanceItems = settleWithBuildingMaintenance
+    && hasInvalidMaintenanceExpenseItems(maintenanceExpenseItems);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
@@ -295,28 +304,19 @@ function MarkAsReceivedDialog({
                 onChange={(event) => {
                   setSettleWithBuildingMaintenance(event.target.checked);
                   if (event.target.checked) setSelectedSettlements({});
-                  if (!event.target.checked) setMaintenanceExpenseNote("");
+                  setMaintenanceExpenseItems(event.target.checked ? [createMaintenanceExpenseItemDraft()] : []);
                 }}
               />
               <span>
-                <span className="block font-bold text-violet-900">تسوية صافي الدفعة مقابل صيانة المبنى</span>
-                <span className="mt-1 block text-violet-800">خيار اختياري يجعل الصافي المطلوب تحويله للمالك صفرًا، ويوثّق أن المبلغ استُخدم لمصروفات الصيانة.</span>
+                <span className="block font-bold text-violet-900">خصم بنود صيانة يدوية من الدفعة</span>
+                <span className="mt-1 block text-violet-800">أضف وصف وتكلفة كل بند؛ سيُخصم إجمالي البنود فقط، ويبقى الباقي مستحقًا للتحويل للمالك.</span>
               </span>
             </label>
             {settleWithBuildingMaintenance && (
-              <>
-                <p className="font-bold text-violet-900">مبلغ التسوية الإضافي: {formatMoney(manualMaintenanceSettlement)}</p>
-                <div className="space-y-1">
-                  <Label>تعليق المصروفات {selectedRepairIds.length === 0 ? "*" : "(اختياري)"}</Label>
-                  <Textarea
-                    value={maintenanceExpenseNote}
-                    onChange={(event) => setMaintenanceExpenseNote(event.target.value)}
-                    placeholder="مثال: تسوية أعمال السباكة والكهرباء العامة للمبنى"
-                    className="rounded-xl bg-white"
-                  />
-                  {requiresMaintenanceNote && <p className="font-semibold text-red-700">أضف وصف المصروفات لعدم وجود طلب صيانة محدد.</p>}
-                </div>
-              </>
+              <MaintenanceExpenseItemsEditor
+                items={maintenanceExpenseItems}
+                onChange={setMaintenanceExpenseItems}
+              />
             )}
           </div>
           {totalDeductions > grossAmount && (
@@ -364,7 +364,7 @@ function MarkAsReceivedDialog({
             </Button>
             <Button
               className="flex-1 rounded-xl"
-              disabled={totalDeductions > grossAmount || requiresMaintenanceNote}
+              disabled={totalDeductions > grossAmount || requiresMaintenanceItems}
               onClick={() => onConfirm(
                 receivedDate,
                 method,
@@ -373,7 +373,7 @@ function MarkAsReceivedDialog({
                 Object.entries(selectedSettlements).map(([paymentId, amount]) => ({ paymentId, amount })),
                 selectedRepairIds,
                 settleWithBuildingMaintenance,
-                maintenanceExpenseNote.trim() || undefined,
+                normalizedMaintenanceExpenseItems,
               )}
             >
               تأكيد الاستلام
@@ -904,7 +904,7 @@ export default function UnitDetails() {
                               <div className="mt-1 space-y-1">
                                 {maintenanceDeductions.map((item) => (
                                   <p key={item.repair.id}>
-                                    {item.repair.description} · الوحدة: {item.unit?.name || "صيانة عامة للعقار"} · {formatMoney(item.repair.cost)}
+                                    {item.repair.description} · الموقع: {item.unit?.name || item.building?.name || "صيانة عامة للعقار"} · {formatMoney(item.repair.cost)}
                                   </p>
                                 ))}
                               </div>
@@ -1780,7 +1780,7 @@ export default function UnitDetails() {
           feeSuggestions={officeFeeSuggestions}
           repairSuggestions={maintenanceSuggestions}
           earlierOutstandingPayments={earlierOutstandingPayments}
-          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseNote) => {
+          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseItems) => {
             const duplicate = findPotentialDuplicateReceivedPayments(data, normalizePaymentFinancials({
               ...markReceived,
               status: "paid",
@@ -1808,19 +1808,27 @@ export default function UnitDetails() {
             const selectedRepairs = data.repairs.filter((repair) => repairIds.includes(repair.id) && !repair.isDeductedFromOwnerTransfer);
             const linkedMaintenanceAmount = selectedRepairs.reduce((sum, repair) => sum + repair.cost, 0);
             const ownerDeductibleFee = method === "ejar_platform" ? 0 : collectionFeeAmount;
-            const manualMaintenanceAmount = settleWithBuildingMaintenance
-              ? Math.max(0, Math.round((grossAmount - ownerDeductibleFee - linkedMaintenanceAmount) * 100) / 100)
-              : 0;
+            const manualMaintenanceAmount = maintenanceExpenseItems
+              .reduce((sum, item) => sum + item.cost, 0);
             const maintenanceDeductionAmount = linkedMaintenanceAmount + manualMaintenanceAmount;
+            const maintenanceExpenseSummary = maintenanceExpenseItems
+              .map((item) => `${item.description} (${formatMoney(item.cost)})`)
+              .join("، ");
             const maintenanceNote = maintenanceDeductionAmount > 0
               ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${[
                   ...selectedRepairs.map((repair) => {
                     const repairUnit = data.units.find((item) => item.id === repair.unitId);
                     return `${repair.description} (${repairUnit?.name || "صيانة عامة للعقار"} - ${formatMoney(repair.cost)})`;
                   }),
-                  maintenanceExpenseNote,
+                  maintenanceExpenseSummary,
                 ].filter(Boolean).join("، ")}.`
               : "";
+            const remainingForOwner = Math.max(0, Math.round((
+              grossAmount - ownerDeductibleFee - settlementTotal - maintenanceDeductionAmount
+            ) * 100) / 100);
+            const fullySettledByMaintenance = settleWithBuildingMaintenance
+              && manualMaintenanceAmount > 0
+              && remainingForOwner <= 0;
             const autoOwnerTransfer = !settleWithBuildingMaintenance
               && shouldAutoTransferEjarPayment(data, markReceived, method);
             update((prev) => ({
@@ -1844,14 +1852,16 @@ export default function UnitDetails() {
                       collectionFeeAmount,
                       netAmountAfterCollectionFee,
                       maintenanceDeductionAmount,
-                      ownerTransferred: settleWithBuildingMaintenance || autoOwnerTransfer,
+                      ownerTransferred: fullySettledByMaintenance || autoOwnerTransfer,
                       ownerTransferDate: autoOwnerTransfer ? receivedDate : null,
                       ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : null,
-                      ownerTransferNotes: settleWithBuildingMaintenance
-                        ? `تمت تسوية صافي الدفعة مقابل صيانة المبنى بتاريخ ${receivedDate}.`
+                      ownerTransferNotes: fullySettledByMaintenance
+                        ? `تمت تسوية صافي الدفعة بالكامل مقابل بنود صيانة المبنى بتاريخ ${receivedDate}.`
+                        : settleWithBuildingMaintenance
+                          ? `تم خصم بنود صيانة المبنى ويتبقى ${formatMoney(remainingForOwner)} للتحويل للمالك.`
                         : autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
-                      ownerSettledByMaintenance: settleWithBuildingMaintenance,
-                      maintenanceSettlementNote: settleWithBuildingMaintenance ? maintenanceExpenseNote : undefined,
+                      ownerSettledByMaintenance: fullySettledByMaintenance,
+                      maintenanceSettlementNote: maintenanceExpenseSummary || undefined,
                     })
                   : settlements.some((item) => item.paymentId === p.id)
                     ? (() => {
@@ -1870,9 +1880,23 @@ export default function UnitDetails() {
                       })()
                     : p,
               ),
-              repairs: prev.repairs.map((repair) => repairIds.includes(repair.id)
-                ? { ...repair, isDeductedFromOwnerTransfer: true, deductedFromPaymentId: markReceived.id }
-                : repair),
+              repairs: [
+                ...prev.repairs.map((repair) => repairIds.includes(repair.id)
+                  ? { ...repair, isDeductedFromOwnerTransfer: true, deductedFromPaymentId: markReceived.id }
+                  : repair),
+                ...maintenanceExpenseItems.map((item) => ({
+                  id: genId(),
+                  buildingId: unit.buildingId,
+                  description: item.description,
+                  repairDate: receivedDate,
+                  cost: item.cost,
+                  status: "completed" as const,
+                  notes: `بند صيانة عام للعقار خُصم من دفعة ${unit.name}.`,
+                  createdAt: new Date().toISOString(),
+                  isDeductedFromOwnerTransfer: true,
+                  deductedFromPaymentId: markReceived.id,
+                })),
+              ],
               collectionFeeSettlements: [
                 ...prev.collectionFeeSettlements,
                 ...settlements.map((settlement) => ({

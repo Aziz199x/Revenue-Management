@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -8,8 +8,6 @@ import {
   Wrench,
   CalendarClock,
   Wallet,
-  MessageCircle,
-  CheckCircle2,
   BarChart3,
   FileSpreadsheet,
   FileText,
@@ -40,19 +38,18 @@ import FormSheet from "@/components/shared/FormSheet";
 import StatusBadge from "@/components/shared/StatusBadge";
 import BuildingForm from "@/components/forms/BuildingForm";
 import UnitForm from "@/components/forms/UnitForm";
-import WhatsappPreview from "@/components/shared/WhatsappPreview";
+import RepairForm from "@/components/forms/RepairForm";
 import { useStore, genId } from "@/data/store";
-import { buildingStats, formatMoney, formatDate, todayISO, normalizePaymentFinancials, parseLocalDate, effectiveStatus, getPaymentReceiveMethod, isCollectionFeeCollected, getPaymentReportMonth, getPaymentReportYearMonth, calculateInstallmentAmount, generatePaymentDueDates, getContractEndDate, getRemainingPaymentAmount, getPaymentAmount, formatSarAmount, daysUntil, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getCollectedRentAmount, isPaymentOverdue } from "@/data/helpers";
-import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS, UNIT_MONTH_STATUS_LABELS } from "@/data/labels";
-import { Contract, Payment, PaymentReceiveMethod, PaymentStatus, Unit } from "@/data/types";
-import { buildPaymentReminderMessage } from "@/utils/whatsapp";
+import { buildingStats, formatMoney, formatDate, todayISO, normalizePaymentFinancials, parseLocalDate, effectiveStatus, getPaymentReceiveMethod, isCollectionFeeCollected, getPaymentReportMonth, getPaymentReportYearMonth, calculateInstallmentAmount, generatePaymentDueDates, getContractEndDate, getRemainingPaymentAmount, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getCollectedRentAmount, isPaymentOverdue } from "@/data/helpers";
+import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS, UNIT_MONTH_STATUS_LABELS, REPAIR_STATUS_LABELS } from "@/data/labels";
+import { Contract, Payment, PaymentReceiveMethod, PaymentStatus, Repair, Unit } from "@/data/types";
 import { showSuccess, showError } from "@/utils/toast";
 import { buildMonthlyReportBundle } from "@/reporting/reportBundle";
 import { exportBuildingExcel } from "@/utils/buildingExcelExport";
 import ExecutiveDashboard from "@/components/reports/ExecutiveDashboard";
 import MonthlyExceptionsCard from "@/components/reports/MonthlyExceptionsCard";
 import LateCollectionsList from "@/components/reports/LateCollectionsList";
-import { UnitMonthStatus, UnitMonthRow, LatePaymentRow } from "@/reporting/types";
+import { UnitMonthStatus, UnitMonthRow } from "@/reporting/types";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -123,18 +120,30 @@ export default function BuildingDetails() {
   const [selectedMonth, setSelectedMonth] = useState(monthKey(new Date()));
   const [statusFilter, setStatusFilter] = useState<UnitMonthStatus | "all">("all");
   const [receiveMethodFilter, setReceiveMethodFilter] = useState<PaymentReceiveMethod | "all">("all");
-  const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
   const [excelOpen, setExcelOpen] = useState(false);
   const [excelFrom, setExcelFrom] = useState(`${new Date().getFullYear()}-01`);
   const [excelTo, setExcelTo] = useState(monthKey(new Date()));
   const [excelExporting, setExcelExporting] = useState(false);
-  const activeTab = searchParams.get("tab") || "units";
+  const [addBuildingRepairOpen, setAddBuildingRepairOpen] = useState(false);
+  const [editBuildingRepair, setEditBuildingRepair] = useState<Repair | null>(null);
+  const requestedTab = searchParams.get("tab");
+  const activeTab = requestedTab === "overdue" ? "units" : requestedTab || "units";
+  const focusedItemId = searchParams.get("item");
   const setActiveTab = (value: string) => {
     const next = new URLSearchParams(searchParams);
     if (value === "units") next.delete("tab");
     else next.set("tab", value);
     setSearchParams(next, { replace: false });
   };
+
+  useEffect(() => {
+    if (!focusedItemId || activeTab !== "maintenance") return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`building-repair-${focusedItemId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, focusedItemId]);
 
   const building = data.buildings.find((b) => b.id === buildingId);
   const reportBundle = useMemo(
@@ -155,7 +164,27 @@ export default function BuildingDetails() {
 
   const stats = buildingStats(data, building.id);
   const units = data.units.filter((u) => u.buildingId === building.id);
-  const unitIds = new Set(units.map((u) => u.id));
+  const buildingRepairs = data.repairs
+    .filter((repair) => repair.buildingId === building.id && !repair.unitId)
+    .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
+  const overdueUnitSummaries = units
+    .map((unit) => {
+      const overduePayments = data.payments
+        .filter((payment) => payment.unitId === unit.id && isPaymentOverdue(payment))
+        .sort((a, b) => paymentDueDate(a).localeCompare(paymentDueDate(b)));
+      return {
+        unit,
+        payments: overduePayments,
+        months: new Set(overduePayments.map((payment) =>
+          getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)
+        )).size,
+        total: overduePayments.reduce((sum, payment) => sum + getRemainingPaymentAmount(payment), 0),
+      };
+    })
+    .filter((item) => item.payments.length > 0)
+    .sort((a, b) => b.payments.length - a.payments.length);
+  const overduePaymentsCount = overdueUnitSummaries
+    .reduce((sum, item) => sum + item.payments.length, 0);
   const filteredUnitRows: UnitMonthRow[] = bundle.report.unitRows.filter((row) => {
     if (statusFilter !== "all" && row.status !== statusFilter) return false;
     if (receiveMethodFilter !== "all" && row.collectionMethod !== receiveMethodFilter) return false;
@@ -176,26 +205,6 @@ export default function BuildingDetails() {
   const unpaidCount = bundle.report.unitRows.filter((row) => row.status === "occupied_unpaid").length;
   const partialCount = bundle.report.unitRows.filter((row) => row.status === "occupied_partial").length;
   const ejarCount = bundle.report.unitRows.filter((row) => row.collectionMethod === "ejar_platform").length;
-
-  const openPaymentWhatsapp = (row: LatePaymentRow) => {
-    if (!row.outstandingAmount) {
-      showError("مبلغ الدفعة غير صحيح");
-      return;
-    }
-    if (!row.tenantPhone) {
-      showError("رقم جوال المستأجر غير موجود");
-      return;
-    }
-    const message = buildPaymentReminderMessage({
-      tenantName: row.tenantName,
-      buildingName: building.name,
-      unitName: row.unitName,
-      amount: formatSarAmount(row.outstandingAmount),
-      dueDate: formatDate(row.dueDate),
-      isOverdue: true,
-    });
-    setWhatsappPreview({ phone: row.tenantPhone, message });
-  };
 
   const deleteBuilding = () => {
     update((prev) => {
@@ -292,11 +301,11 @@ export default function BuildingDetails() {
             <TabsTrigger value="financial" className="rounded-xl py-2 text-xs font-bold">
               المالية
             </TabsTrigger>
-            <TabsTrigger value="overdue" className="rounded-xl py-2 text-xs font-bold">
-              <span>المتأخرة</span>
-              {bundle.report.latePayments.length > 0 && (
-                <span className="mr-1 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] text-destructive-foreground">
-                  {bundle.report.latePayments.length}
+            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-xs font-bold">
+              <span>صيانة المبنى</span>
+              {buildingRepairs.length > 0 && (
+                <span className="mr-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
+                  {buildingRepairs.length}
                 </span>
               )}
             </TabsTrigger>
@@ -499,41 +508,70 @@ export default function BuildingDetails() {
             <MonthlyExceptionsCard exceptions={bundle.exceptions} />
           </TabsContent>
 
-          <TabsContent value="overdue" className="mt-4 space-y-3">
-            {bundle.report.latePayments.length === 0 ? (
-              <EmptyState icon={CalendarClock} title="لا توجد دفعات متأخرة" description="جميع دفعات هذا العقار محصلة أو لم يحن موعدها بعد" />
+          <TabsContent value="maintenance" className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+              <div>
+                <p className="font-bold text-amber-900">أعمال صيانة المبنى</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  صيانة عامة على العقار وغير مرتبطة بوحدة محددة
+                </p>
+                <p className="mt-1 text-sm font-bold text-amber-900">
+                  الإجمالي: {formatMoney(buildingRepairs.filter((repair) => repair.status !== "cancelled").reduce((sum, repair) => sum + repair.cost, 0))}
+                </p>
+              </div>
+              <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAddBuildingRepairOpen(true)}>
+                <Plus className="ml-1 h-4 w-4" />
+                إضافة صيانة
+              </Button>
+            </div>
+            {buildingRepairs.length === 0 ? (
+              <EmptyState icon={Wrench} title="لا توجد صيانة عامة للمبنى" description="أضف أعمال الصيانة التي تخص العقار كاملًا من هنا" />
             ) : (
-              bundle.report.latePayments.map((row) => (
-                <div key={row.id} className="rounded-3xl border border-border bg-card p-4 text-xs">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold">{row.tenantName || "مستأجر غير محدد"}</p>
-                      <p className="mt-1 text-muted-foreground">{row.unitName}</p>
-                      <p className="mt-1 text-muted-foreground">موعد السداد: {formatDate(row.dueDate)} - متأخرة {row.delayDays} يوم</p>
-                      {row.isPartial && (
-                        <p className="mt-1 text-amber-700">دفعة جزئية — تبقى {formatMoney(row.outstandingAmount)}</p>
-                      )}
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {buildingRepairs.map((repair) => (
+                  <div
+                    key={repair.id}
+                    id={`building-repair-${repair.id}`}
+                    className={`rounded-3xl border border-border bg-card p-4 text-xs ${
+                      focusedItemId === repair.id ? "ring-2 ring-primary ring-offset-2" : ""
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold">{repair.description}</p>
+                        <p className="mt-1 text-muted-foreground">{formatDate(repair.repairDate)}</p>
+                        {repair.contractor && <p className="mt-1 text-muted-foreground">المنفذ: {repair.contractor}</p>}
+                      </div>
+                      <div className="shrink-0 text-left">
+                        <StatusBadge status={repair.status} label={REPAIR_STATUS_LABELS[repair.status]} />
+                        <p className="mt-2 font-bold text-amber-700">{formatMoney(repair.cost)}</p>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-left">
-                      <StatusBadge status="overdue" label={PAYMENT_STATUS_LABELS.overdue} />
-                      <p className="mt-2 font-bold text-red-700">{formatMoney(row.outstandingAmount)}</p>
+                    {repair.notes && <p className="mt-3 rounded-2xl bg-muted p-2.5 text-muted-foreground">{repair.notes}</p>}
+                    {repair.isDeductedFromOwnerTransfer && (
+                      <p className="mt-2 rounded-2xl bg-violet-50 p-2.5 font-semibold text-violet-800">
+                        تم خصم هذا البند من دفعة إيجار
+                      </p>
+                    )}
+                    <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditBuildingRepair(repair)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full text-destructive"
+                        onClick={() => {
+                          update((prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }));
+                          showSuccess("تم حذف بند الصيانة");
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المستحق</p><p className="font-bold">{formatMoney(row.rentAmount)}</p></div>
-                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المدفوع</p><p className="font-bold text-emerald-700">{formatMoney(Math.max(0, row.rentAmount - row.outstandingAmount))}</p></div>
-                    <div className="rounded-2xl bg-muted p-2"><p className="text-muted-foreground">المتبقي</p><p className="font-bold text-red-700">{formatMoney(row.outstandingAmount)}</p></div>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 rounded-full text-xs" onClick={() => openPaymentWhatsapp(row)}>
-                      <MessageCircle className="ml-1 h-4 w-4" /> واتساب
-                    </Button>
-                    <Button size="sm" className="flex-1 rounded-full text-xs" onClick={() => navigate(`/units/${row.unitId}`)}>
-                      <CheckCircle2 className="ml-1 h-4 w-4" /> تسجيل استلام
-                    </Button>
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </TabsContent>
 
@@ -552,6 +590,48 @@ export default function BuildingDetails() {
             <p className="text-[11px] text-muted-foreground">شاغرة</p>
           </div>
         </div>
+        <details className="group rounded-2xl border border-red-200 bg-red-50 p-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-red-600" />
+              <div>
+                <p className="text-xs font-bold text-red-800">حالات الوحدات المتأخرة</p>
+                <p className="text-[10px] text-red-700">اضغط لعرض عدد الدفعات والشهور لكل وحدة</p>
+              </div>
+            </div>
+            <div className="shrink-0 text-left">
+              <p className="text-sm font-bold text-red-700">{overdueUnitSummaries.length} وحدة</p>
+              <p className="text-[10px] text-red-600">{overduePaymentsCount} دفعة</p>
+            </div>
+          </summary>
+          <div className="mt-3 space-y-2 border-t border-red-200 pt-3">
+            {overdueUnitSummaries.length === 0 ? (
+              <p className="rounded-xl bg-white/70 p-2 text-xs text-emerald-700">لا توجد وحدات متأخرة حاليًا.</p>
+            ) : overdueUnitSummaries.map((item) => {
+              const oldestPayment = item.payments[0];
+              const tenant = data.tenants.find((tenantItem) => tenantItem.unitId === item.unit.id);
+              return (
+                <Link
+                  key={item.unit.id}
+                  to={`/units/${encodeURIComponent(item.unit.id)}?tab=payments&item=${encodeURIComponent(oldestPayment.id)}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-white p-2.5 text-xs transition-transform active:scale-[0.98]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-bold">{item.unit.name}</p>
+                    {tenant?.name && <p className="truncate text-[10px] text-muted-foreground">{tenant.name}</p>}
+                    <p className="mt-1 text-[10px] text-red-700">
+                      {item.payments.length} دفعة · {item.months} {item.months === 1 ? "شهر" : "أشهر"}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-left">
+                    <p className="font-bold text-red-700">{formatMoney(item.total)}</p>
+                    <p className="text-[10px] text-muted-foreground">أقدمها {formatDate(paymentDueDate(oldestPayment))}</p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </details>
         {building.notes && (
           <p className="rounded-2xl bg-muted p-3 text-sm text-muted-foreground">
             {building.notes}
@@ -701,14 +781,45 @@ export default function BuildingDetails() {
           }}
         />
       </FormSheet>
-      {whatsappPreview && (
-        <WhatsappPreview
-          open={!!whatsappPreview}
-          onOpenChange={(open) => !open && setWhatsappPreview(null)}
-          phone={whatsappPreview.phone}
-          message={whatsappPreview.message}
+      <FormSheet open={addBuildingRepairOpen} onOpenChange={setAddBuildingRepairOpen} title="إضافة صيانة للمبنى">
+        <RepairForm
+          onSubmit={(values) => {
+            update((prev) => ({
+              ...prev,
+              repairs: [
+                ...prev.repairs,
+                {
+                  id: genId(),
+                  buildingId: building.id,
+                  createdAt: new Date().toISOString(),
+                  ...values,
+                },
+              ],
+            }));
+            setAddBuildingRepairOpen(false);
+            showSuccess("تمت إضافة صيانة المبنى");
+          }}
         />
-      )}
+      </FormSheet>
+      <FormSheet open={!!editBuildingRepair} onOpenChange={(open) => !open && setEditBuildingRepair(null)} title="تعديل صيانة المبنى">
+        {editBuildingRepair && (
+          <RepairForm
+            initial={editBuildingRepair}
+            onSubmit={(values) => {
+              update((prev) => ({
+                ...prev,
+                repairs: prev.repairs.map((repair) =>
+                  repair.id === editBuildingRepair.id
+                    ? { ...repair, ...values, buildingId: building.id, unitId: undefined }
+                    : repair
+                ),
+              }));
+              setEditBuildingRepair(null);
+              showSuccess("تم حفظ صيانة المبنى");
+            }}
+          />
+        )}
+      </FormSheet>
     </div>
   );
 }

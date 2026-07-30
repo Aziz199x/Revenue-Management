@@ -6,12 +6,14 @@ let server;
 let reporting;
 let finance;
 let helpers;
+let maintenanceItems;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
   reporting = await server.ssrLoadModule("/src/reporting/unitMonthStatus.ts");
   finance = await server.ssrLoadModule("/src/reporting/financialReportEngine.ts");
   helpers = await server.ssrLoadModule("/src/data/helpers.ts");
+  maintenanceItems = await server.ssrLoadModule("/src/data/maintenanceExpenseItems.ts");
 });
 
 test.after(async () => {
@@ -259,6 +261,39 @@ test("reminders carry a precise route to their payment or request", () => {
     .find((item) => item.id === "pay-payment-route");
   assert.equal(reminder?.paymentId, "payment-route");
   assert.equal(reminder?.route, "/units/u1?tab=payments&item=payment-route");
+});
+
+test("manual building maintenance deducts only entered line-item costs", () => {
+  const drafts = [
+    { id: "i1", description: "إصلاح المضخة", cost: "250" },
+    { id: "i2", description: "تنظيف الخزان", cost: "175.50" },
+  ];
+  const normalized = maintenanceItems.normalizeMaintenanceExpenseItems(drafts);
+
+  assert.equal(normalized.reduce((sum, item) => sum + item.cost, 0), 425.5);
+  assert.equal(maintenanceItems.hasInvalidMaintenanceExpenseItems(drafts), false);
+  assert.equal(
+    maintenanceItems.hasInvalidMaintenanceExpenseItems([{ id: "bad", description: "", cost: "100" }]),
+    true,
+  );
+});
+
+test("a building-wide maintenance reminder opens the building maintenance tab", () => {
+  const snapshot = data([]);
+  snapshot.repairs = [{
+    id: "building-repair",
+    buildingId: "b1",
+    description: "صيانة المضخة الرئيسية",
+    repairDate: "2026-07-30",
+    cost: 300,
+    status: "pending",
+    createdAt: "2026-07-30",
+  }];
+
+  const reminder = helpers.collectReminders(snapshot)
+    .find((item) => item.id === "rep-building-repair");
+  assert.equal(reminder?.subtitle, "العقار");
+  assert.equal(reminder?.route, "/buildings/b1?tab=maintenance&item=building-repair");
 });
 
 test("reverting a received payment restores linked maintenance for future receipt suggestions", () => {

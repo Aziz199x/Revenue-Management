@@ -949,16 +949,22 @@ export function collectReminders(data: AppData): ReminderItem[] {
 
   for (const r of data.repairs) {
     if (r.status !== "pending") continue;
+    const repairUnit = r.unitId ? data.units.find((unit) => normalizeId(unit.id) === normalizeId(r.unitId)) : undefined;
+    const repairBuildingId = r.buildingId || repairUnit?.buildingId;
+    const repairBuilding = data.buildings.find((building) => building.id === repairBuildingId);
+    const repairRoute = r.unitId
+      ? buildReminderRoute("maintenance", r.unitId, r.id)
+      : `/buildings/${encodeURIComponent(repairBuildingId || "")}?tab=maintenance&item=${encodeURIComponent(r.id)}`;
     items.push({
       id: `rep-${r.id}`,
       kind: "maintenance",
       title: "صيانة معلقة",
-      subtitle: unitName(r.unitId),
+      subtitle: r.unitId ? unitName(r.unitId) : repairBuilding?.name || "صيانة عامة للعقار",
       date: r.repairDate,
       days: daysUntil(r.repairDate),
-      unitId: r.unitId,
+      unitId: r.unitId || "",
       repairId: r.id,
-      route: buildReminderRoute("maintenance", r.unitId, r.id),
+      route: repairRoute,
     });
   }
 
