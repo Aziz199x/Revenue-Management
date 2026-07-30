@@ -575,10 +575,25 @@ export default function Payments() {
             const maintenanceNote = paymentMaintenanceNote(p);
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
             const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
+            const paymentDetailsRoute = `/units/${encodeURIComponent(p.unitId)}?tab=payments&item=${encodeURIComponent(p.id)}`;
+            const openPaymentDetails = () => navigate(paymentDetailsRoute);
             return (
             <div
               key={p.id}
-              className={`flex min-w-0 flex-col gap-2 overflow-hidden rounded-2xl border px-3 py-3 transition-transform active:scale-[0.98] ${
+              role="link"
+              tabIndex={0}
+              aria-label={`فتح تفاصيل دفعة ${unit?.name ?? ""}`}
+              onClick={(event) => {
+                const target = event.target as HTMLElement;
+                if (target.closest("button, a, input, select, textarea, [role='button']")) return;
+                openPaymentDetails();
+              }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+                event.preventDefault();
+                openPaymentDetails();
+              }}
+              className={`flex min-w-0 cursor-pointer flex-col gap-2 overflow-hidden rounded-2xl border px-3 py-3 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:scale-[0.98] ${
                 status === "overdue" ? "border-red-200 bg-red-50/50" : "border-border bg-card"
               }`}
             >
@@ -704,7 +719,7 @@ export default function Payments() {
                       واتساب
                     </button>
                   )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={() => navigate(`/units/${p.unitId}`)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
@@ -714,7 +729,7 @@ export default function Payments() {
                   {p.collectionFeeStatus === "uncollected" && (
                     <Button variant="outline" size="sm" className="h-8 rounded-full text-xs" onClick={() => setFeeSettlement(p)}>تسوية رسوم المكتب</Button>
                   )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={() => navigate(`/units/${p.unitId}`)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
@@ -726,7 +741,7 @@ export default function Payments() {
                   {p.collectionFeeStatus === "uncollected" && (
                     <Button variant="outline" size="sm" className="h-8 rounded-full text-xs" onClick={() => setFeeSettlement(p)}>تسوية رسوم المكتب</Button>
                   )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={() => navigate(`/units/${p.unitId}`)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-destructive" aria-label="حذف الدفعة" onClick={() => update((prev) => ({ ...prev, payments: prev.payments.filter((payment) => payment.id !== p.id) }))}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
