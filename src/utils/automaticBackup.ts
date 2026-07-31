@@ -29,11 +29,23 @@ function fileStamp(): string {
 
 async function saveLocalVersion(data: AppData): Promise<void> {
   const retention = Math.max(3, Math.min(60, Number(data.settings.backupRetentionCount) || 14));
+  const { readEvidenceAttachment } = await import("@/utils/evidenceAttachments");
+  const evidenceAttachments = await Promise.all(
+    (data.evidenceAttachments || []).map(async (attachment) => {
+      if (attachment.dataUrl || !attachment.storagePath) return attachment;
+      try {
+        return { ...attachment, dataUrl: await readEvidenceAttachment(attachment) };
+      } catch (error) {
+        console.warn("[Backup] automatic version could not embed evidence", attachment.id, error);
+        return attachment;
+      }
+    }),
+  );
   const payload = JSON.stringify({
     appName: "Revenue Management",
     backupVersion: 1,
     createdAt: new Date().toISOString(),
-    data,
+    data: { ...data, evidenceAttachments },
   });
   if (Capacitor.isNativePlatform()) {
     const { Directory, Encoding, Filesystem } = await import("@capacitor/filesystem");
