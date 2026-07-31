@@ -28,6 +28,7 @@ import RequestDetails from "./pages/RequestDetails";
 import BackupPage from "./pages/BackupPage";
 import MonthClosePage from "./pages/MonthClosePage";
 import AuditLogPage from "./pages/AuditLogPage";
+import ActionCenterPage from "./pages/ActionCenterPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -195,6 +196,7 @@ const App = () => {
               <Route path="/reports" element={<Reports />} />
               <Route path="/reports/month-close" element={<MonthClosePage />} />
               <Route path="/reports/audit" element={<AuditLogPage />} />
+              <Route path="/actions" element={<ActionCenterPage />} />
               <Route path="/reports/owner/:buildingId" element={<OwnerReportPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/notifications" element={<NotificationSettingsPage />} />

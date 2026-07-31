@@ -16,6 +16,7 @@ import {
   Search,
   Send,
   BarChart3,
+  ClipboardCheck,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -214,6 +215,26 @@ export default function Index() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-primary">
+            فتح
+            <ChevronLeft className="h-4 w-4" />
+          </div>
+        </Link>
+
+        <Link
+          to="/actions"
+          className="flex items-center gap-3 rounded-3xl border border-orange-200 bg-orange-50 p-4 transition-transform active:scale-[0.99] animate-fade-up"
+          style={{ animationDelay: "110ms" }}
+        >
+          <div className="rounded-2xl bg-orange-100 p-3 text-orange-700">
+            <ClipboardCheck className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-orange-900">مركز الإجراءات</p>
+            <p className="mt-0.5 text-xs leading-5 text-orange-700">
+              الدفعات والتحويلات والأخطاء والصيانة والعقود حسب الأولوية
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-orange-700">
             فتح
             <ChevronLeft className="h-4 w-4" />
           </div>
