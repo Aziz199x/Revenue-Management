@@ -1,5 +1,6 @@
 import { AppData, Payment } from "@/data/types";
 import { getCollectedRentAmount } from "@/data/helpers";
+import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
 
 export type OwnerStatementEventKind =
   | "rent"
@@ -131,19 +132,35 @@ function buildAllEvents(data: AppData, buildingId: string): Omit<OwnerStatementE
     }
 
     if (payment.ownerTransferred && payment.ownerTransferDate) {
-      const transferred = transferredAmount(payment);
-      events.push({
-        id: `transfer-${payment.id}`,
-        date: payment.ownerTransferDate,
-        kind: "owner_transfer",
-        title: "تحويل للمالك",
-        description: payment.ownerTransferNotes || `تحويل صافي دفعة ${context.unitName}`,
-        ...context,
-        credit: 0,
-        debit: transferred,
-        balanceChange: -transferred,
-        sourceId: payment.id,
-      });
+      const allocations = getOwnerTransferAllocations(data, payment).filter((allocation) => allocation.transferred);
+      if (allocations.length > 0) {
+        allocations.forEach((allocation) => events.push({
+          id: `transfer-${payment.id}-${allocation.ownerId}`,
+          date: allocation.transferDate || payment.ownerTransferDate!,
+          kind: "owner_transfer",
+          title: `تحويل إلى ${allocation.ownerName}`,
+          description: `${payment.ownerTransferNotes || `تحويل صافي دفعة ${context.unitName}`} · نسبة الملكية ${allocation.percentage}%`,
+          ...context,
+          credit: 0,
+          debit: allocation.amount,
+          balanceChange: -allocation.amount,
+          sourceId: payment.id,
+        }));
+      } else {
+        const transferred = transferredAmount(payment);
+        events.push({
+          id: `transfer-${payment.id}`,
+          date: payment.ownerTransferDate,
+          kind: "owner_transfer",
+          title: "تحويل للمالك",
+          description: payment.ownerTransferNotes || `تحويل صافي دفعة ${context.unitName}`,
+          ...context,
+          credit: 0,
+          debit: transferred,
+          balanceChange: -transferred,
+          sourceId: payment.id,
+        });
+      }
     }
   }
 

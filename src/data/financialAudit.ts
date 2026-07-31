@@ -1,5 +1,6 @@
 import {
   AppData,
+  Building,
   CollectionFeeSettlement,
   FinancialAuditAction,
   FinancialAuditEntry,
@@ -60,6 +61,7 @@ function actionLabel(action: FinancialAuditAction): string {
     settlement_created: "إنشاء تسوية رسوم تحصيل",
     settlement_updated: "تعديل تسوية رسوم تحصيل",
     settlement_deleted: "حذف تسوية رسوم تحصيل",
+    building_ownership_updated: "تغيير ملاك العقار ونسبهم",
   };
   return labels[action];
 }
@@ -76,7 +78,8 @@ function inferPaymentAction(before?: Payment, after?: Payment): FinancialAuditAc
   return "payment_updated";
 }
 
-function entityLabel(data: AppData, entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement): string {
+function entityLabel(data: AppData, entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement | Building): string {
+  if (entityType === "building") return (entity as Building).name;
   if (entityType === "payment") {
     const payment = entity as Payment;
     const unit = data.units.find((item) => item.id === payment.unitId);
@@ -90,7 +93,8 @@ function entityLabel(data: AppData, entityType: FinancialAuditEntityType, entity
   return "تسوية رسوم تحصيل";
 }
 
-function resolveBuildingId(data: AppData, entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement): string | undefined {
+function resolveBuildingId(data: AppData, entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement | Building): string | undefined {
+  if (entityType === "building") return (entity as Building).id;
   if (entityType === "collection_fee_settlement") return (entity as CollectionFeeSettlement).propertyId;
   const unitId = entityType === "payment" ? (entity as Payment).unitId : (entity as Repair).unitId;
   return entityType === "repair" && (entity as Repair).buildingId
@@ -98,7 +102,8 @@ function resolveBuildingId(data: AppData, entityType: FinancialAuditEntityType, 
     : data.units.find((item) => item.id === unitId)?.buildingId;
 }
 
-function resolveUnitId(entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement): string | undefined {
+function resolveUnitId(entityType: FinancialAuditEntityType, entity: Payment | Repair | CollectionFeeSettlement | Building): string | undefined {
+  if (entityType === "building") return undefined;
   if (entityType === "payment") return (entity as Payment).unitId;
   if (entityType === "repair") return (entity as Repair).unitId;
   return (entity as CollectionFeeSettlement).targetUnitId || (entity as CollectionFeeSettlement).sourceUnitId;
@@ -107,7 +112,7 @@ function resolveUnitId(entityType: FinancialAuditEntityType, entity: Payment | R
 function resolveYearMonth(
   data: AppData,
   entityType: FinancialAuditEntityType,
-  entity: Payment | Repair | CollectionFeeSettlement,
+  entity: Payment | Repair | CollectionFeeSettlement | Building,
 ): string | undefined {
   if (entityType === "payment") return paymentYearMonth(entity as Payment, data.settings.reportMonthCutoffDay);
   if (entityType === "repair") {
@@ -119,6 +124,7 @@ function resolveYearMonth(
       ? paymentYearMonth(payment, data.settings.reportMonthCutoffDay)
       : repair.repairDate?.slice(0, 7);
   }
+  if (entityType === "building") return undefined;
   return (entity as CollectionFeeSettlement).date?.slice(0, 7);
 }
 
@@ -127,8 +133,8 @@ function entryForChange(
   nextData: AppData,
   entityType: FinancialAuditEntityType,
   entityId: string,
-  before: Payment | Repair | CollectionFeeSettlement | undefined,
-  after: Payment | Repair | CollectionFeeSettlement | undefined,
+  before: Payment | Repair | CollectionFeeSettlement | Building | undefined,
+  after: Payment | Repair | CollectionFeeSettlement | Building | undefined,
   action: FinancialAuditAction,
   transactionId: string,
   createdAt: string,
@@ -248,6 +254,45 @@ function collectSettlementEntries(
   return entries;
 }
 
+function collectBuildingOwnershipEntries(
+  previousData: AppData,
+  nextData: AppData,
+  transactionId: string,
+  createdAt: string,
+  reason?: string,
+): FinancialAuditEntry[] {
+  const entries: FinancialAuditEntry[] = [];
+  const beforeById = new Map(previousData.buildings.map((item) => [item.id, item]));
+  for (const after of nextData.buildings) {
+    const before = beforeById.get(after.id);
+    if (!before) continue;
+    const beforeOwnership = {
+      multipleOwnersEnabled: before.multipleOwnersEnabled,
+      owners: before.owners,
+      ownershipHistory: before.ownershipHistory,
+    };
+    const afterOwnership = {
+      multipleOwnersEnabled: after.multipleOwnersEnabled,
+      owners: after.owners,
+      ownershipHistory: after.ownershipHistory,
+    };
+    if (isSame(beforeOwnership, afterOwnership)) continue;
+    entries.push(entryForChange(
+      previousData,
+      nextData,
+      "building",
+      after.id,
+      before,
+      after,
+      "building_ownership_updated",
+      transactionId,
+      createdAt,
+      reason,
+    ));
+  }
+  return entries;
+}
+
 export function buildFinancialAuditEntries(
   previousData: AppData,
   nextData: AppData,
@@ -260,6 +305,7 @@ export function buildFinancialAuditEntries(
     ...collectPaymentEntries(previousData, nextData, transactionId, createdAt, context.reason),
     ...collectRepairEntries(previousData, nextData, transactionId, createdAt, context.reason),
     ...collectSettlementEntries(previousData, nextData, transactionId, createdAt, context.reason),
+    ...collectBuildingOwnershipEntries(previousData, nextData, transactionId, createdAt, context.reason),
   ];
 }
 
@@ -282,13 +328,16 @@ export function undoFinancialAuditEntry(data: AppData, entry: FinancialAuditEntr
   let payments = data.payments;
   let repairs = data.repairs;
   let settlements = data.collectionFeeSettlements;
+  let buildings = data.buildings;
   for (const transactionEntry of entries) {
     if (transactionEntry.entityType === "payment") {
       payments = restoreEntity(payments, transactionEntry.entityId, transactionEntry.before, "id");
     } else if (transactionEntry.entityType === "repair") {
       repairs = restoreEntity(repairs, transactionEntry.entityId, transactionEntry.before, "id");
-    } else {
+    } else if (transactionEntry.entityType === "collection_fee_settlement") {
       settlements = restoreEntity(settlements, transactionEntry.entityId, transactionEntry.before, "settlementId");
+    } else {
+      buildings = restoreEntity(buildings, transactionEntry.entityId, transactionEntry.before, "id");
     }
   }
   const undoneAt = new Date().toISOString();
@@ -297,6 +346,7 @@ export function undoFinancialAuditEntry(data: AppData, entry: FinancialAuditEntr
     ...data,
     payments,
     repairs,
+    buildings,
     collectionFeeSettlements: settlements,
     financialAuditLog: data.financialAuditLog.map((item) =>
       undoneIds.has(item.id) ? { ...item, undoneAt } : item

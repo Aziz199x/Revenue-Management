@@ -3,6 +3,7 @@ import { AppData } from "@/data/types";
 import { OwnerStatement } from "@/reporting/ownerStatementService";
 import { formatMoney } from "@/data/helpers";
 import { buildXlsx, saveAndShareXlsx } from "@/utils/xlsxLite";
+import { ownersForDate } from "@/data/buildingOwnership";
 
 const kindLabels: Record<OwnerStatement["events"][number]["kind"], string> = {
   rent: "إيجار مستلم",
@@ -22,8 +23,10 @@ export async function exportOwnerStatementXlsx(
   statement: OwnerStatement,
 ): Promise<void> {
   const building = data.buildings.find((item) => item.id === statement.buildingId);
+  const owners = ownersForDate(building, `${statement.yearMonth}-31`);
   const rows: (string | number)[][] = [
     ["كشف حساب المالك", building?.name || "", statement.yearMonth, "", "", "", "", ""],
+    ["الملاك والنسب", owners.map((owner) => `${owner.name} ${owner.percentage}%`).join("، "), "", "", "", "", "", ""],
     ["التاريخ", "النوع", "الوحدة", "البيان", "الإثباتات", "دائن للمالك", "مدين على المالك", "الرصيد"],
     ["", "رصيد افتتاحي", "", "", "", statement.openingBalance > 0 ? statement.openingBalance : 0, statement.openingBalance < 0 ? -statement.openingBalance : 0, statement.openingBalance],
     ...statement.events.map((event) => [
@@ -41,9 +44,9 @@ export async function exportOwnerStatementXlsx(
   const bytes = buildXlsx([{
     name: "كشف المالك",
     rows,
-    headerRows: 2,
-    merges: ["A1:B1"],
-    freezeRows: 2,
+    headerRows: 3,
+    merges: ["A1:B1", "A2:B2"],
+    freezeRows: 3,
     colWidths: [14, 20, 22, 38, 28, 18, 18, 18],
   }]);
   await saveAndShareXlsx(
@@ -58,9 +61,11 @@ export async function shareOwnerStatementText(
   statement: OwnerStatement,
 ): Promise<void> {
   const building = data.buildings.find((item) => item.id === statement.buildingId);
+  const owners = ownersForDate(building, `${statement.yearMonth}-31`);
   const lines = [
     `كشف حساب المالك - ${building?.name || ""}`,
     `الفترة: ${statement.yearMonth}`,
+    `الملاك: ${owners.map((owner) => `${owner.name} ${owner.percentage}%`).join("، ")}`,
     `رصيد افتتاحي: ${formatMoney(statement.openingBalance)}`,
     `الإيجارات المستلمة: ${formatMoney(statement.totals.rentReceived)}`,
     `رسوم المكتب: ${formatMoney(statement.totals.officeFees + statement.totals.settlements)}`,

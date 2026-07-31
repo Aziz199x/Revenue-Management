@@ -10,6 +10,7 @@ let maintenanceItems;
 let monthClose;
 let financialAudit;
 let ownerStatement;
+let buildingOwnership;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -20,6 +21,7 @@ test.before(async () => {
   monthClose = await server.ssrLoadModule("/src/reporting/monthCloseService.ts");
   financialAudit = await server.ssrLoadModule("/src/data/financialAudit.ts");
   ownerStatement = await server.ssrLoadModule("/src/reporting/ownerStatementService.ts");
+  buildingOwnership = await server.ssrLoadModule("/src/data/buildingOwnership.ts");
 });
 
 test.after(async () => {
@@ -539,4 +541,77 @@ test("owner statement reconciles rent, fees, maintenance, transfers, and opening
     const dates = { rent: "2026-06-05", office_fee: "2026-06-05", maintenance: "2026-06-07", owner_transfer: "2026-06-08" };
     return dates[a].localeCompare(dates[b]) || a.localeCompare(b);
   }));
+});
+
+test("owner transfer is split by the ownership version effective on the transfer date", () => {
+  const snapshot = {
+    ...data([]),
+    buildings: [{
+      id: "b1",
+      name: "العقار",
+      collectionFeePercent: 5,
+      createdAt: "2026-01-01",
+      multipleOwnersEnabled: true,
+      owners: [
+        { id: "o1", name: "أحمد", percentage: 60 },
+        { id: "o2", name: "سارة", percentage: 40 },
+      ],
+      ownershipHistory: [{
+        id: "v1",
+        effectiveFrom: "2026-07-01",
+        reason: "إضافة مالك",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        owners: [
+          { id: "o1", name: "أحمد", percentage: 60 },
+          { id: "o2", name: "سارة", percentage: 40 },
+        ],
+      }],
+    }],
+  };
+  const record = payment({
+    amount: 1000,
+    grossAmount: 1000,
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "collected",
+    maintenanceDeductionAmount: 50,
+    netAmountToTransferToOwner: 900,
+    ownerTransferMethod: "bank_transfer",
+  });
+  const allocations = buildingOwnership.createOwnerTransferAllocations(snapshot, record, "2026-07-10", true);
+
+  assert.deepEqual(allocations.map(({ ownerName, percentage, amount }) => ({ ownerName, percentage, amount })), [
+    { ownerName: "أحمد", percentage: 60, amount: 540 },
+    { ownerName: "سارة", percentage: 40, amount: 360 },
+  ]);
+  assert.equal(allocations.reduce((sum, item) => sum + item.amount, 0), 900);
+});
+
+test("changing ownership later does not change a captured owner transfer split", () => {
+  const transferred = payment({
+    ownerTransferred: true,
+    ownerTransferDate: "2026-07-10",
+    ownerTransferAllocations: [
+      { ownerId: "o1", ownerName: "أحمد", percentage: 60, amount: 600, transferred: true, transferDate: "2026-07-10" },
+      { ownerId: "o2", ownerName: "سارة", percentage: 40, amount: 400, transferred: true, transferDate: "2026-07-10" },
+    ],
+  });
+  const snapshot = {
+    ...data([transferred]),
+    buildings: [{
+      id: "b1",
+      name: "العقار",
+      collectionFeePercent: 5,
+      createdAt: "2026-01-01",
+      multipleOwnersEnabled: true,
+      owners: [
+        { id: "o1", name: "أحمد", percentage: 50 },
+        { id: "o3", name: "محمد", percentage: 50 },
+      ],
+    }],
+  };
+
+  assert.deepEqual(
+    buildingOwnership.getOwnerTransferAllocations(snapshot, transferred).map((item) => item.ownerName),
+    ["أحمد", "سارة"],
+  );
 });

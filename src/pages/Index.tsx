@@ -140,9 +140,17 @@ export default function Index() {
         title="مدير العقارات"
         subtitle="لوحة التحكم الرئيسية"
         action={
-          <Link to="/search" aria-label="البحث الشامل" className="rounded-full p-2 hover:bg-secondary">
-            <Search className="h-5 w-5" />
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link to="/reports" aria-label="التقارير المالية" title="التقارير المالية" className="rounded-full p-2 text-primary hover:bg-secondary">
+              <BarChart3 className="h-5 w-5" />
+            </Link>
+            <Link to="/actions" aria-label="مركز الإجراءات" title="مركز الإجراءات" className="rounded-full p-2 text-orange-700 hover:bg-orange-50">
+              <ClipboardCheck className="h-5 w-5" />
+            </Link>
+            <Link to="/search" aria-label="البحث الشامل" title="البحث الشامل" className="rounded-full p-2 hover:bg-secondary">
+              <Search className="h-5 w-5" />
+            </Link>
+          </div>
         }
       />
       <div className="space-y-4 p-4">
@@ -199,46 +207,6 @@ export default function Index() {
             <p className="text-[11px] text-muted-foreground">صيانة</p>
           </div>
         </div>
-
-        <Link
-          to="/reports"
-          className="flex items-center gap-3 rounded-3xl border border-primary/20 bg-secondary/70 p-4 transition-transform active:scale-[0.99] animate-fade-up"
-          style={{ animationDelay: "100ms" }}
-        >
-          <div className="rounded-2xl bg-primary p-3 text-primary-foreground">
-            <BarChart3 className="h-6 w-6" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-foreground">التقارير المالية</p>
-            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              عرض تقارير العقارات وإقفال الشهر وسجل التدقيق
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-primary">
-            فتح
-            <ChevronLeft className="h-4 w-4" />
-          </div>
-        </Link>
-
-        <Link
-          to="/actions"
-          className="flex items-center gap-3 rounded-3xl border border-orange-200 bg-orange-50 p-4 transition-transform active:scale-[0.99] animate-fade-up"
-          style={{ animationDelay: "110ms" }}
-        >
-          <div className="rounded-2xl bg-orange-100 p-3 text-orange-700">
-            <ClipboardCheck className="h-6 w-6" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-orange-900">مركز الإجراءات</p>
-            <p className="mt-0.5 text-xs leading-5 text-orange-700">
-              الدفعات والتحويلات والأخطاء والصيانة والعقود حسب الأولوية
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-orange-700">
-            فتح
-            <ChevronLeft className="h-4 w-4" />
-          </div>
-        </Link>
 
         {/* Request Stats */}
         {(() => {

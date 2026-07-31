@@ -36,6 +36,7 @@ import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LAB
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
 import { showSuccess, showError } from "@/utils/toast";
+import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
 
 const PAYMENT_FILTERS_KEY = "payments_filters";
 
@@ -714,6 +715,16 @@ export default function Payments() {
                       ? "تمت تسوية الصافي مقابل صيانة المبنى"
                       : p.ownerTransferred ? `تم التحويل للمالك${p.ownerTransferDate ? ` · ${formatDate(p.ownerTransferDate)}` : ""}` : "لم يتم التحويل للمالك"}
                   </span>
+                  {p.ownerTransferred && !p.ownerSettledByMaintenance && getOwnerTransferAllocations(data, p).length > 1 && (
+                    <div className="col-span-2 space-y-1 rounded-xl bg-emerald-50 p-2 text-[11px] text-emerald-800">
+                      <p className="font-bold">توزيع التحويل على الملاك</p>
+                      {getOwnerTransferAllocations(data, p).map((allocation) => (
+                        <p key={allocation.ownerId}>
+                          {allocation.ownerName} · {allocation.percentage}% · {formatMoney(allocation.amount)}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {duplicateReceipts.length > 0 && (
@@ -1018,6 +1029,31 @@ export default function Payments() {
               <p>خصم الصيانة: {formatMoney(getPaymentMaintenanceDeductionAmount(data, ownerTransfer))}</p>
               <p className="font-bold">الصافي: {formatMoney(calculateNetAmountToTransferToOwner(normalizePaymentFinancials({ ...ownerTransfer, maintenanceDeductionAmount: getPaymentMaintenanceDeductionAmount(data, ownerTransfer) })))}</p>
             </div>
+            {getOwnerTransferAllocations(data, {
+              ...ownerTransfer,
+              ownerTransferred: true,
+              ownerTransferDate: transferDate,
+              ownerTransferMethod: transferMethod,
+              ownerTransferAllocations: undefined,
+              maintenanceDeductionAmount: getPaymentMaintenanceDeductionAmount(data, ownerTransfer),
+            }).length > 1 && (
+              <div className="space-y-1 rounded-2xl border border-primary/20 bg-secondary/60 p-3 text-xs">
+                <p className="font-bold">سيُوزع التحويل كالتالي:</p>
+                {getOwnerTransferAllocations(data, {
+                  ...ownerTransfer,
+                  ownerTransferred: true,
+                  ownerTransferDate: transferDate,
+                  ownerTransferMethod: transferMethod,
+                  ownerTransferAllocations: undefined,
+                  maintenanceDeductionAmount: getPaymentMaintenanceDeductionAmount(data, ownerTransfer),
+                }).map((allocation) => (
+                  <div key={allocation.ownerId} className="flex items-center justify-between gap-2">
+                    <span>{allocation.ownerName} ({allocation.percentage}%)</span>
+                    <span className="font-bold">{formatMoney(allocation.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div><Label>تاريخ التحويل</Label><Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} /></div>
             <div><Label>طريقة التحويل</Label><Select value={transferMethod} onValueChange={(value) => setTransferMethod(value as PaymentMethod)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((method) => <SelectItem key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</SelectItem>)}</SelectContent></Select></div>
             <div><Label>ملاحظات</Label><Textarea value={transferNotes} onChange={(e) => setTransferNotes(e.target.value)} /></div>

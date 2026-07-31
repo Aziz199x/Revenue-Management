@@ -18,6 +18,7 @@ import { buildOwnerStatement, OwnerStatementEventKind } from "@/reporting/ownerS
 import { exportOwnerStatementXlsx, shareOwnerStatementText } from "@/utils/ownerStatementExport";
 import { printCurrentPage } from "@/utils/print";
 import { showError, showSuccess } from "@/utils/toast";
+import { getOwnerTransferAllocations, ownersForDate } from "@/data/buildingOwnership";
 
 const eventLabels: Record<OwnerStatementEventKind, string> = {
   rent: "إيجار مستلم",
@@ -35,6 +36,18 @@ export default function OwnerReportPage() {
   const [month, setMonth] = useState(currentYearMonth());
   const [exporting, setExporting] = useState<"pdf" | "excel" | "share" | null>(null);
   const statement = useMemo(() => buildOwnerStatement(data, buildingId, month), [buildingId, data, month]);
+  const ownerShares = useMemo(() => {
+    if (!building) return [];
+    const owners = ownersForDate(building, `${month}-31`);
+    return owners.map((owner) => {
+      const transferred = data.payments
+        .filter((payment) => payment.ownerTransferred && payment.ownerTransferDate?.startsWith(month))
+        .flatMap((payment) => getOwnerTransferAllocations(data, payment))
+        .filter((allocation) => allocation.ownerId === owner.id && allocation.transferred)
+        .reduce((sum, allocation) => sum + allocation.amount, 0);
+      return { ...owner, transferred };
+    });
+  }, [building, data, month]);
   const monthOptions = useMemo(() => {
     const options: string[] = [];
     for (let offset = 2; offset >= -18; offset--) options.push(shiftYearMonth(currentYearMonth(), offset));
@@ -128,6 +141,23 @@ export default function OwnerReportPage() {
             <p className="text-lg font-bold">كشف حساب المالك - {building.name}</p>
             <p className="text-sm text-muted-foreground">{formatYearMonthLabel(month)}</p>
             {building.address && <p className="text-xs text-muted-foreground">{building.address}</p>}
+          </div>
+
+          <div className="rounded-2xl border border-primary/20 bg-secondary/50 p-3 text-xs">
+            <p className="mb-2 font-bold">ملاك العقار والنسب الفعالة في نهاية الفترة</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {ownerShares.map((owner) => (
+                <div key={owner.id} className="rounded-xl bg-background p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold">{owner.name}</span>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 font-bold text-primary">{owner.percentage}%</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    المحول له خلال الشهر: {formatMoney(owner.transferred)}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">

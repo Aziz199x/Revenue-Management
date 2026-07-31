@@ -38,11 +38,24 @@ const actionLabels: Record<FinancialAuditAction, string> = {
   settlement_created: "إنشاء تسوية",
   settlement_updated: "تعديل تسوية",
   settlement_deleted: "حذف تسوية",
+  building_ownership_updated: "تغيير ملاك العقار",
 };
 
 function snapshotLines(entry: FinancialAuditEntry, value?: Record<string, unknown> | null): string[] {
   if (!value) return ["لا يوجد سجل"];
+  if (entry.entityType === "building") {
+    const owners = Array.isArray(value.owners)
+      ? value.owners as Array<{ name?: string; percentage?: number }>
+      : [];
+    return [
+      `ملكية متعددة: ${value.multipleOwnersEnabled ? "نعم" : "لا"}`,
+      `الملاك: ${owners.length ? owners.map((owner) => `${owner.name || "غير محدد"} ${owner.percentage || 0}%`).join("، ") : "مالك واحد غير مسمى 100%"}`,
+    ];
+  }
   if (entry.entityType === "payment") {
+    const allocations = Array.isArray(value.ownerTransferAllocations)
+      ? value.ownerTransferAllocations as Array<{ ownerName?: string; percentage?: number; amount?: number }>
+      : [];
     return [
       `الحالة: ${String(value.status || "غير محدد")}`,
       `المبلغ المستحق: ${formatMoney(Number(value.grossAmount ?? value.amount ?? 0))}`,
@@ -52,6 +65,9 @@ function snapshotLines(entry: FinancialAuditEntry, value?: Record<string, unknow
       `خصم الصيانة: ${formatMoney(Number(value.maintenanceDeductionAmount || 0))}`,
       `التحويل للمالك: ${value.ownerTransferred ? "تم" : "لم يتم"}`,
       `تاريخ التحويل: ${String(value.ownerTransferDate || "غير مسجل")}`,
+      ...(allocations.length
+        ? [`توزيع الملاك: ${allocations.map((allocation) => `${allocation.ownerName || "مالك"} ${allocation.percentage || 0}% = ${formatMoney(Number(allocation.amount || 0))}`).join("، ")}`]
+        : []),
     ];
   }
   if (entry.entityType === "repair") {

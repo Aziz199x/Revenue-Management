@@ -10,6 +10,7 @@ import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contrac
 import { withComputedUnitStatuses } from "./unitStatus";
 import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAudit";
 import { loadAppDataFromSQLite, saveAppDataToSQLite } from "./sqliteRepository";
+import { normalizeOwners, synchronizeOwnerTransferAllocations } from "./buildingOwnership";
 
 function normalizeStoredReceiveMethod(method?: string | null): Payment["receiveMethod"] {
   const value = String(method || "").trim().toLowerCase();
@@ -150,10 +151,13 @@ function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["
     const buildings: Building[] = (parsed.buildings || []).map((building: Partial<Building>) => ({
       ...building,
       collectionFeePercent: building.collectionFeePercent ?? legacyFee,
+      multipleOwnersEnabled: building.multipleOwnersEnabled ?? false,
+      owners: normalizeOwners(building.owners),
+      ownershipHistory: building.ownershipHistory || [],
     })) as Building[];
     const units: Unit[] = parsed.units || [];
     const contracts = migrateContracts(parsed.contracts || []);
-    return withComputedUnitStatuses({
+    return synchronizeOwnerTransferAllocations(withComputedUnitStatuses({
       ...EMPTY_DATA,
       ...parsed,
       buildings,
@@ -173,7 +177,7 @@ function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["
           ?? parsedSettings.contractReminderDays
           ?? DEFAULT_SETTINGS.defaultContractExpiryReminderDays,
       },
-    });
+    }));
   } catch {
     return EMPTY_DATA;
   }
@@ -227,7 +231,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       let settled = false;
       setData((prev) => {
         try {
-          const next = withComputedUnitStatuses(updater(prev));
+          const next = synchronizeOwnerTransferAllocations(withComputedUnitStatuses(updater(prev)));
           const auditEntries = buildFinancialAuditEntries(prev, next, context);
           const nextWithAudit = auditEntries.length > 0
             ? {

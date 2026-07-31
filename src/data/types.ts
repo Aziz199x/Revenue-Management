@@ -24,6 +24,22 @@ export type RequestType =
 export type RequestStatus = "new" | "pending" | "in_progress" | "completed" | "cancelled";
 export type RequestPriority = "low" | "medium" | "high" | "urgent";
 
+export interface BuildingOwner {
+  id: string;
+  name: string;
+  percentage: number;
+  phone?: string;
+  bankAccount?: string;
+}
+
+export interface BuildingOwnershipVersion {
+  id: string;
+  effectiveFrom: string;
+  owners: BuildingOwner[];
+  reason: string;
+  createdAt: string;
+}
+
 export interface Building {
   id: string;
   name: string;
@@ -31,6 +47,9 @@ export interface Building {
   notes?: string;
   createdAt: string;
   collectionFeePercent: number;
+  multipleOwnersEnabled?: boolean;
+  owners?: BuildingOwner[];
+  ownershipHistory?: BuildingOwnershipVersion[];
 }
 
 export interface Unit {
@@ -116,10 +135,23 @@ export interface Payment {
   ownerTransferDate?: string | null;
   ownerTransferMethod?: PaymentMethod | null;
   ownerTransferNotes?: string;
+  /** Immutable owner split captured when the transfer is recorded. */
+  ownerTransferAllocations?: OwnerTransferAllocation[];
   /** Controls which monthly report owns this obligation. */
   reportingMonthMode?: "auto" | "due_month" | "next_month";
   /** Explicit report month (yyyy-mm) chosen by the user. Takes precedence over reportingMonthMode. */
   reportingYearMonth?: string;
+}
+
+export interface OwnerTransferAllocation {
+  ownerId: string;
+  ownerName: string;
+  percentage: number;
+  amount: number;
+  transferred: boolean;
+  transferDate?: string | null;
+  transferMethod?: PaymentMethod | null;
+  notes?: string;
 }
 
 export interface Contract {
@@ -419,9 +451,10 @@ export type FinancialAuditAction =
   | "maintenance_deleted"
   | "settlement_created"
   | "settlement_updated"
-  | "settlement_deleted";
+  | "settlement_deleted"
+  | "building_ownership_updated";
 
-export type FinancialAuditEntityType = "payment" | "repair" | "collection_fee_settlement";
+export type FinancialAuditEntityType = "payment" | "repair" | "collection_fee_settlement" | "building";
 
 export interface FinancialAuditEntry {
   id: string;

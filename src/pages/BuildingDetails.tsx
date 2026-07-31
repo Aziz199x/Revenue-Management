@@ -51,6 +51,7 @@ import MonthlyExceptionsCard from "@/components/reports/MonthlyExceptionsCard";
 import LateCollectionsList from "@/components/reports/LateCollectionsList";
 import { UnitMonthStatus, UnitMonthRow } from "@/reporting/types";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
+import { appendOwnershipVersion, ownersForDate, ownershipChanged } from "@/data/buildingOwnership";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -166,6 +167,7 @@ export default function BuildingDetails() {
       </div>
     );
   }
+  const currentOwners = ownersForDate(building, todayISO());
   const bundle = reportBundle!;
 
   const stats = buildingStats(data, building.id);
@@ -308,6 +310,29 @@ export default function BuildingDetails() {
       />
 
       <div className="p-4 md:p-6 lg:p-8">
+        <div className="mb-4 rounded-2xl border border-primary/20 bg-secondary/50 p-3 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="font-bold">ملاك العقار وتوزيع المستحقات</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {currentOwners.length > 1 ? `${currentOwners.length} ملاك` : "مالك واحد 100%"}
+                {building.ownershipHistory?.length ? ` · ${building.ownershipHistory.length} تغيير موثق` : ""}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="h-8 rounded-xl text-xs" onClick={() => setEditOpen(true)}>
+              إدارة الملاك
+            </Button>
+          </div>
+          {currentOwners.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {currentOwners.map((owner) => (
+                <span key={owner.id} className="rounded-full bg-background px-2.5 py-1 font-semibold">
+                  {owner.name} · {owner.percentage}%
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
         <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
           <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1">
             <TabsTrigger value="units" className="rounded-xl py-2 text-xs font-bold">
@@ -872,12 +897,21 @@ export default function BuildingDetails() {
         <BuildingForm
           initial={building}
           onSubmit={(values) => {
+            const { ownershipEffectiveFrom, ownershipChangeReason, ...buildingValues } = values;
             const feeChanged = values.collectionFeePercent !== (building.collectionFeePercent ?? 0);
+            const ownersChanged = ownershipChanged(building.owners, values.owners)
+              || !!building.multipleOwnersEnabled !== values.multipleOwnersEnabled;
             const updatePayments = feeChanged && window.confirm("هل تريد تحديث رسوم التحصيل للدفعات غير المدفوعة التابعة لهذا العقار؟\nموافق: تحديث الدفعات\nإلغاء: حفظ بدون تحديث الدفعات");
             update((prev) => ({
               ...prev,
               buildings: prev.buildings.map((b) =>
-                b.id === building.id ? { ...b, ...values } : b,
+                b.id === building.id ? {
+                  ...b,
+                  ...buildingValues,
+                  ownershipHistory: ownersChanged
+                    ? appendOwnershipVersion(b, values.owners, ownershipEffectiveFrom, ownershipChangeReason)
+                    : b.ownershipHistory,
+                } : b,
               ),
               payments: updatePayments ? prev.payments.map((payment) => {
                 if (payment.status === "paid") return payment;
@@ -887,7 +921,7 @@ export default function BuildingDetails() {
                 const fee = Math.round(gross * values.collectionFeePercent) / 100;
                 return normalizePaymentFinancials({ ...payment, grossAmount: gross, collectionFeePercent: values.collectionFeePercent, collectionFeePercentage: values.collectionFeePercent, collectionFeeAmount: fee, netAmountAfterCollectionFee: gross - fee });
               }) : prev.payments,
-            }));
+            }), { reason: ownersChanged ? ownershipChangeReason : "تعديل بيانات العقار" });
             setEditOpen(false);
             showSuccess("تم حفظ التعديلات");
           }}

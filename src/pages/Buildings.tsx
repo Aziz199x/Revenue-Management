@@ -9,6 +9,7 @@ import FormSheet from "@/components/shared/FormSheet";
 import BuildingForm from "@/components/forms/BuildingForm";
 import { useStore, genId } from "@/data/store";
 import { buildingStats, formatMoney, formatDate, todayISO } from "@/data/helpers";
+import { appendOwnershipVersion } from "@/data/buildingOwnership";
 import { showSuccess } from "@/utils/toast";
 
 export default function Buildings() {
@@ -117,11 +118,18 @@ export default function Buildings() {
       <FormSheet open={open} onOpenChange={setOpen} title="إضافة عقار جديد">
         <BuildingForm
           onSubmit={(values) => {
+            const { ownershipEffectiveFrom, ownershipChangeReason, ...buildingValues } = values;
+            const base = { id: genId(), createdAt: todayISO(), ...buildingValues };
             update((prev) => ({
               ...prev,
               buildings: [
                 ...prev.buildings,
-                { id: genId(), createdAt: todayISO(), ...values },
+                {
+                  ...base,
+                  ownershipHistory: values.multipleOwnersEnabled
+                    ? appendOwnershipVersion(base, values.owners, ownershipEffectiveFrom, ownershipChangeReason)
+                    : [],
+                },
               ],
             }));
             setOpen(false);

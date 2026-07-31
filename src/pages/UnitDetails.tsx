@@ -110,6 +110,7 @@ import {
 } from "@/data/labels";
 import { Payment, Contract, Bill, Repair, Tenant, PaymentMethod, PaymentReceiveMethod, PaymentStatus, ContractDurationType, TenantRequest, RequestType, RequestPriority, RequestStatus } from "@/data/types";
 import { isActiveContract, normalizeId, isActiveContractForUnit } from "@/data/unitStatus";
+import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
 function isCorruptedDisplayName(value: string | undefined): boolean {
   if (!value) return true;
   if (/[ØÙÃÂ�]|\uFFFD/.test(value)) return true;
@@ -942,6 +943,16 @@ export default function UnitDetails() {
                             ? "تمت تسوية الصافي مقابل صيانة المبنى"
                             : p.ownerTransferred ? `تم التحويل للمالك${p.ownerTransferDate ? ` · ${formatDate(p.ownerTransferDate)}` : ""}` : "هل تم التحويل للمالك؟"}
                         </span>
+                        {p.ownerTransferred && !p.ownerSettledByMaintenance && getOwnerTransferAllocations(data, p).length > 1 && (
+                          <div className="space-y-1 rounded-xl bg-emerald-50 p-2 text-[11px] text-emerald-800">
+                            <p className="font-bold">توزيع التحويل على الملاك</p>
+                            {getOwnerTransferAllocations(data, p).map((allocation) => (
+                              <p key={allocation.ownerId}>
+                                {allocation.ownerName} · {allocation.percentage}% · {formatMoney(allocation.amount)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
