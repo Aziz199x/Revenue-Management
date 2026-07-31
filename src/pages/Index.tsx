@@ -15,6 +15,7 @@ import {
   Gavel,
   Search,
   Send,
+  BarChart3,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -191,43 +192,74 @@ export default function Index() {
             <p className="mt-1 text-lg font-bold">{data.units.length}</p>
             <p className="text-[11px] text-muted-foreground">وحدة</p>
           </Link>
-          <Link to="/reports" className="rounded-2xl border border-border bg-card p-3 text-center active:scale-95 transition-transform">
+          <div className="rounded-2xl border border-border bg-card p-3 text-center">
             <Wrench className="mx-auto h-5 w-5 text-amber-600" />
             <p className="mt-1 text-lg font-bold">{formatMoney(stats.maintenanceTotal)}</p>
             <p className="text-[11px] text-muted-foreground">صيانة</p>
-          </Link>
+          </div>
         </div>
+
+        <Link
+          to="/reports"
+          className="flex items-center gap-3 rounded-3xl border border-primary/20 bg-secondary/70 p-4 transition-transform active:scale-[0.99] animate-fade-up"
+          style={{ animationDelay: "100ms" }}
+        >
+          <div className="rounded-2xl bg-primary p-3 text-primary-foreground">
+            <BarChart3 className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-foreground">التقارير المالية</p>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              عرض تقارير العقارات وإقفال الشهر وسجل التدقيق
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-primary">
+            فتح
+            <ChevronLeft className="h-4 w-4" />
+          </div>
+        </Link>
 
         {/* Request Stats */}
         {(() => {
           const rs = requestStats(data);
           return (
-            <Link
-              to="/requests"
-              className="grid grid-cols-4 gap-2 animate-fade-up"
-              style={{ animationDelay: "120ms" }}
-            >
-              <div className="rounded-2xl border border-border bg-card p-2.5 text-center active:scale-95 transition-transform">
-                <ClipboardList className="mx-auto h-4 w-4 text-purple-600" />
-                <p className="text-sm font-bold">{rs.open}</p>
-                <p className="text-[10px] text-muted-foreground">مفتوحة</p>
+            <section className="space-y-2 animate-fade-up" style={{ animationDelay: "120ms" }}>
+              <div className="flex items-center justify-between px-1">
+                <div>
+                  <h2 className="text-sm font-bold">طلبات المستأجرين</h2>
+                  <p className="text-[11px] text-muted-foreground">ملخص حالة جميع الطلبات</p>
+                </div>
+                <Link
+                  to="/requests"
+                  className="flex items-center gap-1 rounded-xl bg-purple-50 px-3 py-2 text-xs font-bold text-purple-700 transition-transform active:scale-95"
+                >
+                  عرض جميع الطلبات
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-2.5 text-center active:scale-95 transition-transform">
-                <AlertTriangle className="mx-auto h-4 w-4 text-red-600" />
-                <p className="text-sm font-bold">{rs.urgent}</p>
-                <p className="text-[10px] text-red-600">عاجلة</p>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="rounded-2xl border border-border bg-card p-2.5 text-center">
+                  <ClipboardList className="mx-auto h-4 w-4 text-purple-600" />
+                  <p className="text-sm font-bold">{rs.open}</p>
+                  <p className="text-[10px] text-muted-foreground">مفتوحة</p>
+                </div>
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-2.5 text-center">
+                  <AlertTriangle className="mx-auto h-4 w-4 text-red-600" />
+                  <p className="text-sm font-bold">{rs.urgent}</p>
+                  <p className="text-[10px] text-red-600">عاجلة</p>
+                </div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-center">
+                  <CalendarClock className="mx-auto h-4 w-4 text-amber-600" />
+                  <p className="text-sm font-bold">{rs.overdue}</p>
+                  <p className="text-[10px] text-amber-600">متأخرة</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-center">
+                  <ClipboardList className="mx-auto h-4 w-4 text-emerald-600" />
+                  <p className="text-sm font-bold">{rs.completedThisMonth}</p>
+                  <p className="text-[10px] text-emerald-600">هذا الشهر</p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-center active:scale-95 transition-transform">
-                <CalendarClock className="mx-auto h-4 w-4 text-amber-600" />
-                <p className="text-sm font-bold">{rs.overdue}</p>
-                <p className="text-[10px] text-amber-600">متأخرة</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-center active:scale-95 transition-transform">
-                <ClipboardList className="mx-auto h-4 w-4 text-emerald-600" />
-                <p className="text-sm font-bold">{rs.completedThisMonth}</p>
-                <p className="text-[10px] text-emerald-600">هذا الشهر</p>
-              </div>
-            </Link>
+            </section>
           );
         })()}
 
