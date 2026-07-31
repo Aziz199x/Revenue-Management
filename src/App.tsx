@@ -27,6 +27,7 @@ import TenantRequests from "./pages/TenantRequests";
 import RequestDetails from "./pages/RequestDetails";
 import BackupPage from "./pages/BackupPage";
 import MonthClosePage from "./pages/MonthClosePage";
+import AuditLogPage from "./pages/AuditLogPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -193,6 +194,7 @@ const App = () => {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/reports/month-close" element={<MonthClosePage />} />
+              <Route path="/reports/audit" element={<AuditLogPage />} />
               <Route path="/reports/owner/:buildingId" element={<OwnerReportPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/notifications" element={<NotificationSettingsPage />} />

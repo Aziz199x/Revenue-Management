@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { BarChart3, Building2, FileSpreadsheet, LockKeyhole, Wallet, Wrench, TrendingUp } from "lucide-react";
+import { BarChart3, Building2, FileSpreadsheet, History, LockKeyhole, Wallet, Wrench, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
@@ -70,6 +70,24 @@ export default function Reports() {
             </div>
           </div>
           <span className="text-lg text-emerald-700">‹</span>
+        </Link>
+
+        <Link
+          to="/reports/audit"
+          className="flex items-center justify-between gap-3 rounded-3xl border border-violet-200 bg-violet-50 p-4 transition-transform active:scale-[0.98]"
+        >
+          <div className="flex items-center gap-3">
+            <span className="rounded-2xl bg-violet-100 p-2.5 text-violet-700">
+              <History className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-violet-900">سجل التدقيق المالي الشامل</p>
+              <p className="mt-1 text-[11px] text-violet-700">
+                اعرض القيم قبل وبعد وسبب العملية وتراجع عن آخر إجراء
+              </p>
+            </div>
+          </div>
+          <span className="text-lg text-violet-700">‹</span>
         </Link>
 
         {/* Summary cards */}
