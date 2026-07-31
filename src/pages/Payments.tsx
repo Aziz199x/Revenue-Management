@@ -116,10 +116,15 @@ export default function Payments() {
       showError("لا يمكن حذف دفعة من شهر مالي مقفل. افتح الدفعة وعدّلها مع كتابة سبب التسوية.");
       return;
     }
+    const reason = window.prompt("اكتب سبب حذف الدفعة ليُحفظ في سجل التدقيق:");
+    if (!reason?.trim()) {
+      showError("لا يمكن حذف عملية مالية دون كتابة السبب");
+      return;
+    }
     update((prev) => ({
       ...prev,
       payments: prev.payments.filter((item) => item.id !== payment.id),
-    }));
+    }), { reason: reason.trim() });
     showSuccess("تم حذف الدفعة");
   };
 

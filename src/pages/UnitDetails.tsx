@@ -551,6 +551,7 @@ export default function UnitDetails() {
   };
 
   const removeItem = (key: "payments" | "contracts" | "bills" | "repairs" | "tenants", id: string) => {
+    let auditReason: string | undefined;
     if (key === "payments") {
       const payment = data.payments.find((item) => item.id === id);
       const closedMonth = payment
@@ -563,10 +564,19 @@ export default function UnitDetails() {
         return;
       }
     }
+    if (key === "payments" || key === "repairs") {
+      const label = key === "payments" ? "الدفعة" : "الصيانة";
+      const reason = window.prompt(`اكتب سبب حذف ${label} ليُحفظ في سجل التدقيق:`);
+      if (!reason?.trim()) {
+        showError("لا يمكن حذف عملية مالية دون كتابة السبب");
+        return;
+      }
+      auditReason = reason.trim();
+    }
     update((prev) => ({
       ...prev,
       [key]: (prev[key] as { id: string }[]).filter((x) => x.id !== id),
-    }));
+    }), { reason: auditReason });
     showSuccess("تم الحذف");
   };
 
@@ -1532,9 +1542,7 @@ export default function UnitDetails() {
             <PaymentForm
             initial={editPayment}
             lessorCapacity={data.contracts.find((contract) => contract.id === editPayment.contractId)?.lessorCapacity ?? currentLessorCapacity}
-            requiresAuditReason={data.financialMonthClosures.some(
-              (closure) => closure.yearMonth === getPaymentReportMonth(editPayment, data.settings.reportMonthCutoffDay),
-            )}
+            requiresAuditReason
             onSubmit={async (values) => {
               try {
                 console.log("[Edit Payment] formData:", values);
@@ -1828,10 +1836,15 @@ export default function UnitDetails() {
           <RepairForm
             initial={editRepair}
             onSubmit={(values) => {
+              const reason = window.prompt("اكتب سبب تعديل الصيانة ليُحفظ في سجل التدقيق:");
+              if (!reason?.trim()) {
+                showError("لا يمكن تعديل عملية مالية دون كتابة السبب");
+                return;
+              }
               update((prev) => ({
                 ...prev,
                 repairs: prev.repairs.map((r) => (r.id === editRepair.id ? { ...r, ...values } : r)),
-              }));
+              }), { reason: reason.trim() });
               setEditRepair(null);
               showSuccess("تم حفظ التعديلات");
             }}

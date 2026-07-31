@@ -143,7 +143,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
     if (values.status === "paid" && !values.receivedDate) return "يرجى اختيار تاريخ الاستلام";
     if (values.status === "paid" && !values.receiveMethod) return "يرجى اختيار طريقة الاستلام";
     if (values.ownerTransferred && !values.ownerSettledByMaintenance && !values.ownerTransferDate) return "يرجى اختيار تاريخ التحويل للمالك";
-    if (requiresAuditReason && !values.auditReason?.trim()) return "يرجى كتابة سبب تعديل الدفعة لأن شهرها المالي مقفل";
+    if (requiresAuditReason && !values.auditReason?.trim()) return "يرجى كتابة سبب تعديل الدفعة ليظهر في سجل التدقيق";
     return null;
   };
 
@@ -301,7 +301,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
       </div>
       {requiresAuditReason && (
         <div className="space-y-1.5 rounded-2xl border border-violet-200 bg-violet-50 p-3">
-          <Label className="font-bold text-violet-900">سبب التسوية بعد إقفال الشهر *</Label>
+          <Label className="font-bold text-violet-900">سبب تعديل الدفعة *</Label>
           <Textarea
             value={auditReason}
             onChange={(event) => setAuditReason(event.target.value)}
@@ -310,7 +310,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
             required
           />
           <p className="text-[10px] text-violet-700">
-            سيظهر هذا السبب في سجل التدقيق، ولن يتغير سجل الإقفال بصمت.
+            سيظهر هذا السبب مع القيمة قبل وبعد في سجل التدقيق المالي.
           </p>
         </div>
       )}

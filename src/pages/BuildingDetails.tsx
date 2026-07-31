@@ -665,7 +665,15 @@ export default function BuildingDetails() {
                           size="icon"
                           className="h-8 w-8 rounded-full text-destructive"
                           onClick={() => {
-                            update((prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }));
+                            const reason = window.prompt("اكتب سبب حذف الصيانة ليُحفظ في سجل التدقيق:");
+                            if (!reason?.trim()) {
+                              showError("لا يمكن حذف عملية مالية دون كتابة السبب");
+                              return;
+                            }
+                            update(
+                              (prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }),
+                              { reason: reason.trim() },
+                            );
                             showSuccess("تم حذف بند الصيانة");
                           }}
                         >
@@ -910,6 +918,11 @@ export default function BuildingDetails() {
           <RepairForm
             initial={editBuildingRepair}
             onSubmit={(values) => {
+              const reason = window.prompt("اكتب سبب تعديل الصيانة ليُحفظ في سجل التدقيق:");
+              if (!reason?.trim()) {
+                showError("لا يمكن تعديل عملية مالية دون كتابة السبب");
+                return;
+              }
               update((prev) => ({
                 ...prev,
                 repairs: prev.repairs.map((repair) =>
@@ -917,7 +930,7 @@ export default function BuildingDetails() {
                     ? { ...repair, ...values, buildingId: building.id, unitId: undefined }
                     : repair
                 ),
-              }));
+              }), { reason: reason.trim() });
               setEditBuildingRepair(null);
               showSuccess("تم حفظ صيانة المبنى");
             }}
