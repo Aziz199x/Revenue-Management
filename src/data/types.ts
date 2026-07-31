@@ -508,6 +508,10 @@ export interface Settings {
   homeUpcomingPaymentDays?: number;
   /** Home dashboard: max items per list. */
   homeMaxItems?: number;
+  automaticBackupEnabled: boolean;
+  automaticBackupFrequency: "daily" | "weekly" | "monthly";
+  automaticGoogleDriveBackup: boolean;
+  backupRetentionCount: number;
   whatsappTemplates: WhatsAppTemplates;
 }
 
@@ -561,6 +565,10 @@ export const DEFAULT_SETTINGS: Settings = {
   homeContractDays: 90,
   homeUpcomingPaymentDays: 30,
   homeMaxItems: 5,
+  automaticBackupEnabled: true,
+  automaticBackupFrequency: "daily",
+  automaticGoogleDriveBackup: true,
+  backupRetentionCount: 14,
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
 };
 

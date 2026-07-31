@@ -11,8 +11,17 @@ import {
   Clock,
   HardDrive,
   Trash2,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +57,13 @@ import {
 } from "@/utils/googleDrive";
 import { validateBackupJson, createEmergencySnapshot, getEmergencySnapshot, clearEmergencySnapshot } from "@/utils/backupData";
 import { showSuccess, showError } from "@/utils/toast";
+import {
+  AutomaticBackupVersion,
+  getLastAutomaticBackupDate,
+  listAutomaticBackupVersions,
+  loadAutomaticBackupVersion,
+  runAutomaticBackupIfDue,
+} from "@/utils/automaticBackup";
 
 const LAST_BACKUP_KEY = "google_drive_last_backup";
 
@@ -98,6 +114,8 @@ export default function BackupPage() {
   const [selectedBackup, setSelectedBackup] = useState<BackupFileInfo | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [automaticVersions, setAutomaticVersions] = useState<AutomaticBackupVersion[]>([]);
+  const [automaticVersionsOpen, setAutomaticVersionsOpen] = useState(false);
 
   useEffect(() => {
     setSignedIn(isSignedIn());
@@ -264,6 +282,114 @@ export default function BackupPage() {
       )}
 
       <div className="space-y-4 p-4">
+        <div className="space-y-3 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-emerald-100 p-2.5">
+              <Database className="h-5 w-5 text-emerald-700" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-emerald-900">حماية البيانات والنسخ التلقائي</p>
+              <p className="text-xs leading-5 text-emerald-700">
+                التخزين الأساسي SQLite مع نسخة توافقية، ونسخ متعددة قابلة للاستعادة
+              </p>
+            </div>
+            <Switch
+              checked={data.settings.automaticBackupEnabled}
+              onCheckedChange={(checked) => void update((previous) => ({
+                ...previous,
+                settings: { ...previous.settings, automaticBackupEnabled: checked },
+              }), { suppressAudit: true })}
+            />
+          </div>
+
+          {data.settings.automaticBackupEnabled && (
+            <div className="space-y-3 rounded-2xl bg-white/70 p-3">
+              <div>
+                <p className="mb-1 text-[11px] font-bold">تكرار النسخ</p>
+                <Select
+                  value={data.settings.automaticBackupFrequency}
+                  onValueChange={(value) => void update((previous) => ({
+                    ...previous,
+                    settings: {
+                      ...previous.settings,
+                      automaticBackupFrequency: value as "daily" | "weekly" | "monthly",
+                    },
+                  }), { suppressAudit: true })}
+                >
+                  <SelectTrigger className="h-10 rounded-xl bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">يومي</SelectItem>
+                    <SelectItem value="weekly">أسبوعي</SelectItem>
+                    <SelectItem value="monthly">شهري</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold">رفع نسخة إلى Google Drive</p>
+                  <p className="text-[10px] text-muted-foreground">يعمل عند ربط الحساب وتوفر الاتصال</p>
+                </div>
+                <Switch
+                  checked={data.settings.automaticGoogleDriveBackup}
+                  onCheckedChange={(checked) => void update((previous) => ({
+                    ...previous,
+                    settings: { ...previous.settings, automaticGoogleDriveBackup: checked },
+                  }), { suppressAudit: true })}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold">عدد النسخ المحلية المحتفظ بها</label>
+                <input
+                  type="number"
+                  min={3}
+                  max={60}
+                  value={data.settings.backupRetentionCount}
+                  onChange={(event) => void update((previous) => ({
+                    ...previous,
+                    settings: {
+                      ...previous.settings,
+                      backupRetentionCount: Math.max(3, Math.min(60, Number(event.target.value) || 14)),
+                    },
+                  }), { suppressAudit: true })}
+                  className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                />
+              </div>
+              {getLastAutomaticBackupDate() && (
+                <p className="text-[10px] text-muted-foreground">
+                  آخر نسخة تلقائية: {formatDate(getLastAutomaticBackupDate() as string)}
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl text-xs"
+                onClick={async () => {
+                  try {
+                    localStorage.removeItem("automatic_backup_last_run");
+                    await runAutomaticBackupIfDue(data);
+                    showSuccess("تم إنشاء نسخة تلقائية الآن");
+                  } catch {
+                    showError("تعذر إنشاء النسخة التلقائية");
+                  }
+                }}
+              >
+                إنشاء نسخة الآن
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl text-xs"
+                onClick={async () => {
+                  setAutomaticVersions(await listAutomaticBackupVersions());
+                  setAutomaticVersionsOpen(true);
+                }}
+              >
+                استعادة نسخة تلقائية سابقة
+              </Button>
+            </div>
+          )}
+        </div>
+
         {/* Google Drive Account */}
         <div className="space-y-3 rounded-3xl border border-border bg-card p-4">
           <div className="flex items-center gap-3">
@@ -458,6 +584,44 @@ export default function BackupPage() {
       </div>
 
       {/* Backup list dialog */}
+      <Dialog open={automaticVersionsOpen} onOpenChange={setAutomaticVersionsOpen}>
+        <DialogContent className="max-h-[80vh] max-w-[90vw] overflow-y-auto rounded-3xl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="text-right">النسخ التلقائية المحلية</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {automaticVersions.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد نسخ تلقائية حتى الآن</p>
+            ) : automaticVersions.map((version) => (
+              <button
+                key={version.id}
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-border bg-card p-3 text-right"
+                onClick={async () => {
+                  try {
+                    setRestoring(true);
+                    createEmergencySnapshot(data);
+                    replaceAll(await loadAutomaticBackupVersion(version.id));
+                    setAutomaticVersionsOpen(false);
+                    showSuccess("تمت استعادة النسخة، مع حفظ نسخة طوارئ من البيانات السابقة");
+                  } catch (error) {
+                    showError(error instanceof Error ? error.message : "تعذر استعادة النسخة");
+                  } finally {
+                    setRestoring(false);
+                  }
+                }}
+              >
+                <span>
+                  <span className="block text-sm font-medium">{formatDate(version.createdAt)}</span>
+                  <span className="text-xs text-muted-foreground">{formatFileSize(String(version.size))}</span>
+                </span>
+                <Download className="h-4 w-4 text-primary" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={listDialogOpen} onOpenChange={(v) => { if (!v) setListDialogOpen(false); }}>
         <DialogContent className="max-w-[90vw] rounded-3xl dialog-safe max-h-[80vh] overflow-y-auto">
           <DialogHeader className="text-right">

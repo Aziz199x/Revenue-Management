@@ -4,10 +4,12 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract } from "./types";
 import { withComputedUnitStatuses } from "./unitStatus";
 import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAudit";
+import { loadAppDataFromSQLite, saveAppDataToSQLite } from "./sqliteRepository";
 
 function normalizeStoredReceiveMethod(method?: string | null): Payment["receiveMethod"] {
   const value = String(method || "").trim().toLowerCase();
@@ -140,11 +142,8 @@ function migrateContracts(contracts: Contract[]): Contract[] {
 
 const STORAGE_KEY = "rental-manager-data-v1";
 
-function loadData(): AppData {
+function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["settings"]> & { defaultCollectionFeePercent?: number } }): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return EMPTY_DATA;
-    const parsed = JSON.parse(raw);
     const parsedSettings = parsed.settings || {};
     const legacyFee = Number(parsedSettings.defaultCollectionFeePercent) || 0;
     const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = parsedSettings;
@@ -180,6 +179,16 @@ function loadData(): AppData {
   }
 }
 
+function loadData(): AppData {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return EMPTY_DATA;
+    return normalizeData(JSON.parse(raw));
+  } catch {
+    return EMPTY_DATA;
+  }
+}
+
 function saveData(data: AppData) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
@@ -194,9 +203,23 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<AppData>(loadData);
+  const sqliteHydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadAppDataFromSQLite(data).then((stored) => {
+      if (cancelled) return;
+      sqliteHydrated.current = true;
+      setData(normalizeData(stored));
+    });
+    return () => { cancelled = true; };
+    // The initial compatibility snapshot is intentionally captured once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     saveData(data);
+    if (sqliteHydrated.current) void saveAppDataToSQLite(data);
   }, [data]);
 
   const update = useCallback((updater: (prev: AppData) => AppData, context: FinancialAuditContext = {}) => {

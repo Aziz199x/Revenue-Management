@@ -10,6 +10,7 @@ import { syncScheduledNotifications } from "@/utils/notifications";
 import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
 import { toast } from "sonner";
+import { runAutomaticBackupIfDue } from "@/utils/automaticBackup";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Buildings from "./pages/Buildings";
@@ -54,6 +55,21 @@ function NotificationChecker() {
     })();
     return () => { void listener?.remove(); };
   }, []);
+  return null;
+}
+
+function AutomaticBackupManager() {
+  const { data } = useStore();
+  const latestData = useRef(data);
+  latestData.current = data;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void runAutomaticBackupIfDue(latestData.current);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [data]);
+
   return null;
 }
 
@@ -182,6 +198,7 @@ const App = () => {
       <Sonner />
       <StoreProvider>
         <NotificationChecker />
+        <AutomaticBackupManager />
         <BrowserRouter>
           <BackButtonHandler />
           <NotificationNavigationHandler />
