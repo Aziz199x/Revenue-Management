@@ -179,7 +179,7 @@ export default function Reports() {
                 return (
                   <Link
                     key={b.id}
-                    to={`/buildings/${b.id}`}
+                    to={`/reports/owner/${b.id}`}
                     className="block rounded-3xl border border-border bg-card p-4 transition-transform active:scale-[0.98]"
                   >
                     <div className="flex items-center justify-between">
@@ -204,6 +204,7 @@ export default function Reports() {
                         <span className="text-amber-600">الرسوم: {formatMoney(s.totalCollectionFees)}</span>
                       )}
                     </div>
+                    <p className="mt-2 text-[10px] font-bold text-primary">فتح كشف حساب المالك ←</p>
                   </Link>
                 );
               })}

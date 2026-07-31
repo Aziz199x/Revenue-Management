@@ -9,6 +9,7 @@ let helpers;
 let maintenanceItems;
 let monthClose;
 let financialAudit;
+let ownerStatement;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -18,6 +19,7 @@ test.before(async () => {
   maintenanceItems = await server.ssrLoadModule("/src/data/maintenanceExpenseItems.ts");
   monthClose = await server.ssrLoadModule("/src/reporting/monthCloseService.ts");
   financialAudit = await server.ssrLoadModule("/src/data/financialAudit.ts");
+  ownerStatement = await server.ssrLoadModule("/src/reporting/ownerStatementService.ts");
 });
 
 test.after(async () => {
@@ -494,4 +496,47 @@ test("undo restores every payment and maintenance change from the same transacti
   assert.equal(restored.repairs[0].isDeductedFromOwnerTransfer, false);
   assert.equal(restored.repairs[0].deductedFromPaymentId, null);
   assert.equal(restored.financialAuditLog.every((entry) => entry.undoneAt), true);
+});
+
+test("owner statement reconciles rent, fees, maintenance, transfers, and opening balance", () => {
+  const junePayment = payment({
+    receivedDate: "2026-06-05",
+    collectionFeeAmount: 50,
+    collectionFeeStatus: "collected",
+    ownerTransferred: true,
+    ownerTransferDate: "2026-06-08",
+    netAmountToTransferToOwner: 750,
+    maintenanceDeductionAmount: 200,
+  });
+  const snapshot = {
+    ...data([junePayment]),
+    repairs: [{
+      id: "r-owner",
+      buildingId: "b1",
+      description: "صيانة عامة",
+      repairDate: "2026-06-07",
+      cost: 200,
+      status: "completed",
+      createdAt: "2026-06-07",
+    }],
+    financialAuditLog: [],
+    financialMonthClosures: [],
+  };
+  const statement = ownerStatement.buildOwnerStatement(snapshot, "b1", "2026-06");
+
+  assert.equal(statement.totals.rentReceived, 1000);
+  assert.equal(statement.totals.officeFees, 50);
+  assert.equal(statement.totals.maintenance, 200);
+  assert.equal(statement.totals.ownerTransfers, 750);
+  assert.equal(statement.openingBalance, 0);
+  assert.equal(statement.closingBalance, 0);
+  assert.deepEqual(statement.events.map((event) => event.kind), [
+    "rent",
+    "maintenance",
+    "owner_transfer",
+    "office_fee",
+  ].sort((a, b) => {
+    const dates = { rent: "2026-06-05", office_fee: "2026-06-05", maintenance: "2026-06-07", owner_transfer: "2026-06-08" };
+    return dates[a].localeCompare(dates[b]) || a.localeCompare(b);
+  }));
 });
