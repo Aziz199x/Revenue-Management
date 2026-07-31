@@ -219,6 +219,33 @@ export interface ContractAttachment {
   createdAt: string;
 }
 
+export type EvidenceAttachmentKind =
+  | "payment_receipt"
+  | "owner_transfer"
+  | "maintenance_invoice"
+  | "contract"
+  | "clearance";
+
+export type EvidenceEntityType = "payment" | "repair" | "contract";
+
+export interface EvidenceAttachment {
+  id: string;
+  entityType: EvidenceEntityType;
+  entityId: string;
+  kind: EvidenceAttachmentKind;
+  buildingId?: string;
+  unitId?: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  /** Native app path inside Directory.Data. */
+  storagePath?: string;
+  /** Browser fallback only; native files stay outside the JSON database. */
+  dataUrl?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface EjarImportContract {
   contractNumber?: string;
   contractType?: string;
@@ -496,6 +523,7 @@ export interface AppData {
   repairs: Repair[];
   tenantRequests: TenantRequest[];
   contractAttachments: ContractAttachment[];
+  evidenceAttachments: EvidenceAttachment[];
   collectionFeeSettlements: CollectionFeeSettlement[];
   financialAuditLog: FinancialAuditEntry[];
   financialMonthClosures: FinancialMonthClose[];
@@ -546,6 +574,7 @@ export const EMPTY_DATA: AppData = {
   repairs: [],
   tenantRequests: [],
   contractAttachments: [],
+  evidenceAttachments: [],
   collectionFeeSettlements: [],
   financialAuditLog: [],
   financialMonthClosures: [],

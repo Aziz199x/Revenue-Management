@@ -53,6 +53,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import FormSheet from "@/components/shared/FormSheet";
 import StatusBadge from "@/components/shared/StatusBadge";
+import EvidenceAttachments from "@/components/shared/EvidenceAttachments";
 import UnitForm from "@/components/forms/UnitForm";
 import TenantForm from "@/components/forms/TenantForm";
 import PaymentForm from "@/components/forms/PaymentForm";
@@ -946,6 +947,29 @@ export default function UnitDetails() {
                       </p>
                     )}
 
+                    {(st === "paid" || st === "partial") && (
+                      <div className="flex flex-wrap gap-2 rounded-2xl bg-muted/40 p-2">
+                        <EvidenceAttachments
+                          entityType="payment"
+                          entityId={p.id}
+                          kind="payment_receipt"
+                          buildingId={building?.id}
+                          unitId={unit.id}
+                          compact
+                        />
+                        {p.ownerTransferred && (
+                          <EvidenceAttachments
+                            entityType="payment"
+                            entityId={p.id}
+                            kind="owner_transfer"
+                            buildingId={building?.id}
+                            unitId={unit.id}
+                            compact
+                          />
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         {(st === "unpaid" || st === "overdue" || st === "partial") && (
@@ -1142,6 +1166,24 @@ export default function UnitDetails() {
                     {c.notes && (
                       <p className="mt-2 rounded-2xl bg-muted p-2.5 text-xs text-muted-foreground">{c.notes}</p>
                     )}
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <EvidenceAttachments
+                        entityType="contract"
+                        entityId={c.id}
+                        kind="contract"
+                        buildingId={building?.id}
+                        unitId={unit.id}
+                        compact
+                      />
+                      <EvidenceAttachments
+                        entityType="contract"
+                        entityId={c.id}
+                        kind="clearance"
+                        buildingId={building?.id}
+                        unitId={unit.id}
+                        compact
+                      />
+                    </div>
                     {(expired || c.tenantDidNotLeave || c.status?.startsWith("eviction_")) && c.status !== "eviction_completed" && (
                       <div className="mt-3 space-y-2 rounded-2xl border border-red-200 bg-red-50 p-3">
                         <p className="text-sm font-bold text-red-700">حالة الإخلاء</p>
@@ -1308,6 +1350,16 @@ export default function UnitDetails() {
                   {r.notes && (
                     <p className="mt-2 rounded-2xl bg-muted p-2.5 text-xs text-muted-foreground">{r.notes}</p>
                   )}
+                  <div className="mt-2">
+                    <EvidenceAttachments
+                      entityType="repair"
+                      entityId={r.id}
+                      kind="maintenance_invoice"
+                      buildingId={building?.id}
+                      unitId={unit.id}
+                      compact
+                    />
+                  </div>
                   {r.isDeductedFromOwnerTransfer && (
                     <p className="mt-2 rounded-2xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-700">
                       تم خصم هذه الصيانة من دفعة للمالك

@@ -22,6 +22,7 @@ export interface OwnerStatementEvent {
   balanceChange: number;
   runningBalance: number;
   sourceId?: string;
+  evidenceFiles?: string[];
 }
 
 export interface OwnerStatement {
@@ -218,7 +219,12 @@ export function buildOwnerStatement(data: AppData, buildingId: string, yearMonth
     .filter((event) => event.date >= monthStart && event.date <= monthEnd)
     .map((event) => {
       runningBalance += event.balanceChange;
-      return { ...event, runningBalance };
+      const evidenceFiles = event.sourceId
+        ? (data.evidenceAttachments || [])
+            .filter((attachment) => attachment.entityId === event.sourceId)
+            .map((attachment) => attachment.fileName)
+        : [];
+      return { ...event, runningBalance, evidenceFiles };
     });
 
   const sumDebit = (kind: OwnerStatementEventKind) =>
@@ -239,4 +245,3 @@ export function buildOwnerStatement(data: AppData, buildingId: string, yearMonth
     },
   };
 }
-

@@ -366,7 +366,7 @@ export async function uploadBackup(data: AppData): Promise<void> {
   const accessToken = await getValidGoogleAccessToken();
   console.log('[GoogleDrive] Has accessToken:', !!accessToken);
 
-  const jsonContent = createBackupPayload(data);
+  const jsonContent = await createBackupPayload(data);
   const stamp = dateStamp();
   const fileName = `rental-backup-${stamp}.json`;
   console.log('[GoogleDrive] File name:', fileName);
@@ -460,7 +460,19 @@ export async function downloadBackup(fileId: string): Promise<string> {
   return resp.text();
 }
 
-export function createBackupPayload(data: AppData): object {
+export async function createBackupPayload(data: AppData): Promise<object> {
+  const evidenceAttachments = await Promise.all(
+    (data.evidenceAttachments || []).map(async (attachment) => {
+      if (attachment.dataUrl || !attachment.storagePath) return attachment;
+      try {
+        const { readEvidenceAttachment } = await import("@/utils/evidenceAttachments");
+        return { ...attachment, dataUrl: await readEvidenceAttachment(attachment) };
+      } catch (error) {
+        console.warn("[Backup] unable to embed evidence file", attachment.id, error);
+        return attachment;
+      }
+    }),
+  );
   return {
     appName: "Revenue Management",
     appVersion: "1.0.0",
@@ -475,6 +487,11 @@ export function createBackupPayload(data: AppData): object {
       bills: data.bills,
       repairs: data.repairs,
       tenantRequests: data.tenantRequests,
+      contractAttachments: data.contractAttachments,
+      evidenceAttachments,
+      collectionFeeSettlements: data.collectionFeeSettlements,
+      financialAuditLog: data.financialAuditLog,
+      financialMonthClosures: data.financialMonthClosures,
       settings: data.settings,
     },
   };

@@ -163,13 +163,14 @@ export default function OwnerReportPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse">
+            <table className="w-full min-w-[820px] border-collapse">
               <thead>
                 <tr>
                   <th className={th}>التاريخ</th>
                   <th className={th}>العملية</th>
                   <th className={th}>الوحدة</th>
                   <th className={th}>البيان</th>
+                  <th className={th}>الإثباتات</th>
                   <th className={th}>دائن للمالك</th>
                   <th className={th}>مدين على المالك</th>
                   <th className={th}>الرصيد</th>
@@ -181,6 +182,7 @@ export default function OwnerReportPage() {
                   <td className={td}>رصيد افتتاحي</td>
                   <td className={td}></td>
                   <td className={td}>الرصيد المرحل من الفترات السابقة</td>
+                  <td className={td}>—</td>
                   <td className={td}>{statement.openingBalance > 0 ? formatMoney(statement.openingBalance) : "—"}</td>
                   <td className={td}>{statement.openingBalance < 0 ? formatMoney(-statement.openingBalance) : "—"}</td>
                   <td className={td}>{formatMoney(statement.openingBalance)}</td>
@@ -191,16 +193,17 @@ export default function OwnerReportPage() {
                     <td className={td}>{eventLabels[event.kind]}</td>
                     <td className={td}>{event.unitName || "—"}</td>
                     <td className={td}>{event.description}</td>
+                    <td className={td}>{event.evidenceFiles?.join("، ") || "—"}</td>
                     <td className={`${td} text-emerald-700`}>{event.credit ? formatMoney(event.credit) : "—"}</td>
                     <td className={`${td} text-red-700`}>{event.debit ? formatMoney(event.debit) : "—"}</td>
                     <td className={`${td} font-bold`}>{formatMoney(event.runningBalance)}</td>
                   </tr>
                 ))}
                 {statement.events.length === 0 && (
-                  <tr><td className={`${td} text-center text-muted-foreground`} colSpan={7}>لا توجد عمليات خلال هذا الشهر</td></tr>
+                  <tr><td className={`${td} text-center text-muted-foreground`} colSpan={8}>لا توجد عمليات خلال هذا الشهر</td></tr>
                 )}
                 <tr className="font-bold">
-                  <td className={td} colSpan={4}>إجمالي حركة الشهر</td>
+                  <td className={td} colSpan={5}>إجمالي حركة الشهر</td>
                   <td className={td}>{formatMoney(statement.totals.rentReceived)}</td>
                   <td className={td}>{formatMoney(totalDebits)}</td>
                   <td className={td}>{formatMoney(statement.closingBalance)}</td>

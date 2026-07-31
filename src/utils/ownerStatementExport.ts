@@ -23,19 +23,20 @@ export async function exportOwnerStatementXlsx(
 ): Promise<void> {
   const building = data.buildings.find((item) => item.id === statement.buildingId);
   const rows: (string | number)[][] = [
-    ["كشف حساب المالك", building?.name || "", statement.yearMonth, "", "", "", ""],
-    ["التاريخ", "النوع", "الوحدة", "البيان", "دائن للمالك", "مدين على المالك", "الرصيد"],
-    ["", "رصيد افتتاحي", "", "", statement.openingBalance > 0 ? statement.openingBalance : 0, statement.openingBalance < 0 ? -statement.openingBalance : 0, statement.openingBalance],
+    ["كشف حساب المالك", building?.name || "", statement.yearMonth, "", "", "", "", ""],
+    ["التاريخ", "النوع", "الوحدة", "البيان", "الإثباتات", "دائن للمالك", "مدين على المالك", "الرصيد"],
+    ["", "رصيد افتتاحي", "", "", "", statement.openingBalance > 0 ? statement.openingBalance : 0, statement.openingBalance < 0 ? -statement.openingBalance : 0, statement.openingBalance],
     ...statement.events.map((event) => [
       event.date,
       kindLabels[event.kind],
       event.unitName || "",
       event.description,
+      event.evidenceFiles?.join("، ") || "",
       event.credit,
       event.debit,
       event.runningBalance,
     ]),
-    ["", "الإجمالي", "", "", statement.totals.rentReceived, statement.totals.officeFees + statement.totals.maintenance + statement.totals.settlements + statement.totals.ownerTransfers, statement.closingBalance],
+    ["", "الإجمالي", "", "", "", statement.totals.rentReceived, statement.totals.officeFees + statement.totals.maintenance + statement.totals.settlements + statement.totals.ownerTransfers, statement.closingBalance],
   ];
   const bytes = buildXlsx([{
     name: "كشف المالك",
@@ -43,7 +44,7 @@ export async function exportOwnerStatementXlsx(
     headerRows: 2,
     merges: ["A1:B1"],
     freezeRows: 2,
-    colWidths: [14, 20, 22, 42, 18, 18, 18],
+    colWidths: [14, 20, 22, 38, 28, 18, 18, 18],
   }]);
   await saveAndShareXlsx(
     `owner-statement-${safeFileName(building?.name || "building")}-${statement.yearMonth}.xlsx`,
@@ -80,4 +81,3 @@ export async function shareOwnerStatementText(
   }
   await navigator.clipboard.writeText(text);
 }
-
