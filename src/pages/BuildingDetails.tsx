@@ -11,6 +11,7 @@ import {
   BarChart3,
   FileSpreadsheet,
   FileText,
+  ReceiptText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,10 +40,11 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import BuildingForm from "@/components/forms/BuildingForm";
 import UnitForm from "@/components/forms/UnitForm";
 import RepairForm from "@/components/forms/RepairForm";
+import RecurringBuildingBillForm from "@/components/forms/RecurringBuildingBillForm";
 import { useStore, genId } from "@/data/store";
 import { buildingStats, formatMoney, formatDate, todayISO, normalizePaymentFinancials, parseLocalDate, effectiveStatus, getPaymentReceiveMethod, isCollectionFeeCollected, getPaymentReportMonth, getPaymentReportYearMonth, calculateInstallmentAmount, generatePaymentDueDates, getContractEndDate, getRemainingPaymentAmount, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getCollectedRentAmount, isPaymentOverdue } from "@/data/helpers";
 import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS, UNIT_MONTH_STATUS_LABELS, REPAIR_STATUS_LABELS } from "@/data/labels";
-import { Contract, Payment, PaymentReceiveMethod, PaymentStatus, Repair, Unit } from "@/data/types";
+import { Contract, Payment, PaymentReceiveMethod, PaymentStatus, RecurringBuildingBill, Repair, Unit } from "@/data/types";
 import { showSuccess, showError } from "@/utils/toast";
 import { buildMonthlyReportBundle } from "@/reporting/reportBundle";
 import { exportBuildingExcel } from "@/utils/buildingExcelExport";
@@ -53,6 +55,7 @@ import { UnitMonthStatus, UnitMonthRow } from "@/reporting/types";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
 import { appendOwnershipVersion, ownersForDate, ownershipChanged } from "@/data/buildingOwnership";
 import { useAppDialog } from "@/components/shared/AppDialogProvider";
+import { getOutstandingRecurringBillRepairs } from "@/data/recurringBuildingBills";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -135,6 +138,8 @@ export default function BuildingDetails() {
   const [addBuildingRepairOpen, setAddBuildingRepairOpen] = useState(false);
   const [editBuildingRepair, setEditBuildingRepair] = useState<Repair | null>(null);
   const [maintenanceMonthFilter, setMaintenanceMonthFilter] = useState("all");
+  const [recurringBillFormOpen, setRecurringBillFormOpen] = useState(false);
+  const [editRecurringBill, setEditRecurringBill] = useState<RecurringBuildingBill | null>(null);
   const requestedTab = searchParams.get("tab");
   const activeTab = requestedTab === "overdue" ? "units" : requestedTab || "units";
   const focusedItemId = searchParams.get("item");
@@ -174,6 +179,14 @@ export default function BuildingDetails() {
 
   const stats = buildingStats(data, building.id);
   const units = data.units.filter((u) => u.buildingId === building.id);
+  const recurringBills = data.recurringBuildingBills.filter((bill) => bill.buildingId === building.id);
+  const outstandingRecurringBills = getOutstandingRecurringBillRepairs(data, building.id);
+  const deductedRecurringBills = data.repairs
+    .filter((repair) => repair.buildingId === building.id && repair.recurringBillId)
+    .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
+  const monthlyRecurringTotal = recurringBills
+    .filter((bill) => bill.active)
+    .reduce((sum, bill) => sum + bill.amount, 0);
   const buildingRepairs = data.repairs
     .filter((repair) => repair.buildingId === building.id && !repair.unitId)
     .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
@@ -341,7 +354,7 @@ export default function BuildingDetails() {
           dir="rtl"
           className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-4 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
+          <TabsList className="grid h-auto w-full grid-cols-5 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
             <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الوحدات
             </TabsTrigger>
@@ -358,6 +371,15 @@ export default function BuildingDetails() {
             </TabsTrigger>
             <TabsTrigger value="performance" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الأداء
+            </TabsTrigger>
+            <TabsTrigger value="recurring-bills" className="rounded-xl py-2 text-[10px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+              <ReceiptText className="ml-1 h-3.5 w-3.5" />
+              الفواتير
+              {outstandingRecurringBills.length > 0 && (
+                <span className="mr-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] text-white">
+                  {outstandingRecurringBills.length}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -728,6 +750,172 @@ export default function BuildingDetails() {
             )}
           </TabsContent>
 
+          <TabsContent value="recurring-bills" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-amber-950">الفواتير الشهرية للعقار</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    مصروفات متكررة مثل المياه والحارس والنظافة، وتظهر تلقائيًا كمقترح عند استلام إيجار من العقار.
+                  </p>
+                  <p className="mt-2 text-sm font-bold text-amber-950">
+                    الإجمالي الشهري: {formatMoney(monthlyRecurringTotal)}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={() => {
+                    setEditRecurringBill(null);
+                    setRecurringBillFormOpen(true);
+                  }}
+                >
+                  <Plus className="ml-1 h-4 w-4" /> إضافة فاتورة
+                </Button>
+              </div>
+            </div>
+
+            {recurringBills.length === 0 ? (
+              <EmptyState
+                icon={ReceiptText}
+                title="لا توجد فواتير شهرية"
+                description="أضف فاتورة المياه أو راتب الحارس أو أي مصروف متكرر للعقار"
+              />
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {recurringBills.map((bill) => {
+                  const pendingCount = outstandingRecurringBills.filter((item) => item.recurringBillId === bill.id).length;
+                  const settledCount = deductedRecurringBills.filter((item) => item.recurringBillId === bill.id).length;
+                  return (
+                    <div key={bill.id} className="rounded-3xl border border-border bg-card p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold">{bill.name}</p>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${bill.active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                              {bill.active ? "نشطة" : "متوقفة"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-lg font-bold text-amber-700">{formatMoney(bill.amount)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            تستحق يوم {bill.dueDay} من كل شهر · منذ {bill.startYearMonth}
+                          </p>
+                          <p className="mt-2 text-[11px]">
+                            <span className="text-amber-700">{pendingCount} بانتظار الخصم</span>
+                            <span className="mx-2 text-muted-foreground">·</span>
+                            <span className="text-emerald-700">{settledCount} تمت تسويتها</span>
+                          </p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full"
+                            onClick={() => {
+                              setEditRecurringBill(bill);
+                              setRecurringBillFormOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full text-destructive"
+                            onClick={async () => {
+                              const confirmed = await appDialog.confirm({
+                                title: "حذف الفاتورة الشهرية؟",
+                                description: "سيُحذف جدول الأشهر غير المسددة، مع الاحتفاظ بالفواتير التي خُصمت سابقًا داخل سجل الدفعات.",
+                                confirmLabel: "حذف الفاتورة",
+                                tone: "destructive",
+                              });
+                              if (!confirmed) return;
+                              await update((prev) => ({
+                                ...prev,
+                                recurringBuildingBills: prev.recurringBuildingBills.filter((item) => item.id !== bill.id),
+                              }));
+                              showSuccess("تم حذف الفاتورة الشهرية");
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {outstandingRecurringBills.length > 0 && (
+              <div className="rounded-3xl border border-amber-200 bg-card p-4">
+                <p className="font-bold">الاستحقاقات غير المخصومة</p>
+                <p className="mt-1 text-xs text-muted-foreground">ستظهر هذه البنود في نافذة استلام الدفعة للعقار نفسه.</p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {outstandingRecurringBills.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between rounded-2xl bg-amber-50 p-3 text-xs">
+                      <div>
+                        <p className="font-bold">{item.description}</p>
+                        <p className="text-muted-foreground">الاستحقاق: {formatDate(item.repairDate)}</p>
+                      </div>
+                      <p className="font-bold text-amber-800">{formatMoney(item.cost)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {deductedRecurringBills.length > 0 && (
+              <div className="rounded-3xl border border-emerald-200 bg-card p-4">
+                <p className="font-bold">سجل الفواتير المخصومة</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  يوضح من أي إيجار خُصمت كل فاتورة شهرية، مع الاحتفاظ بالسجل حتى عند حذف جدول الفاتورة.
+                </p>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {deductedRecurringBills.map((item) => {
+                    const linkedPayment = item.deductedFromPaymentId
+                      ? data.payments.find((payment) => payment.id === item.deductedFromPaymentId)
+                      : undefined;
+                    const linkedUnit = linkedPayment
+                      ? data.units.find((unit) => unit.id === linkedPayment.unitId)
+                      : undefined;
+                    const linkedPaymentMonth = linkedPayment
+                      ? getPaymentReportMonth(linkedPayment, data.settings.reportMonthCutoffDay)
+                      : "";
+
+                    return (
+                      <div key={item.id} className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold">{item.description}</p>
+                            <p className="mt-1 text-emerald-800">
+                              فاتورة شهر {item.recurringYearMonth ? formatYearMonthLabel(item.recurringYearMonth) : formatDate(item.repairDate)}
+                            </p>
+                          </div>
+                          <p className="shrink-0 font-bold text-amber-800">{formatMoney(item.cost)}</p>
+                        </div>
+                        {linkedPayment ? (
+                          <div className="mt-2 border-t border-emerald-200 pt-2 text-muted-foreground">
+                            <p>
+                              خُصمت من دفعة {linkedUnit?.name || linkedPayment.unitName || "وحدة غير محددة"}
+                              {linkedPayment.paymentNumber ? ` رقم ${linkedPayment.paymentNumber}` : ""}
+                            </p>
+                            {linkedPaymentMonth && <p className="mt-1">شهر الدفعة: {formatYearMonthLabel(linkedPaymentMonth)}</p>}
+                            {linkedPayment.receivedDate && <p className="mt-1">تاريخ الاستلام: {formatDate(linkedPayment.receivedDate)}</p>}
+                          </div>
+                        ) : (
+                          <p className="mt-2 border-t border-emerald-200 pt-2 text-muted-foreground">
+                            الدفعة المرتبطة غير متاحة حاليًا، وتم الاحتفاظ بسجل الفاتورة.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
           <TabsContent value="units" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl border border-border bg-card p-3">
@@ -837,6 +1025,43 @@ export default function BuildingDetails() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <FormSheet
+        open={recurringBillFormOpen}
+        onOpenChange={(open) => {
+          setRecurringBillFormOpen(open);
+          if (!open) setEditRecurringBill(null);
+        }}
+        title={editRecurringBill ? "تعديل الفاتورة الشهرية" : "إضافة فاتورة شهرية"}
+      >
+        <RecurringBuildingBillForm
+          key={editRecurringBill?.id || "new-recurring-bill"}
+          initial={editRecurringBill || undefined}
+          onSubmit={async (values) => {
+            const pausedYearMonth = values.active ? undefined : monthKey(new Date());
+            await update((prev) => ({
+              ...prev,
+              recurringBuildingBills: editRecurringBill
+                ? prev.recurringBuildingBills.map((bill) =>
+                    bill.id === editRecurringBill.id ? { ...bill, ...values, pausedYearMonth } : bill
+                  )
+                : [
+                    ...prev.recurringBuildingBills,
+                    {
+                      id: genId(),
+                      buildingId: building.id,
+                      createdAt: new Date().toISOString(),
+                      pausedYearMonth,
+                      ...values,
+                    },
+                  ],
+            }));
+            setRecurringBillFormOpen(false);
+            setEditRecurringBill(null);
+            showSuccess(editRecurringBill ? "تم تعديل الفاتورة الشهرية" : "تمت إضافة الفاتورة الشهرية");
+          }}
+        />
+      </FormSheet>
 
       <FormSheet open={excelOpen} onOpenChange={setExcelOpen} title="تصدير تقرير إكسل">
         <div className="space-y-4">
