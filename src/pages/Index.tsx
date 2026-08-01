@@ -39,8 +39,7 @@ import {
   normalizePaymentFinancials,
   calculateNetAmountToTransferToOwner,
 } from "@/data/helpers";
-import { fillTemplate } from "@/utils/whatsapp";
-import { getTenantPhoneNumbers, getWhatsAppTemplatesForTenant } from "@/utils/automaticCommunications";
+import { buildPaymentMessageContent, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
 import { useMemo, useState } from "react";
 
 const DASHBOARD_PROPERTY_KEY = "dashboard_selected_property";
@@ -415,21 +414,13 @@ export default function Index() {
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-emerald-100 py-2 text-[11px] font-semibold text-emerald-700 active:scale-[0.98] transition-transform"
                     onClick={() => {
                       console.log('[WhatsApp] Button clicked');
-                      const tenant = data.tenants.find((t) => t.unitId === (data.payments.find((p) => p.id === pc.paymentId)?.unitId || ""));
-                      const phones = getTenantPhoneNumbers(tenant);
-                      if (phones.length === 0) return;
-                      const msg = fillTemplate(
-                        getWhatsAppTemplatesForTenant(data, tenant).overduePayment,
-                        {
-                          tenantName: tenant.name,
-                          buildingName: pc.buildingName,
-                          unitName: pc.unitName,
-                  amount: pc.amount.toLocaleString("en-US"),
-                          dueDate: formatDate(pc.dueDate),
-                          contractEndDate: "",
-                          ownerName: "",
-                        },
+                      const payment = data.payments.find((p) => p.id === pc.paymentId);
+                      const tenant = data.tenants.find((t) =>
+                        t.id === payment?.tenantId || (!payment?.tenantId && t.unitId === payment?.unitId)
                       );
+                      const phones = getTenantPhoneNumbers(tenant);
+                      if (!payment || phones.length === 0) return;
+                      const msg = buildPaymentMessageContent(data, payment, tenant, "overduePayment").message;
                       setWhatsappPreview({ phones, message: msg });
                     }}
                   >

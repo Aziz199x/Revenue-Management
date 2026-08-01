@@ -858,3 +858,95 @@ test("normalization gives every contract payment a stable chronological number",
   assert.equal(normalized.payments.find((item) => item.id === "p-earlier").paymentNumber, 1);
   assert.equal(normalized.payments.find((item) => item.id === "p-later").paymentNumber, 2);
 });
+
+test("default WhatsApp and SMS payment text includes number and period without duplicate currency", () => {
+  const record = payment({
+    id: "p-message",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentNumber: 3,
+    paymentDate: "2026-08-01",
+    dueDateGregorian: "2026-08-01",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t1",
+      unitId: "u1",
+      name: "أحمد",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      ...data([]).settings,
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        sendMissedAsSoonAsPossible: true,
+      },
+    },
+  });
+  snapshot.payments[0].tenantId = "t1";
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T10:00:00"));
+  assert.equal(jobs.length, 1);
+  assert.match(jobs[0].body, /الدفعة رقم 1/);
+  assert.match(jobs[0].body, /عن الفترة من/);
+  assert.match(jobs[0].body, /إلى/);
+  assert.equal(jobs[0].body.includes("ر.س ر.س"), false);
+});
+
+test("contract expiry is suppressed when another valid contract covers the same unit expiry", () => {
+  const overlapping = {
+    ...contract,
+    id: "c2",
+    startDate: "2026-07-01",
+    endDate: "2026-09-30",
+  };
+  const original = {
+    ...contract,
+    id: "c1",
+    startDate: "2026-06-01",
+    endDate: "2026-09-30",
+  };
+  const contracts = [original, overlapping];
+  assert.equal(helpers.hasContinuingContractForUnit(original, contracts), true);
+  assert.equal(helpers.hasContinuingContractForUnit(overlapping, contracts), true);
+  assert.equal(
+    helpers.buildContractExpiryReminders(contracts, [unit], data([]).buildings, 80).length,
+    0,
+  );
+
+  const snapshot = storeData.normalizeData({
+    ...data([], contracts),
+    tenants: [{
+      id: "t1",
+      unitId: "u1",
+      name: "أحمد",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      ...data([]).settings,
+      contractReminderDays: 80,
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        sendMissedAsSoonAsPossible: true,
+      },
+    },
+  });
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T10:00:00"));
+  assert.equal(jobs.filter((job) => job.templateKind === "contractExpiry").length, 0);
+});

@@ -5,7 +5,7 @@ import { validatePhone } from "@/utils/whatsapp";
 interface SmsSenderNativePlugin {
   getStatus(): Promise<{ granted: boolean }>;
   requestPermission(): Promise<{ granted: boolean }>;
-  send(options: { phone: string; message: string }): Promise<{ queued: boolean }>;
+  send(options: { phone: string; message: string }): Promise<{ queued: boolean; carrierAccepted: boolean }>;
 }
 
 const SmsSender = registerPlugin<SmsSenderNativePlugin>("SmsSender");

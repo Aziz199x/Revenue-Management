@@ -33,13 +33,12 @@ import {
 } from "@/data/maintenanceExpenseItems";
 import { genId, useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
-import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
+import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
-import { buildPaymentReminderMessage } from "@/utils/whatsapp";
 import { showSuccess, showError } from "@/utils/toast";
 import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
-import { buildPaymentEmailContent, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
+import { buildPaymentEmailContent, buildPaymentMessageContent, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
 
 const PAYMENT_FILTERS_KEY = "payments_filters";
 
@@ -493,19 +492,7 @@ export default function Payments() {
     showSuccess("تم تسجيل تسوية رسوم التحصيل");
   };
 
-  const handleWhatsAppPaymentReminder = (payment: {
-    id: string;
-    grossAmount?: number;
-    amount?: number;
-    rentAmount?: number;
-    tenantPhone?: string;
-    tenantName?: string;
-    unitName?: string;
-    buildingName?: string;
-    paymentDate: string;
-    nextDueDate?: string;
-    status?: string;
-  }) => {
+  const handleWhatsAppPaymentReminder = (payment: Payment) => {
     console.log("[WhatsApp Payment] selected payment id:", payment.id);
     console.log("[WhatsApp Payment] raw amount fields:", {
       grossAmount: payment.grossAmount,
@@ -514,10 +501,6 @@ export default function Payments() {
     });
 
     const paymentAmount = getPaymentAmount(payment);
-    const formattedAmount = formatSarAmount(paymentAmount);
-
-    console.log("[WhatsApp Payment] final formatted amount:", formattedAmount);
-
     if (!paymentAmount) {
       showError("مبلغ الدفعة غير صحيح");
       return;
@@ -534,14 +517,7 @@ export default function Payments() {
       return;
     }
 
-    const message = buildPaymentReminderMessage({
-      tenantName: payment.tenantName,
-      buildingName: payment.buildingName,
-      unitName: payment.unitName,
-      amount: formattedAmount,
-      dueDate: payment.dueDateGregorian || payment.paymentDate,
-      isOverdue: payment.status === "overdue",
-    });
+    const message = buildPaymentMessageContent(data, payment, tenant).message;
 
     setWhatsappPreview({ phones: tenantPhones, message });
   };
@@ -782,20 +758,7 @@ export default function Payments() {
                       type="button"
                       className="flex min-h-8 max-w-full shrink-0 items-center gap-1 whitespace-normal rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-transform active:scale-95"
                       onClick={() => {
-                        handleWhatsAppPaymentReminder({
-                          id: p.id,
-                          grossAmount: p.grossAmount,
-                          amount: p.amount,
-                          rentAmount: p.rentAmount,
-                          tenantPhone: p.tenantPhone,
-                          tenantName: p.tenantName || tenant?.name,
-                          unitName: unit?.name || "",
-                          buildingName: building?.name || "",
-                          paymentDate: p.paymentDate,
-                          nextDueDate: p.dueDateGregorian || p.paymentDate,
-                          status: status,
-                          unitId: p.unitId,
-                        });
+                        handleWhatsAppPaymentReminder(p);
                       }}
                     >
                       <MessageCircle className="h-3.5 w-3.5 shrink-0" />
@@ -807,14 +770,7 @@ export default function Payments() {
                       type="button"
                       className="flex min-h-8 max-w-full shrink-0 items-center gap-1 whitespace-normal rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition-transform active:scale-95"
                       onClick={() => {
-                        const message = buildPaymentReminderMessage({
-                          tenantName: p.tenantName || tenant?.name,
-                          buildingName: building?.name || "",
-                          unitName: unit?.name || "",
-                          amount: formatSarAmount(getPaymentAmount(p)),
-                          dueDate: p.dueDateGregorian || p.paymentDate,
-                          isOverdue: status === "overdue",
-                        });
+                        const message = buildPaymentMessageContent(data, p, tenant).message;
                         setSmsPreview({ phones: tenantPhones, message });
                       }}
                     >

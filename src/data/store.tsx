@@ -12,6 +12,28 @@ import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAu
 import { loadAppDataFromSQLite, saveAppDataToSQLite } from "./sqliteRepository";
 import { normalizeOwners, synchronizeOwnerTransferAllocations } from "./buildingOwnership";
 
+function upgradePaymentMessageTemplate(template: string): string {
+  let upgraded = template
+    // {amount} is already formatted with the currency by every message builder.
+    .replace(/\{amount\}\s*ر\.?\s*س\.?/g, "{amount}");
+  const missing: string[] = [];
+  if (!upgraded.includes("{paymentNumber}")) missing.push("رقم {paymentNumber}");
+  if (!upgraded.includes("{periodStart}") || !upgraded.includes("{periodEnd}")) {
+    missing.push("عن الفترة من {periodStart} إلى {periodEnd}");
+  }
+  if (!upgraded.includes("{dueDate}")) missing.push("موعد استحقاقها {dueDate}");
+  if (missing.length > 0) upgraded = `${upgraded.trim()}\n\nتفاصيل الدفعة: ${missing.join("، ")}.`;
+  return upgraded;
+}
+
+function upgradeWhatsAppTemplates<T extends { paymentReminder: string; overduePayment: string }>(templates: T): T {
+  return {
+    ...templates,
+    paymentReminder: upgradePaymentMessageTemplate(templates.paymentReminder),
+    overduePayment: upgradePaymentMessageTemplate(templates.overduePayment),
+  };
+}
+
 function normalizeStoredReceiveMethod(method?: string | null): Payment["receiveMethod"] {
   const value = String(method || "").trim().toLowerCase();
   if (value === "office_collection" || value.includes("office") || value.includes("مكتب")) return "office_collection";
@@ -229,14 +251,14 @@ export function normalizeData(
       settings: {
         ...DEFAULT_SETTINGS,
         ...settingsWithoutLegacyFee,
-        whatsappTemplates: {
+        whatsappTemplates: upgradeWhatsAppTemplates({
           ...DEFAULT_SETTINGS.whatsappTemplates,
           ...(parsedSettings.whatsappTemplates || {}),
-        },
-        companyWhatsappTemplates: {
+        }),
+        companyWhatsappTemplates: upgradeWhatsAppTemplates({
           ...DEFAULT_SETTINGS.companyWhatsappTemplates,
           ...(parsedSettings.companyWhatsappTemplates || {}),
-        },
+        }),
         emailTemplates: {
           ...DEFAULT_SETTINGS.emailTemplates,
           ...(parsedSettings.emailTemplates || {}),

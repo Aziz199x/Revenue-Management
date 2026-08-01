@@ -643,18 +643,18 @@ export interface AppData {
 
 export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
   paymentReminder:
-    "السلام عليكم، نود تذكيركم بأن موعد سداد الإيجار للوحدة {unitName} في عقار {buildingName} قد حلّ، بمبلغ {amount} ر.س. نأمل سرعة السداد، وشكرًا لكم.",
+    "السلام عليكم، نود تذكيركم بأن الدفعة رقم {paymentNumber} لإيجار الوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، مستحقة بتاريخ {dueDate}، بمبلغ {amount}. نأمل سرعة السداد، وشكرًا لكم.",
   overduePayment:
-    "السلام عليكم، نود إفادتكم بأن دفعة الإيجار للوحدة {unitName} في عقار {buildingName} مستحقة ولم يتم تسجيل سدادها حتى الآن، بمبلغ {amount} ر.س. نأمل سرعة السداد، وشكرًا لكم.",
+    "السلام عليكم، نود إفادتكم بأن الدفعة رقم {paymentNumber} لإيجار الوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، كانت مستحقة بتاريخ {dueDate} بمبلغ {amount}، ولم يتم تسجيل سدادها حتى الآن. نأمل سرعة السداد، وشكرًا لكم.",
   contractExpiry:
     "السلام عليكم، نود إفادتكم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي في تاريخ {contractEndDate}. يرجى التواصل لتجديد العقد أو لترتيب التسليم. وشكرًا لكم.",
 };
 
 export const DEFAULT_COMPANY_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
   paymentReminder:
-    "السلام عليكم، السادة/ {tenantName}، نود تذكيركم بأن موعد سداد إيجار الوحدة {unitName} في عقار {buildingName} قد حلّ، بمبلغ {amount} ر.س. نأمل منكم التكرم بإتمام السداد، وشكرًا لكم.",
+    "السلام عليكم، السادة/ {tenantName}، نود تذكيركم بأن الدفعة رقم {paymentNumber} لإيجار الوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، مستحقة بتاريخ {dueDate}، بمبلغ {amount}. نأمل منكم التكرم بإتمام السداد، وشكرًا لكم.",
   overduePayment:
-    "السلام عليكم، السادة/ {tenantName}، نفيدكم بأن دفعة إيجار الوحدة {unitName} في عقار {buildingName} مستحقة ولم يتم تسجيل سدادها حتى الآن، بمبلغ {amount} ر.س. نأمل منكم سرعة السداد، وشكرًا لكم.",
+    "السلام عليكم، السادة/ {tenantName}، نفيدكم بأن الدفعة رقم {paymentNumber} لإيجار الوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، كانت مستحقة بتاريخ {dueDate} بمبلغ {amount}، ولم يتم تسجيل سدادها حتى الآن. نأمل منكم سرعة السداد، وشكرًا لكم.",
   contractExpiry:
     "السلام عليكم، السادة/ {tenantName}، نفيدكم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}. يرجى التواصل لتجديد العقد أو ترتيب التسليم، وشكرًا لكم.",
 };

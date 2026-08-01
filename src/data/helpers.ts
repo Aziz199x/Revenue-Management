@@ -342,7 +342,11 @@ export function hasContinuingContractForUnit(current: Contract, allContracts: Co
     if (contract.deletedAt || contract.status === "cancelled" || contract.status === "terminated" || contract.status === "eviction_completed") return false;
     const start = normalizeDateToIso(contract.startDate);
     const contractEnd = getContractEndDate(contract);
-    return !!start && !!contractEnd && start <= nextDay && contractEnd > currentEnd;
+    if (!start || !contractEnd || start > nextDay) return false;
+    // A second valid contract that covers the same expiry (including an
+    // overlapping duplicate) suppresses this reminder. If the second contract
+    // extends farther, it can still receive its own reminder at its later end.
+    return contractEnd >= currentEnd;
   });
 }
 

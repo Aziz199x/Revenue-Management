@@ -136,7 +136,7 @@ export default function WhatsAppSettingsPage() {
             <section className="space-y-4 rounded-3xl border border-emerald-200 bg-card p-4">
               <div>
                 <p className="font-bold">قوالب واتساب · {audience === "company" ? "شركة" : "فرد"}</p>
-                <p className="text-xs text-muted-foreground">تستخدم في الإرسال اليدوي وWhatsApp Business API.</p>
+                <p className="text-xs text-muted-foreground">تستخدم في واتساب ورسائل SMS اليدوية والتلقائية.</p>
               </div>
               {(Object.keys(templateLabels) as TemplateKind[]).map((kind) => (
                 <div key={kind} className="space-y-1.5 rounded-2xl bg-muted/60 p-3">
@@ -150,7 +150,7 @@ export default function WhatsAppSettingsPage() {
                 </div>
               ))}
               <p className="rounded-xl bg-secondary p-2 text-[10px] leading-5 text-muted-foreground">
-                المتغيرات: {"{tenantName}"} {"{buildingName}"} {"{unitName}"} {"{amount}"} {"{dueDate}"} {"{contractEndDate}"} {"{ownerName}"}
+                المتغيرات: {"{tenantName}"} {"{buildingName}"} {"{unitName}"} {"{paymentNumber}"} {"{amount}"} {"{dueDate}"} {"{periodStart}"} {"{periodEnd}"} {"{contractEndDate}"} {"{ownerName}"}
               </p>
               <Button variant="outline" className="w-full rounded-xl" onClick={() => resetChannel("whatsapp")}>
                 <RotateCcw className="ml-1 h-4 w-4" /> استعادة افتراضي {audience === "company" ? "الشركة" : "الفرد"}

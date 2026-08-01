@@ -7,6 +7,7 @@ import {
   shouldShowContractExpiryReminder,
   getContractEndDate,
   getDaysUntilDate,
+  hasContinuingContractForUnit,
 } from "@/data/helpers";
 import { normalizeId } from "@/data/unitStatus";
 import { buildUnitMonthRows, hasLiveContractForMonth } from "./unitMonthStatus";
@@ -143,6 +144,7 @@ function computeMonthlyReport(data: AppData, buildingId: string, yearMonth: stri
   const renewalsThisMonth = buildingContracts.filter((c) => (c.startDate || "").slice(0, 7) === yearMonth && c.status !== "cancelled").length;
   const expirationsWithin45Days = buildingContracts.filter((c) => {
     if (!shouldShowContractExpiryReminder(c, 45)) return false;
+    if (hasContinuingContractForUnit(c, buildingContracts)) return false;
     const end = getContractEndDate(c);
     const days = end ? getDaysUntilDate(end) : null;
     return days !== null && days <= 45;

@@ -136,17 +136,16 @@ import {
   MaintenanceExpenseItemDraft,
   normalizeMaintenanceExpenseItems,
 } from "@/data/maintenanceExpenseItems";
-import { buildPaymentReminderMessage, fillTemplate } from "@/utils/whatsapp";
 import { validatePhone } from "@/utils/whatsapp";
-import { formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
+import { getContractEndDate, getDaysUntilDate, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
 import { showSuccess, showError } from "@/utils/toast";
 import {
   buildContractCommunicationContent,
   buildPaymentEmailContent,
+  buildPaymentMessageContent,
   getTenantEmailAddresses,
   getTenantPhoneNumbers,
   getFormalTenantGreeting,
-  getWhatsAppTemplatesForTenant,
 } from "@/utils/automaticCommunications";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
@@ -790,18 +789,12 @@ export default function UnitDetails() {
                         type="button"
                         className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700 transition-transform active:scale-95"
                         onClick={() => {
-                          const msg = fillTemplate(
-                            getWhatsAppTemplatesForTenant(data, tenant).paymentReminder,
-                            {
-                              tenantName: tenant.name,
-                              buildingName: building?.name || "",
-                              unitName: unit.name,
-                  amount: unit.rentAmount.toLocaleString("en-US"),
-                              dueDate: "",
-                              contractEndDate: "",
-                              ownerName: "",
-                            },
-                          );
+                          const pendingPayment = [...payments]
+                            .filter((payment) => ["unpaid", "overdue", "partial"].includes(effectiveStatus(payment)))
+                            .sort((a, b) => (a.dueDateGregorian || a.paymentDate).localeCompare(b.dueDateGregorian || b.paymentDate))[0];
+                          const msg = pendingPayment
+                            ? buildPaymentMessageContent(data, pendingPayment, tenant).message
+                            : `السلام عليكم، نود التواصل معكم بخصوص الوحدة ${unit.name} في عقار ${building?.name || ""}.`;
                           setWhatsappPreview({ phones: getTenantPhoneNumbers(tenant), message: msg });
                         }}
                       >
@@ -813,15 +806,12 @@ export default function UnitDetails() {
                           type="button"
                           className="flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-[11px] font-semibold text-violet-700 transition-transform active:scale-95"
                           onClick={() => {
-                            const msg = fillTemplate(getWhatsAppTemplatesForTenant(data, tenant).paymentReminder, {
-                              tenantName: tenant.name,
-                              buildingName: building?.name || "",
-                              unitName: unit.name,
-                              amount: unit.rentAmount.toLocaleString("en-US"),
-                              dueDate: "",
-                              contractEndDate: "",
-                              ownerName: "",
-                            });
+                            const pendingPayment = [...payments]
+                              .filter((payment) => ["unpaid", "overdue", "partial"].includes(effectiveStatus(payment)))
+                              .sort((a, b) => (a.dueDateGregorian || a.paymentDate).localeCompare(b.dueDateGregorian || b.paymentDate))[0];
+                            const msg = pendingPayment
+                              ? buildPaymentMessageContent(data, pendingPayment, tenant).message
+                              : `السلام عليكم، نود التواصل معكم بخصوص الوحدة ${unit.name} في عقار ${building?.name || ""}.`;
                             setSmsPreview({ phones: getTenantPhoneNumbers(tenant), message: msg });
                           }}
                         >
@@ -1115,23 +1105,7 @@ export default function UnitDetails() {
                           variant="outline"
                           className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full px-3 py-1.5 text-xs"
                           onClick={() => {
-                            console.log("[WhatsApp Payment] selected payment id:", p.id);
-                            console.log("[WhatsApp Payment] raw amount fields:", {
-                              grossAmount: p.grossAmount,
-                              amount: p.amount,
-                            });
-                            const paymentAmount = getPaymentAmount(p);
-                            const formattedAmount = formatSarAmount(paymentAmount);
-                            console.log("[WhatsApp Payment] final formatted amount:", formattedAmount);
-                            if (!paymentAmount) { showError("مبلغ الدفعة غير صحيح"); return; }
-                            const msg = buildPaymentReminderMessage({
-                              tenantName: p.tenantName || paymentTenant?.name,
-                              buildingName: building?.name || "",
-                              unitName: unit.name,
-                              amount: formattedAmount,
-                              dueDate: p.dueDateGregorian || p.paymentDate,
-                              isOverdue: st === "overdue",
-                            });
+                            const msg = buildPaymentMessageContent(data, p, paymentTenant).message;
                             setWhatsappPreview({ phones: paymentPhones, message: msg });
                           }}
                         >
@@ -1145,14 +1119,7 @@ export default function UnitDetails() {
                           variant="outline"
                           className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-700"
                           onClick={() => {
-                            const msg = buildPaymentReminderMessage({
-                              tenantName: p.tenantName || paymentTenant?.name,
-                              buildingName: building?.name || "",
-                              unitName: unit.name,
-                              amount: formatSarAmount(getPaymentAmount(p)),
-                              dueDate: p.dueDateGregorian || p.paymentDate,
-                              isOverdue: st === "overdue",
-                            });
+                            const msg = buildPaymentMessageContent(data, p, paymentTenant).message;
                             setSmsPreview({ phones: paymentPhones, message: msg });
                           }}
                         >

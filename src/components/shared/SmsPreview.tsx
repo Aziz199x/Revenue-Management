@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { MessageSquareText, X } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { openSms } from "@/utils/sms";
+import { openSms, requestAutomaticSmsPermission, sendAutomaticSms } from "@/utils/sms";
 import { showError, showSuccess } from "@/utils/toast";
 
 interface Props {
@@ -50,6 +51,27 @@ export default function SmsPreview({ open, onOpenChange, phones, message }: Prop
     }
   };
 
+  const sendDirect = async () => {
+    if (selectedPhones.length === 0) {
+      showError("اختر رقمًا واحدًا على الأقل");
+      return;
+    }
+    setOpening(true);
+    try {
+      const granted = await requestAutomaticSmsPermission();
+      if (!granted) throw new Error("يلزم السماح للتطبيق بإرسال رسائل SMS");
+      for (const phone of selectedPhones) {
+        await sendAutomaticSms(phone, editedMessage);
+      }
+      showSuccess(`أكدت شريحة الهاتف إرسال ${selectedPhones.length} رسالة بنجاح`);
+      onOpenChange(false);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "فشل إرسال SMS؛ تحقق من الرصيد والشبكة");
+    } finally {
+      setOpening(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-[92vw] overflow-y-auto rounded-3xl sm:max-w-lg">
@@ -75,15 +97,27 @@ export default function SmsPreview({ open, onOpenChange, phones, message }: Prop
             </div>
           )}
           <Textarea value={editedMessage} onChange={(event) => setEditedMessage(event.target.value)} className="min-h-40 rounded-2xl" />
+          {Capacitor.isNativePlatform() && (
+            <p className="rounded-xl border border-violet-200 bg-violet-50 p-2 text-[11px] leading-5 text-violet-800">
+              الإرسال المباشر ينتظر تأكيد شريحة الهاتف، ويعرض فشل الشبكة أو الرصيد بدل تسجيل الرسالة كناجحة. لا يضمن ذلك قراءة المستلم للرسالة.
+            </p>
+          )}
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => onOpenChange(false)}>
               <X className="ml-1 h-4 w-4" /> إلغاء
             </Button>
-            <Button className="flex-1 rounded-xl" disabled={opening || selectedPhones.length === 0} onClick={openCurrent}>
+            <Button className="flex-1 rounded-xl" disabled={opening || selectedPhones.length === 0} onClick={Capacitor.isNativePlatform() ? sendDirect : openCurrent}>
               <MessageSquareText className="ml-1 h-4 w-4" />
-              {selectedPhones.length > 1 ? `فتح الرسائل (${currentIndex + 1}/${selectedPhones.length})` : "فتح الرسائل"}
+              {Capacitor.isNativePlatform()
+                ? (selectedPhones.length > 1 ? `إرسال مباشر (${selectedPhones.length})` : "إرسال مباشر")
+                : (selectedPhones.length > 1 ? `فتح الرسائل (${currentIndex + 1}/${selectedPhones.length})` : "فتح الرسائل")}
             </Button>
           </div>
+          {Capacitor.isNativePlatform() && (
+            <Button variant="outline" className="w-full rounded-xl" disabled={opening || selectedPhones.length === 0} onClick={openCurrent}>
+              فتح الرسالة في تطبيق SMS للتعديل والإرسال اليدوي
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

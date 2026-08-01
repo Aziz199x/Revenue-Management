@@ -10,6 +10,7 @@ import {
   effectiveStatus,
   formatMoney,
   getRemainingPaymentAmount,
+  hasContinuingContractForUnit,
   isPaymentPaid,
   paymentDueDateValue,
 } from "@/data/helpers";
@@ -146,11 +147,45 @@ function templateVars(data: AppData, payment: Payment, tenant: Tenant | undefine
     buildingName: building?.name || payment.buildingName || "",
     unitName: unit?.name || payment.unitName || "",
     amount: formatMoney(getRemainingPaymentAmount(payment)),
+    paymentNumber: String(payment.paymentNumber || getPaymentSequenceNumber(data, payment)),
     dueDate: formatFormalDate(paymentDueDateValue(payment)),
     periodStart: formatFormalDate(period.start),
     periodEnd: formatFormalDate(period.end),
     contractEndDate: "",
     ownerName: "",
+  };
+}
+
+function getPaymentSequenceNumber(data: AppData, payment: Payment): number {
+  const related = data.payments
+    .filter((item) =>
+      !item.deletedAt
+      && item.status !== "cancelled"
+      && item.unitId === payment.unitId
+      && (!payment.contractId || item.contractId === payment.contractId)
+    )
+    .sort((a, b) =>
+      paymentDueDateValue(a).localeCompare(paymentDueDateValue(b))
+      || a.id.localeCompare(b.id)
+    );
+  const index = related.findIndex((item) => item.id === payment.id);
+  return index >= 0 ? index + 1 : 1;
+}
+
+export function buildPaymentMessageContent(
+  data: AppData,
+  payment: Payment,
+  tenant?: Tenant,
+  forcedKind?: "paymentReminder" | "overduePayment",
+) {
+  const dueDate = paymentDueDateValue(payment);
+  const kind = forcedKind || (effectiveStatus(payment) === "overdue" || dueDate < localDate(new Date())
+    ? "overduePayment"
+    : "paymentReminder");
+  const vars = templateVars(data, payment, tenant);
+  return {
+    kind,
+    message: fillTenantTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars, tenant),
   };
 }
 
@@ -322,6 +357,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
   }
   for (const contract of data.contracts) {
     if (contract.deletedAt || contract.status === "cancelled" || contract.status === "terminated" || !contract.endDate) continue;
+    if (hasContinuingContractForUnit(contract, data.contracts)) continue;
     const daysUntilEnd = Math.ceil((dateValue(contract.endDate) - dateValue(today)) / DAY);
     if (daysUntilEnd < 0 || daysUntilEnd > Math.max(1, data.settings.contractReminderDays || 60)) continue;
     const tenant = data.tenants.find((item) =>
