@@ -96,7 +96,7 @@ export default function WhatsAppSettingsPage() {
   return (
     <div>
       <SettingsSubPageHeader title="قوالب التبليغ" subtitle="قوالب مستقلة لواتساب والبريد وللأفراد والشركات" />
-      <div className="space-y-4 p-4">
+      <div className="mx-auto max-w-[1400px] space-y-4 p-4">
         <section className="rounded-3xl border border-border bg-card p-3">
           <p className="mb-2 text-sm font-bold">نوع المستلم</p>
           <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted p-1">
@@ -138,17 +138,19 @@ export default function WhatsAppSettingsPage() {
                 <p className="font-bold">قوالب واتساب · {audience === "company" ? "شركة" : "فرد"}</p>
                 <p className="text-xs text-muted-foreground">تستخدم في واتساب ورسائل SMS اليدوية والتلقائية.</p>
               </div>
-              {(Object.keys(templateLabels) as TemplateKind[]).map((kind) => (
-                <div key={kind} className="space-y-1.5 rounded-2xl bg-muted/60 p-3">
-                  <Label className="text-sm font-bold">{templateLabels[kind]}</Label>
-                  <Textarea
-                    className="min-h-36 rounded-2xl text-xs leading-6"
-                    dir="rtl"
-                    value={whatsappTemplates[kind]}
-                    onChange={(event) => updateWhatsAppTemplate(kind, event.target.value)}
-                  />
-                </div>
-              ))}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {(Object.keys(templateLabels) as TemplateKind[]).map((kind) => (
+                  <div key={kind} className="flex min-w-0 flex-col space-y-1.5 rounded-2xl bg-muted/60 p-3">
+                    <Label className="text-sm font-bold">{templateLabels[kind]}</Label>
+                    <Textarea
+                      className="min-h-40 flex-1 resize-y rounded-2xl text-sm leading-7"
+                      dir="rtl"
+                      value={whatsappTemplates[kind]}
+                      onChange={(event) => updateWhatsAppTemplate(kind, event.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
               <p className="rounded-xl bg-secondary p-2 text-[10px] leading-5 text-muted-foreground">
                 المتغيرات: {"{tenantName}"} {"{buildingName}"} {"{unitName}"} {"{paymentNumber}"} {"{amount}"} {"{dueDate}"} {"{periodStart}"} {"{periodEnd}"} {"{contractEndDate}"} {"{ownerName}"}
               </p>
@@ -164,27 +166,29 @@ export default function WhatsAppSettingsPage() {
                 <p className="font-bold">قوالب البريد · {audience === "company" ? "شركة" : "فرد"}</p>
                 <p className="text-xs text-muted-foreground">عنوان ونص مستقلان لكل نوع من التبليغات.</p>
               </div>
-              {(Object.keys(templateLabels) as TemplateKind[]).map((kind) => (
-                <div key={kind} className="space-y-2 rounded-2xl bg-muted/60 p-3">
-                  <p className="text-sm font-bold">{templateLabels[kind]}</p>
-                  <div>
-                    <Label className="text-xs">عنوان الرسالة</Label>
-                    <Input
-                      value={emailTemplates[kind].subject}
-                      onChange={(event) => updateEmailTemplate(kind, "subject", event.target.value)}
-                      className="mt-1 rounded-xl"
-                    />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {(Object.keys(templateLabels) as TemplateKind[]).map((kind) => (
+                  <div key={kind} className="flex min-w-0 flex-col space-y-2 rounded-2xl bg-muted/60 p-3">
+                    <p className="text-sm font-bold">{templateLabels[kind]}</p>
+                    <div>
+                      <Label className="text-xs">عنوان الرسالة</Label>
+                      <Input
+                        value={emailTemplates[kind].subject}
+                        onChange={(event) => updateEmailTemplate(kind, "subject", event.target.value)}
+                        className="mt-1 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-1 flex-col">
+                      <Label className="text-xs">نص الرسالة</Label>
+                      <Textarea
+                        value={emailTemplates[kind].body}
+                        onChange={(event) => updateEmailTemplate(kind, "body", event.target.value)}
+                        className="mt-1 min-h-40 flex-1 resize-y rounded-xl text-sm leading-7"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-xs">نص الرسالة</Label>
-                    <Textarea
-                      value={emailTemplates[kind].body}
-                      onChange={(event) => updateEmailTemplate(kind, "body", event.target.value)}
-                      className="mt-1 min-h-44 rounded-xl leading-6"
-                    />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
               <p className="rounded-xl bg-secondary p-2 text-[10px] leading-5 text-muted-foreground">
                 المتغيرات: {"{recipientGreeting}"} {"{tenantName}"} {"{buildingName}"} {"{unitName}"} {"{amount}"} {"{dueDate}"} {"{periodStart}"} {"{periodEnd}"} {"{contractEndDate}"}
               </p>

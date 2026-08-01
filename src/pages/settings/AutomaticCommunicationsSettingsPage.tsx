@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, MessageSquareText, Play, Trash2, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, MessageSquareText, Play, RotateCcw, Trash2, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -163,6 +163,33 @@ export default function AutomaticCommunicationsSettingsPage() {
     showSuccess(`تم حذف ${deletable.length} سجل وتقليل البيانات المحفوظة`);
   };
 
+  const markSuccessfulLogAsFailedForTesting = async (
+    log: AppData["communicationLogs"][number],
+  ) => {
+    const reason = window.prompt(
+      "اكتب سبب إعادة اختبار هذه الرسالة. سيبقى السجل محفوظًا وتتحول حالته إلى «فشل بواسطة المستخدم» لتصبح مؤهلة للإرسال مرة أخرى:",
+    );
+    if (!reason?.trim()) {
+      showError("يجب كتابة سبب إعادة الاختبار");
+      return;
+    }
+    if (!window.confirm("تحويل حالة الرسالة إلى فشل والسماح بإعادة إرسالها؟")) return;
+    await update((previous) => ({
+      ...previous,
+      communicationLogs: (previous.communicationLogs || []).map((item) =>
+        item.id === log.id
+          ? {
+              ...item,
+              status: "failed" as const,
+              sentAt: undefined,
+              error: `حوّلها المستخدم إلى فشل لإعادة الاختبار. السبب: ${reason.trim()}`,
+            }
+          : item
+      ),
+    }));
+    showSuccess("تم تحويل الرسالة إلى فشل ويمكن إعادة اختبار الإرسال الآن");
+  };
+
   const runNow = async () => {
     if (!settings.enabled) {
       showError("فعّل الإرسال التلقائي أولًا");
@@ -219,8 +246,8 @@ export default function AutomaticCommunicationsSettingsPage() {
   return (
     <div>
       <SettingsSubPageHeader title="الإرسال التلقائي" subtitle="جدولة البريد وWhatsApp Business وSMS وتوثيق النتائج" />
-      <div className="space-y-4 p-4">
-        <section className="space-y-4 rounded-3xl border border-border bg-card p-4">
+      <div className="mx-auto max-w-[1450px] space-y-4 p-4 lg:grid lg:grid-cols-[minmax(360px,0.9fr)_minmax(430px,1.1fr)] lg:items-start lg:gap-4 lg:space-y-0 lg:[direction:ltr]">
+        <section className="space-y-4 rounded-3xl border border-border bg-card p-4 lg:col-start-2 lg:[direction:rtl]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-bold">تفعيل جدول الإرسال</p>
@@ -332,7 +359,7 @@ export default function AutomaticCommunicationsSettingsPage() {
           </p>
         </section>
 
-        <section className="space-y-3 rounded-3xl border border-border bg-card p-4">
+        <section className="space-y-3 rounded-3xl border border-border bg-card p-4 lg:col-start-2 lg:[direction:rtl]">
           <div className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /><p className="font-bold">حساب إرسال البريد</p></div>
           <div className={`rounded-2xl border p-3 ${
             gmailStatus.state === "connected"
@@ -444,7 +471,7 @@ export default function AutomaticCommunicationsSettingsPage() {
           </Select>
         </section>
 
-        <section className="space-y-3 rounded-3xl border border-emerald-200 bg-emerald-50/50 p-4">
+        <section className="space-y-3 rounded-3xl border border-emerald-200 bg-emerald-50/50 p-4 lg:col-start-2 lg:[direction:rtl]">
           <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-emerald-700" /><p className="font-bold">WhatsApp Business Platform</p></div>
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-900">
             واتساب العادي يتيح للتطبيق تجهيز الرسالة وفتحها فقط، ويجب على المستخدم الضغط على إرسال. الإرسال التلقائي الكامل متاح رسميًا من خلال WhatsApp Business API.
@@ -487,7 +514,7 @@ export default function AutomaticCommunicationsSettingsPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-3xl border border-border bg-card p-4">
+        <section className="space-y-3 rounded-3xl border border-border bg-card p-4 lg:sticky lg:top-4 lg:col-start-1 lg:row-start-1 lg:row-span-3 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:[direction:rtl]">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2"><Clock3 className="h-5 w-5 text-primary" /><p className="font-bold">سجل الإرسال</p></div>
             <span className="text-xs text-muted-foreground">{filteredLogs.length} سجل</span>
@@ -541,7 +568,7 @@ export default function AutomaticCommunicationsSettingsPage() {
           )}
 
           <p className="text-[10px] leading-5 text-muted-foreground">
-            لحمايتك من إرسال الرسالة مرتين، لا تُحذف الرسائل الناجحة الحديثة إلا بعد انتهاء مدة التكرار المحددة في الجدول.
+            لحمايتك من التكرار لا تُحذف الرسائل الناجحة الحديثة. للاختبار استخدم زر «إعادة اختبار»؛ سيطلب السبب ويحفظه ثم يحول الحالة إلى فشل.
           </p>
 
           {visibleLogs.length === 0 ? (
@@ -572,6 +599,20 @@ export default function AutomaticCommunicationsSettingsPage() {
                   </p>
                   <div className="flex items-center gap-1">
                     <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
+                    {log.status === "sent" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 rounded-full px-2 text-amber-700"
+                        aria-label="إعادة اختبار الرسالة"
+                        title="تحويل إلى فشل لإعادة الاختبار"
+                        onClick={() => void markSuccessfulLogAsFailedForTesting(log)}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span className="mr-1 hidden sm:inline">إعادة اختبار</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
