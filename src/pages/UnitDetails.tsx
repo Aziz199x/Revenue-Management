@@ -124,6 +124,7 @@ function paymentNotesWithoutGeneratedMaintenance(payment: Payment): string {
     .trim();
 }
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
+import EmailPreview from "@/components/shared/EmailPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
 import {
@@ -137,6 +138,11 @@ import { buildPaymentReminderMessage, fillTemplate } from "@/utils/whatsapp";
 import { validatePhone } from "@/utils/whatsapp";
 import { formatSarAmount, getContractEndDate, getDaysUntilDate, getPaymentAmount, hasContinuingContractForUnit, shouldShowContractExpiryReminder } from "@/data/helpers";
 import { showSuccess, showError } from "@/utils/toast";
+import {
+  buildContractCommunicationContent,
+  buildPaymentEmailContent,
+  getTenantEmailAddresses,
+} from "@/utils/automaticCommunications";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
 
@@ -430,6 +436,15 @@ export default function UnitDetails() {
   const [savingRegenerate, setSavingRegenerate] = useState(false);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [emailPreview, setEmailPreview] = useState<{
+    recipients: string[];
+    subject: string;
+    body: string;
+    tenantId?: string;
+    paymentId?: string;
+    contractId?: string;
+    kind: "paymentReminder" | "overduePayment" | "contractExpiry";
+  } | null>(null);
 
   useEffect(() => {
     if (requestedTab && UNIT_DETAIL_TABS.includes(requestedTab)) setActiveTab(requestedTab);
@@ -754,11 +769,14 @@ export default function UnitDetails() {
                       <a href={`tel:${tenant.phone}`} dir="ltr" className="text-primary underline-offset-2">
                         {tenant.phone}
                       </a>
-                      <button
+                    </p>
+                  )}
+                  {(tenant.phone || getTenantEmailAddresses(tenant).length > 0) && (
+                    <div className="flex flex-wrap gap-2">
+                      {tenant.phone && <button
                         type="button"
-                        className="mr-auto flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700 active:scale-95 transition-transform"
+                        className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700 transition-transform active:scale-95"
                         onClick={() => {
-                          console.log('[WhatsApp] Button clicked');
                           const msg = fillTemplate(
                             data.settings.whatsappTemplates.paymentReminder,
                             {
@@ -776,8 +794,37 @@ export default function UnitDetails() {
                       >
                         <MessageCircle className="h-3.5 w-3.5" />
                         تواصل واتساب
-                      </button>
-                    </p>
+                      </button>}
+                      {getTenantEmailAddresses(tenant).length > 0 && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-[11px] font-semibold text-sky-700 transition-transform active:scale-95"
+                          onClick={() => {
+                            const pendingPayment = [...payments]
+                              .filter((payment) => ["unpaid", "overdue", "partial"].includes(effectiveStatus(payment)))
+                              .sort((a, b) => (a.dueDateGregorian || a.paymentDate).localeCompare(b.dueDateGregorian || b.paymentDate))[0];
+                            const content = pendingPayment
+                              ? buildPaymentEmailContent(data, pendingPayment, tenant)
+                              : {
+                                  kind: "paymentReminder" as const,
+                                  subject: `تواصل بخصوص الوحدة ${unit.name}`,
+                                  body: `السيد/السيدة ${tenant.name} المحترم/ة،\n\nنود التواصل معكم بخصوص الوحدة ${unit.name} في عقار ${building?.name || ""}.\n\nوتفضلوا بقبول فائق الاحترام.`,
+                                };
+                            setEmailPreview({
+                              recipients: getTenantEmailAddresses(tenant),
+                              subject: content.subject,
+                              body: content.body,
+                              tenantId: tenant.id,
+                              paymentId: pendingPayment?.id,
+                              kind: content.kind,
+                            });
+                          }}
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          إرسال بريد
+                        </button>
+                      )}
+                    </div>
                   )}
                   {tenant.nationalId && (
                     <p className="flex items-center gap-2">
@@ -880,6 +927,8 @@ export default function UnitDetails() {
                 const maintenanceDeductionAmount = getPaymentMaintenanceDeductionAmount(data, p);
                 const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
                 const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
+                const paymentTenant = data.tenants.find((item) => item.id === p.tenantId) || tenant;
+                const paymentEmails = getTenantEmailAddresses(paymentTenant);
                 return (
                   <div
                     key={p.id}
@@ -1046,6 +1095,28 @@ export default function UnitDetails() {
                           واتساب
                         </Button>
                         )}
+                      {(st === "unpaid" || st === "overdue" || st === "partial") && paymentEmails.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-700"
+                          onClick={() => {
+                            const content = buildPaymentEmailContent(data, p, paymentTenant);
+                            setEmailPreview({
+                              recipients: paymentEmails,
+                              subject: content.subject,
+                              body: content.body,
+                              tenantId: paymentTenant?.id,
+                              paymentId: p.id,
+                              contractId: p.contractId,
+                              kind: content.kind,
+                            });
+                          }}
+                        >
+                          <Mail className="ml-1 h-3.5 w-3.5 shrink-0" />
+                          بريد
+                        </Button>
+                      )}
                       </div>
                       {st === "paid" && !p.ownerTransferred && (
                         <Button
@@ -1118,6 +1189,7 @@ export default function UnitDetails() {
                 const displayTenantName = c.tenantName && !isCorruptedDisplayName(c.tenantName)
                   ? c.tenantName
                   : "مستأجر غير محدد";
+                const contractTenant = data.tenants.find((item) => item.id === c.tenantId) || tenant;
                 return (
                   <div
                     key={c.id}
@@ -1215,6 +1287,20 @@ export default function UnitDetails() {
                         compact
                       />
                     </div>
+                    {contractTenant?.phone && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 w-full rounded-xl border-emerald-200 bg-emerald-50 text-xs text-emerald-700"
+                        onClick={() => {
+                          const content = buildContractCommunicationContent(data, c, contractTenant);
+                          setWhatsappPreview({ phone: contractTenant.phone!, message: content.whatsappBody });
+                        }}
+                      >
+                        <MessageCircle className="ml-1 h-4 w-4" />
+                        إرسال تنبيه التجديد أو مغادرة الوحدة عبر واتساب
+                      </Button>
+                    )}
                     {(expired || c.tenantDidNotLeave || c.status?.startsWith("eviction_")) && c.status !== "eviction_completed" && (
                       <div className="mt-3 space-y-2 rounded-2xl border border-red-200 bg-red-50 p-3">
                         <p className="text-sm font-bold text-red-700">حالة الإخلاء</p>
@@ -2144,6 +2230,41 @@ export default function UnitDetails() {
           phone={whatsappPreview.phone}
           message={whatsappPreview.message}
           title="مراسلة المستأجر عبر واتساب"
+        />
+      )}
+
+      {emailPreview && (
+        <EmailPreview
+          open={!!emailPreview}
+          onOpenChange={(open) => !open && setEmailPreview(null)}
+          recipients={emailPreview.recipients}
+          subject={emailPreview.subject}
+          body={emailPreview.body}
+          provider={data.settings.automaticCommunications.emailProvider}
+          onSent={(recipients) => {
+            const sentAt = new Date().toISOString();
+            update((prev) => ({
+              ...prev,
+              communicationLogs: [
+                ...prev.communicationLogs,
+                ...recipients.map((recipient) => ({
+                  id: genId(),
+                  createdAt: sentAt,
+                  sentAt,
+                  channel: "email" as const,
+                  status: "sent" as const,
+                  recipient,
+                  tenantId: emailPreview.tenantId,
+                  paymentId: emailPreview.paymentId,
+                  contractId: emailPreview.contractId,
+                  templateKind: emailPreview.kind,
+                  provider: data.settings.automaticCommunications.emailProvider || "gmail",
+                  subject: emailPreview.subject,
+                  dedupeKey: `manual:${emailPreview.paymentId || emailPreview.contractId || emailPreview.tenantId}:${recipient}:${sentAt}`,
+                })),
+              ],
+            }));
+          }}
         />
       )}
 

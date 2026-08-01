@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, CheckCircle2, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Wallet, Search, CheckCircle2, Mail, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +22,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import StatusBadge from "@/components/shared/StatusBadge";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
+import EmailPreview from "@/components/shared/EmailPreview";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
 import {
   createMaintenanceExpenseItemDraft,
@@ -29,7 +30,7 @@ import {
   MaintenanceExpenseItemDraft,
   normalizeMaintenanceExpenseItems,
 } from "@/data/maintenanceExpenseItems";
-import { useStore } from "@/data/store";
+import { genId, useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
 import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, formatSarAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
@@ -37,6 +38,7 @@ import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/d
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
 import { showSuccess, showError } from "@/utils/toast";
 import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
+import { buildPaymentEmailContent, getTenantEmailAddresses } from "@/utils/automaticCommunications";
 
 const PAYMENT_FILTERS_KEY = "payments_filters";
 
@@ -110,6 +112,15 @@ export default function Payments() {
   const [transferMethod, setTransferMethod] = useState<PaymentMethod>("bank_transfer");
   const [transferNotes, setTransferNotes] = useState("");
   const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [emailPreview, setEmailPreview] = useState<{
+    recipients: string[];
+    subject: string;
+    body: string;
+    tenantId?: string;
+    paymentId: string;
+    contractId?: string;
+    kind: "paymentReminder" | "overduePayment";
+  } | null>(null);
 
   const deletePayment = (payment: Payment) => {
     const reportMonth = getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay);
@@ -627,6 +638,7 @@ export default function Payments() {
             const maintenanceNote = paymentMaintenanceNote(p);
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
             const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
+            const tenantEmails = getTenantEmailAddresses(tenant);
             const paymentDetailsRoute = `/units/${encodeURIComponent(p.unitId)}?tab=payments&item=${encodeURIComponent(p.id)}`;
             const openPaymentDetails = () => navigate(paymentDetailsRoute);
             return (
@@ -779,6 +791,27 @@ export default function Payments() {
                     >
                       <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                       واتساب
+                    </button>
+                  )}
+                  {tenantEmails.length > 0 && (
+                    <button
+                      type="button"
+                      className="flex min-h-8 max-w-full shrink-0 items-center gap-1 whitespace-normal rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 transition-transform active:scale-95"
+                      onClick={() => {
+                        const content = buildPaymentEmailContent(data, p, tenant);
+                        setEmailPreview({
+                          recipients: tenantEmails,
+                          subject: content.subject,
+                          body: content.body,
+                          tenantId: tenant?.id,
+                          paymentId: p.id,
+                          contractId: p.contractId,
+                          kind: content.kind,
+                        });
+                      }}
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      بريد
                     </button>
                   )}
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -1083,6 +1116,40 @@ export default function Payments() {
           phone={whatsappPreview.phone}
           message={whatsappPreview.message}
           title="مراسلة المستأجر عبر واتساب"
+        />
+      )}
+      {emailPreview && (
+        <EmailPreview
+          open={!!emailPreview}
+          onOpenChange={(open) => !open && setEmailPreview(null)}
+          recipients={emailPreview.recipients}
+          subject={emailPreview.subject}
+          body={emailPreview.body}
+          provider={data.settings.automaticCommunications.emailProvider}
+          onSent={(recipients) => {
+            const sentAt = new Date().toISOString();
+            update((prev) => ({
+              ...prev,
+              communicationLogs: [
+                ...prev.communicationLogs,
+                ...recipients.map((recipient) => ({
+                  id: genId(),
+                  createdAt: sentAt,
+                  sentAt,
+                  channel: "email" as const,
+                  status: "sent" as const,
+                  recipient,
+                  tenantId: emailPreview.tenantId,
+                  paymentId: emailPreview.paymentId,
+                  contractId: emailPreview.contractId,
+                  templateKind: emailPreview.kind,
+                  provider: data.settings.automaticCommunications.emailProvider || "gmail",
+                  subject: emailPreview.subject,
+                  dedupeKey: `manual:${emailPreview.paymentId}:${recipient}:${sentAt}`,
+                })),
+              ],
+            }));
+          }}
         />
       )}
     </div>

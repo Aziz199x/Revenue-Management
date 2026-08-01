@@ -2,6 +2,7 @@ import {
   AppData,
   CommunicationChannel,
   CommunicationLog,
+  Contract,
   Payment,
   Tenant,
 } from "@/data/types";
@@ -57,7 +58,7 @@ function addDays(value: string, days: number): string {
   return localDate(date);
 }
 
-function tenantEmails(tenant?: Tenant): string[] {
+export function getTenantEmailAddresses(tenant?: Tenant): string[] {
   const addresses = tenant?.emailAddresses?.length
     ? tenant.emailAddresses.filter((item) => item.enabled !== false).map((item) => item.email.trim())
     : tenant?.email
@@ -98,6 +99,42 @@ function templateVars(data: AppData, payment: Payment, tenant: Tenant | undefine
     periodEnd: formatFormalDate(period.end),
     contractEndDate: "",
     ownerName: "",
+  };
+}
+
+export function buildPaymentEmailContent(data: AppData, payment: Payment, tenant?: Tenant) {
+  const dueDate = paymentDueDateValue(payment);
+  const kind = effectiveStatus(payment) === "overdue" || dueDate < localDate(new Date())
+    ? "overduePayment"
+    : "paymentReminder";
+  const template = data.settings.emailTemplates[kind];
+  const vars = templateVars(data, payment, tenant);
+  return {
+    kind,
+    subject: fillTemplate(template.subject, vars),
+    body: fillTemplate(template.body, vars),
+  };
+}
+
+export function buildContractCommunicationContent(data: AppData, contract: Contract, tenant?: Tenant) {
+  const unit = data.units.find((item) => item.id === contract.unitId);
+  const building = data.buildings.find((item) => item.id === unit?.buildingId);
+  const vars = {
+    tenantName: tenant?.name || contract.tenantName || "",
+    buildingName: building?.name || "",
+    unitName: unit?.name || "",
+    amount: "",
+    dueDate: "",
+    periodStart: formatFormalDate(contract.startDate),
+    periodEnd: formatFormalDate(contract.endDate),
+    contractEndDate: formatFormalDate(contract.endDate),
+    ownerName: "",
+  };
+  const emailTemplate = data.settings.emailTemplates.contractExpiry;
+  return {
+    emailSubject: fillTemplate(emailTemplate.subject, vars),
+    emailBody: fillTemplate(emailTemplate.body, vars),
+    whatsappBody: fillTemplate(data.settings.whatsappTemplates.contractExpiry, vars),
   };
 }
 
@@ -148,7 +185,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
 
     if (settings.emailEnabled && settings.emailProvider) {
       const template = data.settings.emailTemplates[kind];
-      for (const recipient of tenantEmails(tenant)) {
+      for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
         if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) continue;
         jobs.push({
@@ -187,26 +224,13 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (contract.deletedAt || contract.status === "cancelled" || contract.status === "terminated" || !contract.endDate) continue;
     const daysUntilEnd = Math.ceil((dateValue(contract.endDate) - dateValue(today)) / DAY);
     if (daysUntilEnd < 0 || daysUntilEnd > Math.max(1, data.settings.contractReminderDays || 60)) continue;
-    const unit = data.units.find((item) => item.id === contract.unitId);
-    const building = data.buildings.find((item) => item.id === unit?.buildingId);
     const tenant = data.tenants.find((item) =>
       item.id === contract.tenantId
       || (!contract.tenantId && item.unitId === contract.unitId)
     );
-    const vars = {
-      tenantName: tenant?.name || contract.tenantName || "",
-      buildingName: building?.name || "",
-      unitName: unit?.name || "",
-      amount: "",
-      dueDate: "",
-      periodStart: formatFormalDate(contract.startDate),
-      periodEnd: formatFormalDate(contract.endDate),
-      contractEndDate: formatFormalDate(contract.endDate),
-      ownerName: "",
-    };
+    const content = buildContractCommunicationContent(data, contract, tenant);
     if (settings.emailEnabled && settings.emailProvider) {
-      const template = data.settings.emailTemplates.contractExpiry;
-      for (const recipient of tenantEmails(tenant)) {
+      for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
         if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) continue;
         jobs.push({
@@ -216,8 +240,8 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           contractId: contract.id,
           templateKind: "contractExpiry",
           provider: settings.emailProvider,
-          subject: fillTemplate(template.subject, vars),
-          body: fillTemplate(template.body, vars),
+          subject: content.emailSubject,
+          body: content.emailBody,
           dedupeKey,
         });
       }
@@ -233,7 +257,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           contractId: contract.id,
           templateKind: "contractExpiry",
           provider: "whatsapp_business",
-          body: fillTemplate(data.settings.whatsappTemplates.contractExpiry, vars),
+          body: content.whatsappBody,
           dedupeKey,
         });
       }
