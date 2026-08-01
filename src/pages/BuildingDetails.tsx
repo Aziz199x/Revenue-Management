@@ -352,16 +352,15 @@ export default function BuildingDetails() {
           value={activeTab}
           onValueChange={setActiveTab}
           dir="rtl"
-          className="min-[760px]:grid min-[760px]:grid-cols-[13rem_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-5 min-[760px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-5 rounded-2xl bg-muted p-1 min-[760px]:sticky min-[760px]:top-1/2 min-[760px]:col-start-1 min-[760px]:row-start-1 min-[760px]:flex min-[760px]:-translate-y-1/2 min-[760px]:flex-col min-[760px]:gap-2 min-[760px]:rounded-3xl min-[760px]:border min-[760px]:border-border min-[760px]:bg-card min-[760px]:p-3 min-[760px]:shadow-sm min-[760px]:[direction:rtl]">
-            <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
+          <TabsList className="grid h-auto w-full grid-cols-5 rounded-2xl bg-muted p-1">
+            <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold">
               الوحدات
             </TabsTrigger>
-            <TabsTrigger value="financial" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
+            <TabsTrigger value="financial" className="rounded-xl py-2 text-[11px] font-bold">
               المالية
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
+            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-[11px] font-bold">
               <span>صيانة المبنى</span>
               {buildingRepairs.length > 0 && (
                 <span className="mr-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
@@ -369,10 +368,10 @@ export default function BuildingDetails() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="performance" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
+            <TabsTrigger value="performance" className="rounded-xl py-2 text-[11px] font-bold">
               الأداء
             </TabsTrigger>
-            <TabsTrigger value="recurring-bills" className="rounded-xl py-2 text-[10px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
+            <TabsTrigger value="recurring-bills" className="rounded-xl py-2 text-[10px] font-bold">
               <ReceiptText className="ml-1 h-3.5 w-3.5" />
               الفواتير
               {outstandingRecurringBills.length > 0 && (
@@ -383,7 +382,7 @@ export default function BuildingDetails() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="financial" className="mt-4 space-y-4 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
+          <TabsContent value="financial" className="mt-4 space-y-4">
         <details className="group rounded-3xl border border-border bg-card p-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold">
             <span>الملخص التراكمي للعقار</span>
@@ -561,7 +560,7 @@ export default function BuildingDetails() {
 
           </TabsContent>
 
-          <TabsContent value="performance" className="mt-4 space-y-4 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
+          <TabsContent value="performance" className="mt-4 space-y-4">
             <div className="rounded-3xl border border-border bg-card p-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -580,7 +579,7 @@ export default function BuildingDetails() {
             <MonthlyExceptionsCard exceptions={bundle.exceptions} />
           </TabsContent>
 
-          <TabsContent value="maintenance" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
+          <TabsContent value="maintenance" className="mt-4 space-y-3">
             <div className="flex items-center justify-between gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4">
               <div>
                 <p className="font-bold text-amber-900">أعمال صيانة المبنى</p>
@@ -750,7 +749,7 @@ export default function BuildingDetails() {
             )}
           </TabsContent>
 
-          <TabsContent value="recurring-bills" className="mt-4 space-y-4 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
+          <TabsContent value="recurring-bills" className="mt-4 space-y-4">
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -916,7 +915,7 @@ export default function BuildingDetails() {
             )}
           </TabsContent>
 
-          <TabsContent value="units" className="mt-4 space-y-4 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
+          <TabsContent value="units" className="mt-4 space-y-4">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl border border-border bg-card p-3">
             <p className="text-lg font-bold">{stats.unitsCount}</p>
