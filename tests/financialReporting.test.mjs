@@ -13,7 +13,6 @@ let ownerStatement;
 let buildingOwnership;
 let storeData;
 let automaticCommunications;
-let recurringBuildingBills;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -27,45 +26,10 @@ test.before(async () => {
   buildingOwnership = await server.ssrLoadModule("/src/data/buildingOwnership.ts");
   storeData = await server.ssrLoadModule("/src/data/store.tsx");
   automaticCommunications = await server.ssrLoadModule("/src/utils/automaticCommunications.ts");
-  recurringBuildingBills = await server.ssrLoadModule("/src/data/recurringBuildingBills.ts");
 });
 
 test.after(async () => {
   await server?.close();
-});
-
-test("recurring property bills generate one outstanding charge per month without duplicates", () => {
-  const bill = {
-    id: "water-1",
-    buildingId: "b1",
-    name: "فاتورة المياه",
-    amount: 240,
-    dueDay: 31,
-    startYearMonth: "2026-06",
-    active: true,
-    createdAt: "2026-06-01T00:00:00.000Z",
-  };
-  const appData = {
-    recurringBuildingBills: [bill],
-    repairs: [{
-      id: "paid-june",
-      buildingId: "b1",
-      description: "فاتورة المياه - 2026-06",
-      repairDate: "2026-06-30",
-      cost: 240,
-      status: "completed",
-      createdAt: "2026-06-01T00:00:00.000Z",
-      expenseKind: "recurring_bill",
-      recurringBillId: "water-1",
-      recurringYearMonth: "2026-06",
-      isDeductedFromOwnerTransfer: true,
-      deductedFromPaymentId: "payment-1",
-    }],
-  };
-  const outstanding = recurringBuildingBills.getOutstandingRecurringBillRepairs(appData, "b1", "2026-08-01");
-  assert.deepEqual(outstanding.map((item) => item.recurringYearMonth), ["2026-07", "2026-08"]);
-  assert.equal(outstanding[0].cost, 240);
-  assert.equal(outstanding[1].repairDate, "2026-08-31");
 });
 
 const unit = {

@@ -247,13 +247,6 @@ export function normalizeData(
         ...repair,
         isDeductedFromOwnerTransfer: repair.isDeductedFromOwnerTransfer ?? false,
         deductedFromPaymentId: repair.deductedFromPaymentId ?? null,
-        expenseKind: repair.expenseKind ?? (repair.recurringBillId ? "recurring_bill" : "maintenance"),
-      })),
-      recurringBuildingBills: (parsed.recurringBuildingBills || []).map((bill) => ({
-        ...bill,
-        amount: Number(bill.amount) || 0,
-        dueDay: Math.min(31, Math.max(1, Number(bill.dueDay) || 1)),
-        active: bill.active ?? true,
       })),
       settings: {
         ...DEFAULT_SETTINGS,
