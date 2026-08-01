@@ -566,8 +566,13 @@ export interface CommunicationLog {
   status: CommunicationStatus;
   recipient: string;
   tenantId?: string;
+  tenantName?: string;
+  unitName?: string;
   paymentId?: string;
   contractId?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  dueDate?: string;
   templateKind: "paymentReminder" | "overduePayment" | "contractExpiry";
   provider: "gmail" | "outlook" | "whatsapp_business";
   subject?: string;

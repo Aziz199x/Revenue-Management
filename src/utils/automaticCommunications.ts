@@ -24,8 +24,13 @@ export interface AutomaticCommunicationJob {
   channel: CommunicationChannel;
   recipient: string;
   tenantId?: string;
+  tenantName?: string;
+  unitName?: string;
   paymentId?: string;
   contractId?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  dueDate?: string;
   templateKind: "paymentReminder" | "overduePayment" | "contractExpiry";
   provider: "gmail" | "outlook" | "whatsapp_business";
   subject?: string;
@@ -232,6 +237,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     );
     const kind = effectiveStatus(payment) === "overdue" || daysUntilDue < 0 ? "overduePayment" : "paymentReminder";
     const vars = templateVars(data, payment, tenant);
+    const period = paymentPeriod(data, payment);
     const emailContent = buildPaymentEmailContent(data, payment, tenant, kind);
 
     if (settings.emailEnabled && settings.emailProvider) {
@@ -242,8 +248,13 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           channel: "email",
           recipient,
           tenantId: tenant?.id,
+          tenantName: tenant?.name || payment.tenantName || "",
+          unitName: vars.unitName,
           paymentId: payment.id,
           contractId: payment.contractId,
+          periodStart: period.start,
+          periodEnd: period.end,
+          dueDate,
           templateKind: kind,
           provider: settings.emailProvider,
           subject: emailContent.subject,
@@ -263,8 +274,13 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           channel: "whatsapp",
           recipient,
           tenantId: tenant?.id,
+          tenantName: tenant?.name || payment.tenantName || "",
+          unitName: vars.unitName,
           paymentId: payment.id,
           contractId: payment.contractId,
+          periodStart: period.start,
+          periodEnd: period.end,
+          dueDate,
           templateKind: kind,
           provider: "whatsapp_business",
           body: fillTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars),
@@ -283,6 +299,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       || (!contract.tenantId && item.unitId === contract.unitId)
     );
     const content = buildContractCommunicationContent(data, contract, tenant);
+    const unit = data.units.find((item) => item.id === contract.unitId);
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
@@ -291,7 +308,11 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           channel: "email",
           recipient,
           tenantId: tenant?.id,
+          tenantName: tenant?.name || contract.tenantName || "",
+          unitName: unit?.name || "",
           contractId: contract.id,
+          periodStart: contract.startDate,
+          periodEnd: contract.endDate,
           templateKind: "contractExpiry",
           provider: settings.emailProvider,
           subject: content.emailSubject,
@@ -310,7 +331,11 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           channel: "whatsapp",
           recipient,
           tenantId: tenant?.id,
+          tenantName: tenant?.name || contract.tenantName || "",
+          unitName: unit?.name || "",
           contractId: contract.id,
+          periodStart: contract.startDate,
+          periodEnd: contract.endDate,
           templateKind: "contractExpiry",
           provider: "whatsapp_business",
           body: content.whatsappBody,
@@ -350,8 +375,13 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
           status: "sent",
           recipient: job.recipient,
           tenantId: job.tenantId,
+          tenantName: job.tenantName,
+          unitName: job.unitName,
           paymentId: job.paymentId,
           contractId: job.contractId,
+          periodStart: job.periodStart,
+          periodEnd: job.periodEnd,
+          dueDate: job.dueDate,
           templateKind: job.templateKind,
           provider: job.provider,
           subject: job.subject,
@@ -365,8 +395,13 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
           status: "failed",
           recipient: job.recipient,
           tenantId: job.tenantId,
+          tenantName: job.tenantName,
+          unitName: job.unitName,
           paymentId: job.paymentId,
           contractId: job.contractId,
+          periodStart: job.periodStart,
+          periodEnd: job.periodEnd,
+          dueDate: job.dueDate,
           templateKind: job.templateKind,
           provider: job.provider,
           subject: job.subject,

@@ -692,6 +692,11 @@ test("automatic communication schedule sends formal email to every company addre
   assert.equal(jobs.every((job) => job.subject === "تذكير شركة المثال"), true);
   assert.equal(jobs.every((job) => job.body.includes("1,000")), true);
   assert.equal(jobs.every((job) => job.body.includes("السادة/ شركة المثال المحترمون")), true);
+  assert.equal(jobs.every((job) => job.tenantName === "شركة المثال"), true);
+  assert.equal(jobs.every((job) => job.unitName === "شقة 1"), true);
+  assert.equal(jobs.every((job) => job.periodStart === "2026-08-02"), true);
+  assert.equal(jobs.every((job) => job.periodEnd === "2026-08-31"), true);
+  assert.equal(jobs.every((job) => job.dueDate === "2026-08-02"), true);
 
   snapshot.communicationLogs = [{
     id: "sent-1",

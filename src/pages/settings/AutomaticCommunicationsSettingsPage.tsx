@@ -26,6 +26,18 @@ import {
 import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
 import { showError, showSuccess } from "@/utils/toast";
 
+function formatLogDate(value?: string): string {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+}
+
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
   const settings = data.settings.automaticCommunications;
@@ -342,16 +354,36 @@ export default function AutomaticCommunicationsSettingsPage() {
           <div className="flex items-center gap-2"><Clock3 className="h-5 w-5 text-primary" /><p className="font-bold">سجل الإرسال</p></div>
           {recentLogs.length === 0 ? (
             <p className="rounded-2xl bg-muted p-4 text-center text-xs text-muted-foreground">لم تُرسل رسائل تلقائية بعد</p>
-          ) : recentLogs.map((log) => (
-            <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-bold">{log.channel === "email" ? "بريد" : "واتساب"} · {log.recipient}</p>
-                <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
+          ) : recentLogs.map((log) => {
+            const payment = log.paymentId ? data.payments.find((item) => item.id === log.paymentId) : undefined;
+            const contract = log.contractId ? data.contracts.find((item) => item.id === log.contractId) : undefined;
+            const tenantName = log.tenantName
+              || data.tenants.find((item) => item.id === log.tenantId)?.name
+              || payment?.tenantName
+              || contract?.tenantName
+              || "مستأجر غير محدد";
+            const unitId = payment?.unitId || contract?.unitId;
+            const unitName = log.unitName
+              || (unitId ? data.units.find((item) => item.id === unitId)?.name : undefined);
+            return (
+              <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-bold">{log.channel === "email" ? "بريد" : "واتساب"} · {tenantName}</p>
+                  <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
+                </div>
+                <p className="mt-1 break-all text-left font-semibold text-foreground" dir="ltr">{log.recipient}</p>
+                {unitName && <p className="mt-1 text-muted-foreground">الوحدة: {unitName}</p>}
+                {log.periodStart && log.periodEnd && (
+                  <p className="mt-1 text-muted-foreground">
+                    {log.paymentId ? "دفعة الفترة" : "فترة العقد"}: من {formatLogDate(log.periodStart)} إلى {formatLogDate(log.periodEnd)}
+                  </p>
+                )}
+                {log.dueDate && <p className="mt-1 text-muted-foreground">موعد الاستحقاق: {formatLogDate(log.dueDate)}</p>}
+                <p className="mt-1 text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-SA-u-nu-latn")}</p>
+                {log.error && <p className="mt-1 text-red-700">{log.error}</p>}
               </div>
-              <p className="mt-1 text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-SA-u-nu-latn")}</p>
-              {log.error && <p className="mt-1 text-red-700">{log.error}</p>}
-            </div>
-          ))}
+            );
+          })}
         </section>
       </div>
     </div>
