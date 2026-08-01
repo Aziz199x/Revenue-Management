@@ -116,7 +116,7 @@ export async function sendGmailEmail(to: string, subject: string, body: string):
     const details = await response.text();
     if (response.status === 403 && /has not been used|is disabled|accessNotConfigured/i.test(details)) {
       throw new EmailProviderError(
-        "خدمة Gmail API غير مفعّلة في مشروع Google الخاص بالتطبيق. فعّل الخدمة من Google Cloud ثم انتظر عدة دقائق وأعد المحاولة.",
+        "خدمة الإرسال المباشر عبر Gmail غير متاحة حاليًا. استخدم تطبيق البريد أو تواصل مع مسؤول التطبيق إذا استمر الخطأ.",
         "gmail_api_disabled",
         GMAIL_API_CONSOLE_URL,
       );

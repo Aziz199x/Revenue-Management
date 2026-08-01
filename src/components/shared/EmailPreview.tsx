@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Mail, Send } from "lucide-react";
+import { Mail, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   EmailProviderError,
   openEmailComposer,
-  openExternalUrl,
   sendGmailEmail,
   sendOutlookEmail,
 } from "@/utils/communicationAccounts";
@@ -111,17 +110,7 @@ export default function EmailPreview({
             <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
               <p className="font-bold">تعذر الإرسال المباشر</p>
               <p>{sendError.message}</p>
-              {sendError.helpUrl && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full rounded-xl border-amber-300 bg-white"
-                  onClick={() => openExternalUrl(sendError.helpUrl!).catch((error) => showError(error instanceof Error ? error.message : "تعذر فتح إعداد Google"))}
-                >
-                  <ExternalLink className="ml-2 h-4 w-4" />
-                  فتح صفحة تفعيل Gmail API
-                </Button>
-              )}
+              <p>يمكنك استخدام زر فتح الرسالة في تطبيق البريد، أو التواصل مع مسؤول التطبيق إذا استمر الخطأ.</p>
             </div>
           )}
           <Button className="w-full rounded-xl" disabled={sending || recipients.length === 0} onClick={send}>
