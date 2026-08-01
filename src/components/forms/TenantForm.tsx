@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tenant, TenantEmailAddress } from "@/data/types";
+import { Tenant, TenantEmailAddress, TenantPhoneNumber } from "@/data/types";
 import { showError } from "@/utils/toast";
 
 export interface TenantFormValues {
   name: string;
   phone?: string;
+  phoneNumbers?: TenantPhoneNumber[];
   nationalId?: string;
   email?: string;
   emailAddresses?: TenantEmailAddress[];
@@ -28,7 +29,13 @@ interface Props {
 
 export default function TenantForm({ initial, onSubmit }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [phoneNumbers, setPhoneNumbers] = useState<TenantPhoneNumber[]>(
+    initial?.phoneNumbers?.length
+      ? initial.phoneNumbers
+      : initial?.phone
+      ? [{ id: `phone-${initial.id}-primary`, phone: initial.phone, label: "الرئيسي", enabled: true }]
+      : [],
+  );
   const [nationalId, setNationalId] = useState(initial?.nationalId ?? "");
   const [emailAddresses, setEmailAddresses] = useState<TenantEmailAddress[]>(
     initial?.emailAddresses?.length
@@ -58,6 +65,9 @@ export default function TenantForm({ initial, onSubmit }: Props) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) return;
+        const normalizedPhones = phoneNumbers
+          .map((item) => ({ ...item, phone: item.phone.trim(), label: item.label?.trim() || undefined }))
+          .filter((item) => item.phone);
         const normalizedEmails = emailAddresses
           .map((item) => ({ ...item, email: item.email.trim(), label: item.label?.trim() || undefined }))
           .filter((item) => item.email);
@@ -68,7 +78,8 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         }
         onSubmit({
           name: name.trim(),
-          phone: phone.trim() || undefined,
+          phone: normalizedPhones[0]?.phone,
+          phoneNumbers: normalizedPhones,
           nationalId: nationalId.trim() || undefined,
           email: normalizedEmails[0]?.email,
           emailAddresses: normalizedEmails,
@@ -85,15 +96,69 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         <Label>اسم المستأجر *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} required className="rounded-xl" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>رقم الجوال</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" dir="ltr" className="rounded-xl text-right" />
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <Label>أرقام الجوال وواتساب</Label>
+            <p className="mt-1 text-[10px] text-muted-foreground">يمكن إضافة أكثر من رقم واختيار الإرسال لها بالتتابع.</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-xl text-xs"
+            onClick={() => setPhoneNumbers((current) => [...current, {
+              id: `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+              phone: "",
+              label: current.length === 0 ? "الرئيسي" : "",
+              enabled: true,
+            }])}
+          >
+            <Plus className="ml-1 h-3.5 w-3.5" /> إضافة
+          </Button>
         </div>
-        <div className="space-y-1.5">
-          <Label>الهوية / الإقامة</Label>
-          <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} inputMode="numeric" dir="ltr" className="rounded-xl text-right" />
-        </div>
+        {phoneNumbers.length === 0 ? (
+          <button
+            type="button"
+            className="w-full rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground"
+            onClick={() => setPhoneNumbers([{
+              id: `phone-${Date.now().toString(36)}`,
+              phone: "",
+              label: "الرئيسي",
+              enabled: true,
+            }])}
+          >
+            إضافة رقم للمستأجر
+          </button>
+        ) : (
+          <div className="space-y-2">
+            {phoneNumbers.map((item) => (
+              <div key={item.id} className="grid grid-cols-[1fr_105px_36px] gap-2">
+                <Input
+                  value={item.phone}
+                  onChange={(event) => setPhoneNumbers((current) => current.map((phone) => phone.id === item.id ? { ...phone, phone: event.target.value } : phone))}
+                  inputMode="tel"
+                  placeholder="05xxxxxxxx"
+                  dir="ltr"
+                  className="rounded-xl text-left"
+                />
+                <Input
+                  value={item.label || ""}
+                  onChange={(event) => setPhoneNumbers((current) => current.map((phone) => phone.id === item.id ? { ...phone, label: event.target.value } : phone))}
+                  placeholder="الرئيسي"
+                  className="rounded-xl"
+                />
+                <Button type="button" variant="ghost" size="icon" className="h-10 w-9 text-destructive" onClick={() => setPhoneNumbers((current) => current.filter((phone) => phone.id !== item.id))}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <Label>الهوية / الإقامة</Label>
+        <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} inputMode="numeric" dir="ltr" className="rounded-xl text-right" />
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">

@@ -184,7 +184,8 @@ export function upsertTenant(
 
   if (phone) {
     existing = tenants.find(
-      (t) => t.phone?.replace(/[^\d]/g, "") === phone,
+      (t) => t.phone?.replace(/[^\d]/g, "") === phone
+        || t.phoneNumbers?.some((item) => item.phone.replace(/[^\d]/g, "") === phone),
     );
   }
 
@@ -205,6 +206,11 @@ export function upsertTenant(
       ...existing,
       name: existing.name || data.name,
       phone: existing.phone || phone,
+      phoneNumbers: existing.phoneNumbers?.length
+        ? existing.phoneNumbers
+        : phone
+        ? [{ id: `phone-${existing.id}-primary`, phone, label: "الرئيسي", enabled: true }]
+        : [],
       nationalId: existing.nationalId || nationalId,
       email: existing.email || data.email,
       buildingId: existing.buildingId || data.buildingId,
@@ -220,6 +226,7 @@ export function upsertTenant(
     buildingId: data.buildingId,
     name: data.name,
     phone,
+    phoneNumbers: phone ? [{ id: `phone-${genId()}-primary`, phone, label: "الرئيسي", enabled: true }] : [],
     nationalId,
     email: data.email,
     activeContractId: data.contractId,

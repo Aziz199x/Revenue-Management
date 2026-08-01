@@ -40,6 +40,7 @@ import {
   calculateNetAmountToTransferToOwner,
 } from "@/data/helpers";
 import { fillTemplate } from "@/utils/whatsapp";
+import { getTenantPhoneNumbers } from "@/utils/automaticCommunications";
 import { useMemo, useState } from "react";
 
 const DASHBOARD_PROPERTY_KEY = "dashboard_selected_property";
@@ -67,7 +68,7 @@ const kindColors = {
 export default function Index() {
   const { data } = useStore();
   const [selectedProperty, setSelectedProperty] = useState(() => localStorage.getItem(DASHBOARD_PROPERTY_KEY) || "all");
-  const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [whatsappPreview, setWhatsappPreview] = useState<{ phones: string[]; message: string } | null>(null);
   const safeProperty = selectedProperty === "all" || data.buildings.some((b) => b.id === selectedProperty) ? selectedProperty : "all";
   const dashboardData = useMemo(() => {
     if (safeProperty === "all") return data;
@@ -415,7 +416,8 @@ export default function Index() {
                     onClick={() => {
                       console.log('[WhatsApp] Button clicked');
                       const tenant = data.tenants.find((t) => t.unitId === (data.payments.find((p) => p.id === pc.paymentId)?.unitId || ""));
-                      if (!tenant?.phone) return;
+                      const phones = getTenantPhoneNumbers(tenant);
+                      if (phones.length === 0) return;
                       const msg = fillTemplate(
                         data.settings.whatsappTemplates.overduePayment,
                         {
@@ -428,7 +430,7 @@ export default function Index() {
                           ownerName: "",
                         },
                       );
-                      setWhatsappPreview({ phone: tenant.phone!, message: msg });
+                      setWhatsappPreview({ phones, message: msg });
                     }}
                   >
                     <MessageCircle className="h-3.5 w-3.5" />
@@ -570,7 +572,7 @@ export default function Index() {
         <WhatsappPreview
           open={!!whatsappPreview}
           onOpenChange={(o) => !o && setWhatsappPreview(null)}
-          phone={whatsappPreview.phone}
+          phones={whatsappPreview.phones}
           message={whatsappPreview.message}
           title="تذكير واتساب - دفعة متأخرة"
         />

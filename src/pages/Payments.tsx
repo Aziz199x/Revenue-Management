@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, CheckCircle2, Mail, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Wallet, Search, CheckCircle2, Mail, MessageCircle, MessageSquareText, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +23,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import StatusBadge from "@/components/shared/StatusBadge";
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EmailPreview from "@/components/shared/EmailPreview";
+import SmsPreview from "@/components/shared/SmsPreview";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
 import {
   createMaintenanceExpenseItemDraft,
@@ -38,7 +39,7 @@ import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/d
 import { buildPaymentReminderMessage } from "@/utils/whatsapp";
 import { showSuccess, showError } from "@/utils/toast";
 import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
-import { buildPaymentEmailContent, getTenantEmailAddresses } from "@/utils/automaticCommunications";
+import { buildPaymentEmailContent, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
 
 const PAYMENT_FILTERS_KEY = "payments_filters";
 
@@ -111,7 +112,8 @@ export default function Payments() {
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10));
   const [transferMethod, setTransferMethod] = useState<PaymentMethod>("bank_transfer");
   const [transferNotes, setTransferNotes] = useState("");
-  const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [whatsappPreview, setWhatsappPreview] = useState<{ phones: string[]; message: string } | null>(null);
+  const [smsPreview, setSmsPreview] = useState<{ phones: string[]; message: string } | null>(null);
   const [emailPreview, setEmailPreview] = useState<{
     recipients: string[];
     subject: string;
@@ -522,9 +524,12 @@ export default function Payments() {
     }
 
     const tenant = data.tenants.find((t) => t.unitId === payment.unitId);
-    const tenantPhone = payment.tenantPhone || tenant?.phone;
+    const tenantPhones = Array.from(new Set([
+      ...(payment.tenantPhone ? [payment.tenantPhone] : []),
+      ...getTenantPhoneNumbers(tenant),
+    ]));
 
-    if (!tenantPhone) {
+    if (tenantPhones.length === 0) {
       showError("رقم جوال المستأجر غير موجود");
       return;
     }
@@ -538,7 +543,7 @@ export default function Payments() {
       isOverdue: payment.status === "overdue",
     });
 
-    setWhatsappPreview({ phone: tenantPhone, message });
+    setWhatsappPreview({ phones: tenantPhones, message });
   };
 
   const paymentMaintenanceNote = (payment: Payment) => {
@@ -639,6 +644,10 @@ export default function Payments() {
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
             const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
             const tenantEmails = getTenantEmailAddresses(tenant);
+            const tenantPhones = Array.from(new Set([
+              ...(p.tenantPhone ? [p.tenantPhone] : []),
+              ...getTenantPhoneNumbers(tenant),
+            ]));
             const paymentDetailsRoute = `/units/${encodeURIComponent(p.unitId)}?tab=payments&item=${encodeURIComponent(p.id)}`;
             const openPaymentDetails = () => navigate(paymentDetailsRoute);
             return (
@@ -768,7 +777,7 @@ export default function Payments() {
                     <CheckCircle2 className="ml-1 h-3.5 w-3.5 shrink-0" />
                     تم الاستلام
                   </Button>
-                  {(
+                  {tenantPhones.length > 0 && (
                     <button
                       type="button"
                       className="flex min-h-8 max-w-full shrink-0 items-center gap-1 whitespace-normal rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-transform active:scale-95"
@@ -793,6 +802,26 @@ export default function Payments() {
                       واتساب
                     </button>
                   )}
+                  {tenantPhones.length > 0 && (
+                    <button
+                      type="button"
+                      className="flex min-h-8 max-w-full shrink-0 items-center gap-1 whitespace-normal rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 transition-transform active:scale-95"
+                      onClick={() => {
+                        const message = buildPaymentReminderMessage({
+                          tenantName: p.tenantName || tenant?.name,
+                          buildingName: building?.name || "",
+                          unitName: unit?.name || "",
+                          amount: formatSarAmount(getPaymentAmount(p)),
+                          dueDate: p.dueDateGregorian || p.paymentDate,
+                          isOverdue: status === "overdue",
+                        });
+                        setSmsPreview({ phones: tenantPhones, message });
+                      }}
+                    >
+                      <MessageSquareText className="h-3.5 w-3.5 shrink-0" />
+                      SMS
+                    </button>
+                  )}
                   {tenantEmails.length > 0 && (
                     <button
                       type="button"
@@ -812,6 +841,15 @@ export default function Payments() {
                     >
                       <Mail className="h-3.5 w-3.5 shrink-0" />
                       بريد
+                    </button>
+                  )}
+                  {tenantEmails.length === 0 && (
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold text-amber-700 underline underline-offset-2"
+                      onClick={() => navigate(`/units/${encodeURIComponent(p.unitId)}?tab=tenant`)}
+                    >
+                      أضف البريد لتفعيل الإرسال
                     </button>
                   )}
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="تعديل الدفعة" onClick={openPaymentDetails}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -1113,9 +1151,17 @@ export default function Payments() {
         <WhatsappPreview
           open={!!whatsappPreview}
           onOpenChange={(o) => !o && setWhatsappPreview(null)}
-          phone={whatsappPreview.phone}
+          phones={whatsappPreview.phones}
           message={whatsappPreview.message}
           title="مراسلة المستأجر عبر واتساب"
+        />
+      )}
+      {smsPreview && (
+        <SmsPreview
+          open={!!smsPreview}
+          onOpenChange={(open) => !open && setSmsPreview(null)}
+          phones={smsPreview.phones}
+          message={smsPreview.message}
         />
       )}
       {emailPreview && (

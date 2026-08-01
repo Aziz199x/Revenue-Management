@@ -636,6 +636,10 @@ test("restoring an older backup safely fills missing contracts and optional coll
   assert.deepEqual(restored.financialAuditLog, []);
   assert.deepEqual(restored.evidenceAttachments, []);
   assert.equal(restored.settings.backupRetentionCount, 14);
+  const legacyTenant = storeData.normalizeData({
+    tenants: [{ id: "t1", unitId: "u1", name: "مستأجر", phone: "0500000000", createdAt: "2026-01-01" }],
+  }).tenants[0];
+  assert.deepEqual(legacyTenant.phoneNumbers.map((item) => item.phone), ["0500000000"]);
 });
 
 test("automatic communication schedule sends formal email to every company address without duplicates", () => {
@@ -724,4 +728,46 @@ test("automatic communication schedule never reminds a fully paid installment", 
     automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T12:00:00"), true),
     [],
   );
+});
+
+test("automatic WhatsApp schedule supports every enabled tenant phone without duplicates", () => {
+  const record = payment({
+    tenantId: "t-multi-phone",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-multi-phone",
+      unitId: "u1",
+      name: "شركة متعددة الأرقام",
+      phoneNumbers: [
+        { id: "p1", phone: "0500000000", label: "الإدارة", enabled: true },
+        { id: "p2", phone: "0511111111", label: "الحسابات", enabled: true },
+        { id: "p3", phone: "0522222222", label: "غير مفعل", enabled: false },
+      ],
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: true,
+        frequencyDays: 1,
+        sendTime: "00:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: null,
+      },
+    },
+  });
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T10:00:00"),
+    true,
+  );
+  assert.deepEqual(jobs.map((job) => job.recipient).sort(), ["966500000000", "966511111111"]);
 });

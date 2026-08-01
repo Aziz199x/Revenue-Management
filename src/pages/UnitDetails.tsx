@@ -19,6 +19,7 @@ import {
   Hash,
   Gauge,
   MessageCircle,
+  MessageSquareText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,6 +126,7 @@ function paymentNotesWithoutGeneratedMaintenance(payment: Payment): string {
 }
 import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EmailPreview from "@/components/shared/EmailPreview";
+import SmsPreview from "@/components/shared/SmsPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
 import {
@@ -142,6 +144,7 @@ import {
   buildContractCommunicationContent,
   buildPaymentEmailContent,
   getTenantEmailAddresses,
+  getTenantPhoneNumbers,
 } from "@/utils/automaticCommunications";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
@@ -435,7 +438,8 @@ export default function UnitDetails() {
   } | null>(null);
   const [savingRegenerate, setSavingRegenerate] = useState(false);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
-  const [whatsappPreview, setWhatsappPreview] = useState<{ phone: string; message: string } | null>(null);
+  const [whatsappPreview, setWhatsappPreview] = useState<{ phones: string[]; message: string } | null>(null);
+  const [smsPreview, setSmsPreview] = useState<{ phones: string[]; message: string } | null>(null);
   const [emailPreview, setEmailPreview] = useState<{
     recipients: string[];
     subject: string;
@@ -763,17 +767,19 @@ export default function UnitDetails() {
                   </div>
                 </div>
                 <div className="mt-3 space-y-2 text-sm">
-                  {tenant.phone && (
-                    <p className="flex items-center gap-2">
+                  {getTenantPhoneNumbers(tenant).length > 0 && (
+                    <div className="space-y-1">
                       <Phone className="h-4 w-4 text-muted-foreground" />
-                      <a href={`tel:${tenant.phone}`} dir="ltr" className="text-primary underline-offset-2">
-                        {tenant.phone}
-                      </a>
-                    </p>
+                      {getTenantPhoneNumbers(tenant).map((number) => (
+                        <a key={number} href={`tel:${number}`} dir="ltr" className="mr-2 inline-block text-primary underline-offset-2">
+                          {number}
+                        </a>
+                      ))}
+                    </div>
                   )}
-                  {(tenant.phone || getTenantEmailAddresses(tenant).length > 0) && (
+                  {(getTenantPhoneNumbers(tenant).length > 0 || getTenantEmailAddresses(tenant).length > 0) && (
                     <div className="flex flex-wrap gap-2">
-                      {tenant.phone && <button
+                      {getTenantPhoneNumbers(tenant).length > 0 && <button
                         type="button"
                         className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700 transition-transform active:scale-95"
                         onClick={() => {
@@ -789,12 +795,33 @@ export default function UnitDetails() {
                               ownerName: "",
                             },
                           );
-                          setWhatsappPreview({ phone: tenant.phone!, message: msg });
+                          setWhatsappPreview({ phones: getTenantPhoneNumbers(tenant), message: msg });
                         }}
                       >
                         <MessageCircle className="h-3.5 w-3.5" />
                         تواصل واتساب
                       </button>}
+                      {getTenantPhoneNumbers(tenant).length > 0 && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-[11px] font-semibold text-violet-700 transition-transform active:scale-95"
+                          onClick={() => {
+                            const msg = fillTemplate(data.settings.whatsappTemplates.paymentReminder, {
+                              tenantName: tenant.name,
+                              buildingName: building?.name || "",
+                              unitName: unit.name,
+                              amount: unit.rentAmount.toLocaleString("en-US"),
+                              dueDate: "",
+                              contractEndDate: "",
+                              ownerName: "",
+                            });
+                            setSmsPreview({ phones: getTenantPhoneNumbers(tenant), message: msg });
+                          }}
+                        >
+                          <MessageSquareText className="h-3.5 w-3.5" />
+                          إرسال SMS
+                        </button>
+                      )}
                       {getTenantEmailAddresses(tenant).length > 0 && (
                         <button
                           type="button"
@@ -826,13 +853,22 @@ export default function UnitDetails() {
                       )}
                     </div>
                   )}
+                  {getTenantEmailAddresses(tenant).length === 0 && (
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-amber-200 bg-amber-50 p-2 text-right text-xs font-semibold text-amber-800"
+                      onClick={() => setEditTenant(tenant)}
+                    >
+                      أضف بريد المستأجر لتتمكن من إرسال الرسائل عبر البريد الإلكتروني.
+                    </button>
+                  )}
                   {tenant.nationalId && (
                     <p className="flex items-center gap-2">
                       <IdCard className="h-4 w-4 text-muted-foreground" />
                       <span dir="ltr">{tenant.nationalId}</span>
                     </p>
                   )}
-                  {(tenant.emailAddresses?.length || tenant.email) && (
+                  {getTenantEmailAddresses(tenant).length > 0 && (
                     <div className="flex items-start gap-2">
                       <Mail className="h-4 w-4 text-muted-foreground" />
                       <div className="space-y-1">
@@ -929,6 +965,10 @@ export default function UnitDetails() {
                 const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
                 const paymentTenant = data.tenants.find((item) => item.id === p.tenantId) || tenant;
                 const paymentEmails = getTenantEmailAddresses(paymentTenant);
+                const paymentPhones = Array.from(new Set([
+                  ...(p.tenantPhone ? [p.tenantPhone] : []),
+                  ...getTenantPhoneNumbers(paymentTenant),
+                ]));
                 return (
                   <div
                     key={p.id}
@@ -1062,15 +1102,12 @@ export default function UnitDetails() {
                           تم الاستلام
                         </Button>
                         )}
-                      {(st === "unpaid" || st === "overdue" || st === "partial") && (
+                      {(st === "unpaid" || st === "overdue" || st === "partial") && paymentPhones.length > 0 && (
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full px-3 py-1.5 text-xs"
                           onClick={() => {
-                            const paymentTenant = data.tenants.find((t) => t.id === p.tenantId) || tenant;
-                            const phone = p.tenantPhone || paymentTenant?.phone;
-                            if (!phone) { showError("رقم جوال المستأجر غير موجود"); return; }
                             console.log("[WhatsApp Payment] selected payment id:", p.id);
                             console.log("[WhatsApp Payment] raw amount fields:", {
                               grossAmount: p.grossAmount,
@@ -1088,13 +1125,34 @@ export default function UnitDetails() {
                               dueDate: p.dueDateGregorian || p.paymentDate,
                               isOverdue: st === "overdue",
                             });
-                            setWhatsappPreview({ phone, message: msg });
+                            setWhatsappPreview({ phones: paymentPhones, message: msg });
                           }}
                         >
                           <MessageCircle className="ml-1 h-3.5 w-3.5 shrink-0" />
                           واتساب
                         </Button>
                         )}
+                      {(st === "unpaid" || st === "overdue" || st === "partial") && paymentPhones.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-700"
+                          onClick={() => {
+                            const msg = buildPaymentReminderMessage({
+                              tenantName: p.tenantName || paymentTenant?.name,
+                              buildingName: building?.name || "",
+                              unitName: unit.name,
+                              amount: formatSarAmount(getPaymentAmount(p)),
+                              dueDate: p.dueDateGregorian || p.paymentDate,
+                              isOverdue: st === "overdue",
+                            });
+                            setSmsPreview({ phones: paymentPhones, message: msg });
+                          }}
+                        >
+                          <MessageSquareText className="ml-1 h-3.5 w-3.5 shrink-0" />
+                          SMS
+                        </Button>
+                      )}
                       {(st === "unpaid" || st === "overdue" || st === "partial") && paymentEmails.length > 0 && (
                         <Button
                           size="sm"
@@ -1116,6 +1174,15 @@ export default function UnitDetails() {
                           <Mail className="ml-1 h-3.5 w-3.5 shrink-0" />
                           بريد
                         </Button>
+                      )}
+                      {(st === "unpaid" || st === "overdue" || st === "partial") && paymentEmails.length === 0 && (
+                        <button
+                          type="button"
+                          className="text-[10px] font-semibold text-amber-700 underline underline-offset-2"
+                          onClick={() => paymentTenant && setEditTenant(paymentTenant)}
+                        >
+                          أضف البريد لتفعيل الإرسال
+                        </button>
                       )}
                       </div>
                       {st === "paid" && !p.ownerTransferred && (
@@ -1190,6 +1257,8 @@ export default function UnitDetails() {
                   ? c.tenantName
                   : "مستأجر غير محدد";
                 const contractTenant = data.tenants.find((item) => item.id === c.tenantId) || tenant;
+                const contractPhones = getTenantPhoneNumbers(contractTenant);
+                const contractEmails = getTenantEmailAddresses(contractTenant);
                 return (
                   <div
                     key={c.id}
@@ -1287,19 +1356,65 @@ export default function UnitDetails() {
                         compact
                       />
                     </div>
-                    {contractTenant?.phone && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-2 w-full rounded-xl border-emerald-200 bg-emerald-50 text-xs text-emerald-700"
-                        onClick={() => {
-                          const content = buildContractCommunicationContent(data, c, contractTenant);
-                          setWhatsappPreview({ phone: contractTenant.phone!, message: content.whatsappBody });
-                        }}
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {contractPhones.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl border-emerald-200 bg-emerald-50 text-xs text-emerald-700"
+                          onClick={() => {
+                            const content = buildContractCommunicationContent(data, c, contractTenant);
+                            setWhatsappPreview({ phones: contractPhones, message: content.whatsappBody });
+                          }}
+                        >
+                          <MessageCircle className="ml-1 h-4 w-4" />
+                          واتساب
+                        </Button>
+                      )}
+                      {contractPhones.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl border-violet-200 bg-violet-50 text-xs text-violet-700"
+                          onClick={() => {
+                            const content = buildContractCommunicationContent(data, c, contractTenant);
+                            setSmsPreview({ phones: contractPhones, message: content.whatsappBody });
+                          }}
+                        >
+                          <MessageSquareText className="ml-1 h-4 w-4" />
+                          SMS
+                        </Button>
+                      )}
+                      {contractEmails.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl border-sky-200 bg-sky-50 text-xs text-sky-700"
+                          onClick={() => {
+                            const content = buildContractCommunicationContent(data, c, contractTenant);
+                            setEmailPreview({
+                              recipients: contractEmails,
+                              subject: content.emailSubject,
+                              body: content.emailBody,
+                              tenantId: contractTenant?.id,
+                              contractId: c.id,
+                              kind: "contractExpiry",
+                            });
+                          }}
+                        >
+                          <Mail className="ml-1 h-4 w-4" />
+                          بريد
+                        </Button>
+                      )}
+                    </div>
+                    {contractEmails.length === 0 && (
+                      <button
+                        type="button"
+                        className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-2 text-right text-xs font-semibold text-amber-800"
+                        onClick={() => contractTenant && setEditTenant(contractTenant)}
                       >
-                        <MessageCircle className="ml-1 h-4 w-4" />
-                        إرسال تنبيه التجديد أو مغادرة الوحدة عبر واتساب
-                      </Button>
+                        أضف بريد المستأجر لتتمكن من إرسال تنبيه انتهاء العقد عبر البريد.
+                      </button>
                     )}
                     {(expired || c.tenantDidNotLeave || c.status?.startsWith("eviction_")) && c.status !== "eviction_completed" && (
                       <div className="mt-3 space-y-2 rounded-2xl border border-red-200 bg-red-50 p-3">
@@ -2227,9 +2342,17 @@ export default function UnitDetails() {
         <WhatsappPreview
           open={!!whatsappPreview}
           onOpenChange={(o) => !o && setWhatsappPreview(null)}
-          phone={whatsappPreview.phone}
+          phones={whatsappPreview.phones}
           message={whatsappPreview.message}
           title="مراسلة المستأجر عبر واتساب"
+        />
+      )}
+      {smsPreview && (
+        <SmsPreview
+          open={!!smsPreview}
+          onOpenChange={(open) => !open && setSmsPreview(null)}
+          phones={smsPreview.phones}
+          message={smsPreview.message}
         />
       )}
 

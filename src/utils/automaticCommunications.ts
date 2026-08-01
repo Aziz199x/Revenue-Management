@@ -67,6 +67,15 @@ export function getTenantEmailAddresses(tenant?: Tenant): string[] {
   return Array.from(new Set(addresses.filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))));
 }
 
+export function getTenantPhoneNumbers(tenant?: Tenant): string[] {
+  const numbers = tenant?.phoneNumbers?.length
+    ? tenant.phoneNumbers.filter((item) => item.enabled !== false).map((item) => item.phone.trim())
+    : tenant?.phone
+    ? [tenant.phone.trim()]
+    : [];
+  return Array.from(new Set(numbers.filter(Boolean)));
+}
+
 function paymentPeriod(data: AppData, payment: Payment): { start: string; end: string } {
   const start = paymentDueDateValue(payment);
   const next = data.payments
@@ -203,13 +212,16 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       }
     }
 
-    if (settings.whatsappEnabled && tenant?.phone && validatePhone(tenant.phone)) {
-      const dedupeKey = `${payment.id}:whatsapp:${validatePhone(tenant.phone)}:${kind}`;
+    if (settings.whatsappEnabled) {
+      for (const phone of getTenantPhoneNumbers(tenant)) {
+        const recipient = validatePhone(phone);
+        if (!recipient) continue;
+        const dedupeKey = `${payment.id}:whatsapp:${recipient}:${kind}`;
       if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) {
         jobs.push({
           channel: "whatsapp",
-          recipient: validatePhone(tenant.phone)!,
-          tenantId: tenant.id,
+          recipient,
+          tenantId: tenant?.id,
           paymentId: payment.id,
           contractId: payment.contractId,
           templateKind: kind,
@@ -217,6 +229,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           body: fillTemplate(data.settings.whatsappTemplates[kind], vars),
           dedupeKey,
         });
+      }
       }
     }
   }
@@ -246,20 +259,23 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         });
       }
     }
-    if (settings.whatsappEnabled && tenant?.phone && validatePhone(tenant.phone)) {
-      const recipient = validatePhone(tenant.phone)!;
+    if (settings.whatsappEnabled) {
+      for (const phone of getTenantPhoneNumbers(tenant)) {
+      const recipient = validatePhone(phone);
+      if (!recipient) continue;
       const dedupeKey = `${contract.id}:whatsapp:${recipient}:contractExpiry`;
       if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
-          tenantId: tenant.id,
+          tenantId: tenant?.id,
           contractId: contract.id,
           templateKind: "contractExpiry",
           provider: "whatsapp_business",
           body: content.whatsappBody,
           dedupeKey,
         });
+      }
       }
     }
   }

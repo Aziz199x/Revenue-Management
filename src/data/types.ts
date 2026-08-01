@@ -74,6 +74,7 @@ export interface Tenant {
   buildingId?: string;
   name: string;
   phone?: string;
+  phoneNumbers?: TenantPhoneNumber[];
   nationalId?: string;
   email?: string;
   emailAddresses?: TenantEmailAddress[];
@@ -86,6 +87,13 @@ export interface Tenant {
   activeContractId?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface TenantPhoneNumber {
+  id: string;
+  phone: string;
+  label?: string;
+  enabled: boolean;
 }
 
 export interface TenantEmailAddress {
