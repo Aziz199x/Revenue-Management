@@ -1,6 +1,12 @@
 import { AppLauncher } from "@capacitor/app-launcher";
 import { Capacitor } from "@capacitor/core";
-import { getConnectedEmail, getValidGoogleAccessToken, signIn as signInGoogle } from "@/utils/googleDrive";
+import {
+  clearTokens as clearGoogleTokens,
+  getConnectedEmail,
+  getGoogleConnectionStatus,
+  getValidGoogleAccessToken,
+  signIn as signInGoogle,
+} from "@/utils/googleDrive";
 
 const OUTLOOK_KEY = "automatic_email_outlook_account";
 const WHATSAPP_KEY = "automatic_whatsapp_business_account";
@@ -81,7 +87,12 @@ function writeJson(key: string, value: unknown): void {
 }
 
 export function getGmailAccountEmail(): string | null {
-  return getConnectedEmail();
+  const status = getGoogleConnectionStatus();
+  return status.state === "connected" ? status.email : null;
+}
+
+export function getGmailAccountStatus() {
+  return getGoogleConnectionStatus();
 }
 
 export async function connectGmail(): Promise<string> {
@@ -122,6 +133,7 @@ export async function sendGmailEmail(to: string, subject: string, body: string):
       );
     }
     if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) clearGoogleTokens();
       throw new EmailProviderError(
         "حساب Gmail لا يملك صلاحية الإرسال. أعد ربط Gmail من إعدادات الإرسال ووافق على صلاحية إرسال البريد.",
         "gmail_permission",

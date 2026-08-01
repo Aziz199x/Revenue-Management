@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import {
   connectOutlook,
   disconnectOutlook,
   disconnectWhatsAppBusiness,
-  getGmailAccountEmail,
+  getGmailAccountStatus,
   getOutlookAccount,
   getWhatsAppBusinessAccount,
   saveWhatsAppBusinessAccount,
@@ -29,7 +29,8 @@ import { showError, showSuccess } from "@/utils/toast";
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
   const settings = data.settings.automaticCommunications;
-  const [gmailEmail, setGmailEmail] = useState(getGmailAccountEmail());
+  const [gmailStatus, setGmailStatus] = useState(getGmailAccountStatus());
+  const gmailEmail = gmailStatus.email;
   const [outlook, setOutlook] = useState(getOutlookAccount());
   const [outlookClientId, setOutlookClientId] = useState(outlook?.clientId || "");
   const existingWhatsapp = getWhatsAppBusinessAccount();
@@ -85,7 +86,25 @@ export default function AutomaticCommunicationsSettingsPage() {
       }
       const sent = logs.filter((log) => log.status === "sent").length;
       const failed = logs.filter((log) => log.status === "failed").length;
-      showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة، ${failed} فاشلة` : "لا توجد رسائل مستحقة للإرسال الآن");
+      const latestGmailStatus = getGmailAccountStatus();
+      setGmailStatus(latestGmailStatus);
+      if (settings.emailProvider === "gmail" && latestGmailStatus.state !== "connected") {
+        await update((previous) => ({
+          ...previous,
+          settings: {
+            ...previous.settings,
+            automaticCommunications: {
+              ...previous.settings.automaticCommunications,
+              emailProvider: null,
+            },
+          },
+        }));
+      }
+      if (failed > 0) {
+        showError(`اكتملت الدورة: ${sent} ناجحة، ${failed} فاشلة. يمكنك إعادة المحاولة فورًا بعد معالجة سبب الفشل.`);
+      } else {
+        showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة` : "لا توجد رسائل مستحقة للإرسال الآن");
+      }
     } catch (error) {
       showError(error instanceof Error ? error.message : "تعذر تشغيل دورة الإرسال");
     } finally {
@@ -166,16 +185,30 @@ export default function AutomaticCommunicationsSettingsPage() {
 
         <section className="space-y-3 rounded-3xl border border-border bg-card p-4">
           <div className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /><p className="font-bold">حساب إرسال البريد</p></div>
-          <div className={`rounded-2xl border p-3 ${gmailEmail ? "border-emerald-200 bg-emerald-50/50" : "border-border"}`}>
+          <div className={`rounded-2xl border p-3 ${
+            gmailStatus.state === "connected"
+              ? "border-emerald-200 bg-emerald-50/50"
+              : gmailStatus.state === "expired"
+              ? "border-amber-200 bg-amber-50/50"
+              : "border-border"
+          }`}>
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-bold">Gmail</p>
-                {gmailEmail ? (
+                {gmailStatus.state === "connected" && gmailEmail ? (
                   <>
                     <p className="truncate text-xs text-muted-foreground" dir="ltr">{gmailEmail}</p>
                     <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                       <CheckCircle2 className="h-3 w-3" />
                       {settings.emailProvider === "gmail" ? "متصل ومحدد للإرسال" : "حساب متصل"}
+                    </span>
+                  </>
+                ) : gmailStatus.state === "expired" ? (
+                  <>
+                    {gmailEmail && <p className="truncate text-xs text-muted-foreground" dir="ltr">{gmailEmail}</p>}
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      <AlertTriangle className="h-3 w-3" />
+                      انتهت الجلسة — أعد ربط الحساب
                     </span>
                   </>
                 ) : (
@@ -184,14 +217,14 @@ export default function AutomaticCommunicationsSettingsPage() {
               </div>
               <Button
                 size="sm"
-                variant={gmailEmail ? "outline" : "default"}
+                variant={gmailStatus.state === "connected" ? "outline" : "default"}
                 className="rounded-xl"
                 disabled={connecting !== null}
                 onClick={async () => {
                   setConnecting("gmail");
                   try {
                     const email = await connectGmail();
-                    setGmailEmail(email);
+                    setGmailStatus({ email, state: "connected" });
                     updateSchedule({ emailProvider: "gmail", emailEnabled: true });
                     showSuccess(`تم ربط Gmail: ${email}`);
                   } catch (error) {
@@ -201,7 +234,7 @@ export default function AutomaticCommunicationsSettingsPage() {
                   }
                 }}
               >
-                {gmailEmail ? "إعادة ربط الحساب" : "ربط Gmail"}
+                {gmailStatus.state === "connected" ? "إعادة ربط الحساب" : gmailStatus.state === "expired" ? "تجديد تسجيل الدخول" : "ربط Gmail"}
               </Button>
             </div>
           </div>
@@ -249,11 +282,14 @@ export default function AutomaticCommunicationsSettingsPage() {
               ربط Outlook
             </Button>
           </div>
-          <Select value={settings.emailProvider || "none"} onValueChange={(value) => updateSchedule({ emailProvider: value === "none" ? null : value as "gmail" | "outlook" })}>
+          <Select
+            value={settings.emailProvider === "gmail" && gmailStatus.state !== "connected" ? "none" : settings.emailProvider || "none"}
+            onValueChange={(value) => updateSchedule({ emailProvider: value === "none" ? null : value as "gmail" | "outlook" })}
+          >
             <SelectTrigger className="rounded-xl"><SelectValue placeholder="حساب الإرسال الافتراضي" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">لا يوجد حساب افتراضي</SelectItem>
-              {gmailEmail && <SelectItem value="gmail">Gmail · {gmailEmail}</SelectItem>}
+              {gmailStatus.state === "connected" && gmailEmail && <SelectItem value="gmail">Gmail · {gmailEmail}</SelectItem>}
               {outlook?.email && <SelectItem value="outlook">Outlook · {outlook.email}</SelectItem>}
             </SelectContent>
           </Select>

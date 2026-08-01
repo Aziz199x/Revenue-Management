@@ -20,6 +20,11 @@ interface StoredTokens {
   expiresAt: number;
 }
 
+export interface GoogleConnectionStatus {
+  email: string | null;
+  state: "connected" | "expired" | "disconnected";
+}
+
 function getTokens(): StoredTokens | null {
   try {
     const raw = localStorage.getItem(TOKEN_KEY);
@@ -50,6 +55,18 @@ export function getConnectedEmail(): string | null {
   } catch {
     return null;
   }
+}
+
+export function getGoogleConnectionStatus(now = Date.now()): GoogleConnectionStatus {
+  const tokens = getTokens();
+  const email = tokens?.email || getConnectedEmail();
+  if (!email || !tokens?.accessToken) {
+    return { email, state: email ? "expired" : "disconnected" };
+  }
+  return {
+    email,
+    state: now < Number(tokens.expiresAt || 0) ? "connected" : "expired",
+  };
 }
 
 export function isSignedIn(): boolean {

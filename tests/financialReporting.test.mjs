@@ -708,6 +708,23 @@ test("automatic communication schedule sends formal email to every company addre
   }];
   const afterOneSent = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now);
   assert.deepEqual(afterOneSent.map((job) => job.recipient), ["manager@example.com"]);
+  const forcedAfterOneSent = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now, true);
+  assert.deepEqual(forcedAfterOneSent.map((job) => job.recipient), ["manager@example.com"]);
+
+  snapshot.communicationLogs = [{
+    ...snapshot.communicationLogs[0],
+    id: "failed-1",
+    status: "failed",
+    sentAt: undefined,
+    error: "انتهت صلاحية الجلسة",
+  }];
+  const afterFailure = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now);
+  assert.deepEqual(afterFailure.map((job) => job.recipient), ["manager@example.com"]);
+  const manualRetryAfterFailure = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now, true);
+  assert.deepEqual(
+    manualRetryAfterFailure.map((job) => job.recipient).sort(),
+    ["accounts@example.com", "manager@example.com"],
+  );
 });
 
 test("automatic communication schedule never reminds a fully paid installment", () => {

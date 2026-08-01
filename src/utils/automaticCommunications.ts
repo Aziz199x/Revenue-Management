@@ -191,11 +191,13 @@ function wasRecentlyAttempted(
   dedupeKey: string,
   now: Date,
   frequencyDays: number,
+  retryFailedNow = false,
 ): boolean {
   const latest = [...(data.communicationLogs || [])]
     .filter((log) => log.dedupeKey === dedupeKey)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (!latest) return false;
+  if (retryFailedNow && latest.status === "failed") return false;
   const elapsed = now.getTime() - new Date(latest.createdAt).getTime();
   const retryWindow = latest.status === "sent" ? frequencyDays * DAY : 6 * 60 * 60 * 1000;
   return elapsed < retryWindow;
@@ -235,7 +237,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -256,7 +258,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:whatsapp:${recipient}:${kind}`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -284,7 +286,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -303,7 +305,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       const recipient = validatePhone(phone);
       if (!recipient) continue;
       const dedupeKey = `${contract.id}:whatsapp:${recipient}:contractExpiry`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
