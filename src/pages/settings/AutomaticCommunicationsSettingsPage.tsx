@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useStore } from "@/data/store";
+import type { AppData, Payment } from "@/data/types";
+import { formatMoney, getPaymentReportMonth, paymentDueDateValue } from "@/data/helpers";
 import {
   connectGmail,
   connectOutlook,
@@ -45,6 +47,44 @@ function localDateKey(value: Date): string {
 function communicationLogDateKey(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value.slice(0, 10) : localDateKey(parsed);
+}
+
+function formatLogMonth(value?: string): string {
+  if (!value || !/^\d{4}-\d{2}$/.test(value)) return value || "";
+  const parsed = new Date(`${value}-01T00:00:00`);
+  return parsed.toLocaleDateString("ar-SA-u-nu-latn-ca-gregory", {
+    year: "numeric",
+    month: "long",
+  });
+}
+
+function addLogDays(value: string, days: number): string {
+  const parsed = new Date(`${value}T00:00:00`);
+  parsed.setDate(parsed.getDate() + days);
+  return localDateKey(parsed);
+}
+
+function derivePaymentPeriod(data: AppData, payment: Payment): { start: string; end: string } {
+  if (payment.rentalPeriod?.includes(" - ")) {
+    const [start, end] = payment.rentalPeriod.split(" - ").map((item) => item.trim());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return { start, end };
+    }
+  }
+  const start = paymentDueDateValue(payment);
+  const next = data.payments
+    .filter((item) =>
+      item.id !== payment.id
+      && !item.deletedAt
+      && item.unitId === payment.unitId
+      && (!payment.contractId || item.contractId === payment.contractId)
+      && paymentDueDateValue(item) > start
+    )
+    .sort((a, b) => paymentDueDateValue(a).localeCompare(paymentDueDateValue(b)))[0];
+  return {
+    start,
+    end: next ? addLogDays(paymentDueDateValue(next), -1) : addLogDays(start, 29),
+  };
 }
 
 export default function AutomaticCommunicationsSettingsPage() {
@@ -467,6 +507,13 @@ export default function AutomaticCommunicationsSettingsPage() {
             const unitId = payment?.unitId || contract?.unitId;
             const unitName = log.unitName
               || (unitId ? data.units.find((item) => item.id === unitId)?.name : undefined);
+            const derivedPeriod = payment ? derivePaymentPeriod(data, payment) : undefined;
+            const periodStart = log.periodStart || derivedPeriod?.start;
+            const periodEnd = log.periodEnd || derivedPeriod?.end;
+            const dueDate = log.dueDate || (payment ? paymentDueDateValue(payment) : undefined);
+            const paymentMonth = payment
+              ? getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)
+              : undefined;
             return (
               <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -487,12 +534,20 @@ export default function AutomaticCommunicationsSettingsPage() {
                 </div>
                 <p className="mt-1 break-all text-left font-semibold text-foreground" dir="ltr">{log.recipient}</p>
                 {unitName && <p className="mt-1 text-muted-foreground">الوحدة: {unitName}</p>}
-                {log.periodStart && log.periodEnd && (
+                {payment && (
+                  <div className="mt-2 rounded-xl border border-sky-200 bg-sky-50 p-2 text-sky-900">
+                    <p className="font-bold">
+                      الدفعة{payment.paymentNumber ? ` رقم ${payment.paymentNumber}` : ""}: شهر {formatLogMonth(paymentMonth)}
+                    </p>
+                    <p className="mt-1">المبلغ المستحق: {formatMoney(Number(payment.grossAmount ?? payment.amount ?? 0))}</p>
+                  </div>
+                )}
+                {periodStart && periodEnd && (
                   <p className="mt-1 text-muted-foreground">
-                    {log.paymentId ? "دفعة الفترة" : "فترة العقد"}: من {formatLogDate(log.periodStart)} إلى {formatLogDate(log.periodEnd)}
+                    {log.paymentId ? "دفعة الفترة" : "فترة العقد"}: من {formatLogDate(periodStart)} إلى {formatLogDate(periodEnd)}
                   </p>
                 )}
-                {log.dueDate && <p className="mt-1 text-muted-foreground">موعد الاستحقاق: {formatLogDate(log.dueDate)}</p>}
+                {dueDate && <p className="mt-1 text-muted-foreground">موعد الاستحقاق: {formatLogDate(dueDate)}</p>}
                 <p className="mt-1 text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-SA-u-nu-latn")}</p>
                 {log.error && <p className="mt-1 text-red-700">{log.error}</p>}
               </div>
