@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, Play, Trash2, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,15 @@ function formatLogDate(value?: string): string {
       });
 }
 
+function localDateKey(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function communicationLogDateKey(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value.slice(0, 10) : localDateKey(parsed);
+}
+
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
   const settings = data.settings.automaticCommunications;
@@ -56,11 +65,23 @@ export default function AutomaticCommunicationsSettingsPage() {
   const [connecting, setConnecting] = useState<"gmail" | "outlook" | null>(null);
   const [running, setRunning] = useState(false);
   const [savedWhatsapp, setSavedWhatsapp] = useState(!!existingWhatsapp?.configured);
+  const today = localDateKey(new Date());
+  const [logFilter, setLogFilter] = useState<"all" | "month" | "day">("month");
+  const [logMonth, setLogMonth] = useState(today.slice(0, 7));
+  const [logDay, setLogDay] = useState(today);
 
-  const recentLogs = useMemo(
-    () => [...(data.communicationLogs || [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30),
-    [data.communicationLogs],
+  const filteredLogs = useMemo(
+    () => [...(data.communicationLogs || [])]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .filter((log) => {
+        const date = communicationLogDateKey(log.createdAt);
+        if (logFilter === "day") return date === logDay;
+        if (logFilter === "month") return date.startsWith(logMonth);
+        return true;
+      }),
+    [data.communicationLogs, logDay, logFilter, logMonth],
   );
+  const visibleLogs = filteredLogs.slice(0, 100);
 
   const updateSchedule = (patch: Partial<typeof settings>) => {
     update((previous) => ({
@@ -73,6 +94,32 @@ export default function AutomaticCommunicationsSettingsPage() {
         },
       },
     }));
+  };
+
+  const deleteCommunicationLogs = async (
+    selectedLogs: typeof filteredLogs,
+    description: string,
+  ) => {
+    const repeatProtectionMs = Math.max(1, Number(settings.frequencyDays) || 1) * 86_400_000;
+    const now = Date.now();
+    const deletable = selectedLogs.filter((log) =>
+      log.status !== "sent" || now - new Date(log.createdAt).getTime() >= repeatProtectionMs
+    );
+    const protectedCount = selectedLogs.length - deletable.length;
+    if (deletable.length === 0) {
+      showError("لا يمكن حذف الرسائل الناجحة الحديثة حتى تنتهي مدة الحماية من تكرار الإرسال");
+      return;
+    }
+    const protectionNote = protectedCount
+      ? `\nسيتم الاحتفاظ بـ ${protectedCount} سجل ناجح حديث مؤقتًا لمنع إرسال الرسالة مرتين.`
+      : "";
+    if (!window.confirm(`حذف ${deletable.length} سجل من ${description}؟${protectionNote}\nلا يمكن التراجع عن الحذف.`)) return;
+    const ids = new Set(deletable.map((log) => log.id));
+    await update((previous) => ({
+      ...previous,
+      communicationLogs: (previous.communicationLogs || []).filter((log) => !ids.has(log.id)),
+    }));
+    showSuccess(`تم حذف ${deletable.length} سجل وتقليل البيانات المحفوظة`);
   };
 
   const runNow = async () => {
@@ -351,10 +398,65 @@ export default function AutomaticCommunicationsSettingsPage() {
         </section>
 
         <section className="space-y-3 rounded-3xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2"><Clock3 className="h-5 w-5 text-primary" /><p className="font-bold">سجل الإرسال</p></div>
-          {recentLogs.length === 0 ? (
-            <p className="rounded-2xl bg-muted p-4 text-center text-xs text-muted-foreground">لم تُرسل رسائل تلقائية بعد</p>
-          ) : recentLogs.map((log) => {
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2"><Clock3 className="h-5 w-5 text-primary" /><p className="font-bold">سجل الإرسال</p></div>
+            <span className="text-xs text-muted-foreground">{filteredLogs.length} سجل</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 rounded-2xl bg-muted p-1">
+            {([
+              ["all", "الكل"],
+              ["month", "بالشهر"],
+              ["day", "باليوم"],
+            ] as const).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={logFilter === value ? "default" : "ghost"}
+                className="h-9 rounded-xl"
+                onClick={() => setLogFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          {logFilter === "month" && (
+            <div>
+              <Label className="text-xs">اختر الشهر</Label>
+              <Input type="month" value={logMonth} onChange={(event) => setLogMonth(event.target.value)} className="mt-1 rounded-xl" />
+            </div>
+          )}
+          {logFilter === "day" && (
+            <div>
+              <Label className="text-xs">اختر اليوم</Label>
+              <Input type="date" value={logDay} onChange={(event) => setLogDay(event.target.value)} className="mt-1 rounded-xl" />
+            </div>
+          )}
+
+          {filteredLogs.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full rounded-xl border-red-200 text-red-700 hover:bg-red-50"
+              onClick={() => void deleteCommunicationLogs(
+                filteredLogs,
+                logFilter === "all" ? "السجل كاملًا" : logFilter === "month" ? `شهر ${logMonth}` : `يوم ${logDay}`,
+              )}
+            >
+              <Trash2 className="ml-1 h-4 w-4" />
+              حذف نتائج الفترة ({filteredLogs.length})
+            </Button>
+          )}
+
+          <p className="text-[10px] leading-5 text-muted-foreground">
+            لحمايتك من إرسال الرسالة مرتين، لا تُحذف الرسائل الناجحة الحديثة إلا بعد انتهاء مدة التكرار المحددة في الجدول.
+          </p>
+
+          {visibleLogs.length === 0 ? (
+            <p className="rounded-2xl bg-muted p-4 text-center text-xs text-muted-foreground">لا توجد سجلات في الفترة المحددة</p>
+          ) : visibleLogs.map((log) => {
             const payment = log.paymentId ? data.payments.find((item) => item.id === log.paymentId) : undefined;
             const contract = log.contractId ? data.contracts.find((item) => item.id === log.contractId) : undefined;
             const tenantName = log.tenantName
@@ -369,7 +471,19 @@ export default function AutomaticCommunicationsSettingsPage() {
               <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold">{log.channel === "email" ? "بريد" : "واتساب"} · {tenantName}</p>
-                  <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
+                  <div className="flex items-center gap-1">
+                    <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded-full text-red-600"
+                      aria-label="حذف سجل الإرسال"
+                      onClick={() => void deleteCommunicationLogs([log], "هذا السجل")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <p className="mt-1 break-all text-left font-semibold text-foreground" dir="ltr">{log.recipient}</p>
                 {unitName && <p className="mt-1 text-muted-foreground">الوحدة: {unitName}</p>}
@@ -384,6 +498,11 @@ export default function AutomaticCommunicationsSettingsPage() {
               </div>
             );
           })}
+          {filteredLogs.length > visibleLogs.length && (
+            <p className="rounded-xl bg-muted p-2 text-center text-[10px] text-muted-foreground">
+              يتم عرض أحدث 100 سجل من أصل {filteredLogs.length}. يمكن حذف جميع نتائج الفترة من الزر أعلاه.
+            </p>
+          )}
         </section>
       </div>
     </div>
