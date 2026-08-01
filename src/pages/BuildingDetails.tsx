@@ -147,7 +147,10 @@ export default function BuildingDetails() {
     const next = new URLSearchParams(searchParams);
     if (value === "units") next.delete("tab");
     else next.set("tab", value);
-    setSearchParams(next, { replace: false });
+    // Replace (not push) so switching tabs never adds a history entry —
+    // the back button must return to the previous PAGE (e.g. the buildings
+    // list), not to whichever tab was active a moment ago.
+    setSearchParams(next, { replace: true });
   };
 
   useEffect(() => {
