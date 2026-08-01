@@ -14,6 +14,7 @@ import {
   ReceiptText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -136,12 +137,18 @@ export default function BuildingDetails() {
   const [excelTo, setExcelTo] = useState(monthKey(new Date()));
   const [excelExporting, setExcelExporting] = useState(false);
   const [addBuildingRepairOpen, setAddBuildingRepairOpen] = useState(false);
+  const [maintenanceRepeatsMonthly, setMaintenanceRepeatsMonthly] = useState(false);
   const [editBuildingRepair, setEditBuildingRepair] = useState<Repair | null>(null);
   const [maintenanceMonthFilter, setMaintenanceMonthFilter] = useState("all");
+  const [maintenanceDayFilter, setMaintenanceDayFilter] = useState("all");
   const [recurringBillFormOpen, setRecurringBillFormOpen] = useState(false);
   const [editRecurringBill, setEditRecurringBill] = useState<RecurringBuildingBill | null>(null);
   const requestedTab = searchParams.get("tab");
-  const activeTab = requestedTab === "overdue" ? "units" : requestedTab || "units";
+  const activeTab = requestedTab === "overdue"
+    ? "units"
+    : requestedTab === "recurring-bills"
+      ? "maintenance"
+      : requestedTab || "units";
   const focusedItemId = searchParams.get("item");
   const setActiveTab = (value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -188,17 +195,38 @@ export default function BuildingDetails() {
     .filter((bill) => bill.active)
     .reduce((sum, bill) => sum + bill.amount, 0);
   const buildingRepairs = data.repairs
-    .filter((repair) => repair.buildingId === building.id && !repair.unitId)
+    .filter((repair) => repair.buildingId === building.id && !repair.unitId && !repair.recurringBillId)
     .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
+  const maintenanceHistory = [...buildingRepairs, ...outstandingRecurringBills, ...deductedRecurringBills];
   const maintenanceMonths = Array.from(new Set(
-    buildingRepairs.map((repair) => isoYearMonth(repair.repairDate)).filter(Boolean),
+    maintenanceHistory.map((repair) => isoYearMonth(repair.repairDate)).filter(Boolean),
   )).sort((a, b) => b.localeCompare(a));
-  const filteredBuildingRepairs = maintenanceMonthFilter === "all"
+  const monthFilteredBuildingRepairs = maintenanceMonthFilter === "all"
     ? buildingRepairs
     : buildingRepairs.filter((repair) => isoYearMonth(repair.repairDate) === maintenanceMonthFilter);
+  const monthFilteredMaintenanceHistory = maintenanceMonthFilter === "all"
+    ? maintenanceHistory
+    : maintenanceHistory.filter((repair) => isoYearMonth(repair.repairDate) === maintenanceMonthFilter);
+  const maintenanceDays = Array.from(new Set(
+    monthFilteredMaintenanceHistory.map((repair) => repair.repairDate).filter(Boolean),
+  )).sort((a, b) => b.localeCompare(a));
+  const filteredBuildingRepairs = maintenanceDayFilter === "all"
+    ? monthFilteredBuildingRepairs
+    : monthFilteredBuildingRepairs.filter((repair) => repair.repairDate === maintenanceDayFilter);
   const filteredMaintenanceTotal = filteredBuildingRepairs
     .filter((repair) => repair.status !== "cancelled")
     .reduce((sum, repair) => sum + repair.cost, 0);
+  const filteredOutstandingRecurringBills = outstandingRecurringBills.filter((repair) =>
+    (maintenanceMonthFilter === "all" || isoYearMonth(repair.repairDate) === maintenanceMonthFilter)
+    && (maintenanceDayFilter === "all" || repair.repairDate === maintenanceDayFilter)
+  );
+  const filteredDeductedRecurringBills = deductedRecurringBills.filter((repair) =>
+    (maintenanceMonthFilter === "all" || isoYearMonth(repair.repairDate) === maintenanceMonthFilter)
+    && (maintenanceDayFilter === "all" || repair.repairDate === maintenanceDayFilter)
+  );
+  const unifiedMaintenanceTotal = filteredMaintenanceTotal
+    + filteredOutstandingRecurringBills.reduce((sum, repair) => sum + repair.cost, 0)
+    + filteredDeductedRecurringBills.reduce((sum, repair) => sum + repair.cost, 0);
   const overdueUnitSummaries = units
     .map((unit) => {
       const overduePayments = data.payments
@@ -355,25 +383,25 @@ export default function BuildingDetails() {
           dir="rtl"
           className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-5 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-[calc(50vh-10rem)] min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:self-start min-[500px]:translate-y-0 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
-            <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+          <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-2xl bg-muted p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-[500px]:sticky min-[500px]:top-[calc(50vh-10rem)] min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:self-start min-[500px]:translate-y-0 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:overflow-visible min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
+            <TabsTrigger value="units" className="min-w-[78px] shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الوحدات
             </TabsTrigger>
-            <TabsTrigger value="financial" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="financial" className="min-w-[78px] shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               المالية
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="maintenance" className="min-w-[128px] shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <span>صيانة المبنى</span>
-              {buildingRepairs.length > 0 && (
+              {(buildingRepairs.length + outstandingRecurringBills.length) > 0 && (
                 <span className="mr-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
-                  {buildingRepairs.length}
+                  {buildingRepairs.length + outstandingRecurringBills.length}
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="performance" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="performance" className="min-w-[78px] shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الأداء
             </TabsTrigger>
-            <TabsTrigger value="recurring-bills" className="rounded-xl py-2 text-[10px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="recurring-bills" className="hidden">
               <ReceiptText className="ml-1 h-3.5 w-3.5" />
               الفواتير
               {outstandingRecurringBills.length > 0 && (
@@ -589,24 +617,35 @@ export default function BuildingDetails() {
                   صيانة عامة على العقار وغير مرتبطة بوحدة محددة
                 </p>
                 <p className="mt-1 text-sm font-bold text-amber-900">
-                  {maintenanceMonthFilter === "all" ? "الإجمالي" : `إجمالي ${formatYearMonthLabel(maintenanceMonthFilter)}`}: {formatMoney(filteredMaintenanceTotal)}
+                  {maintenanceMonthFilter === "all" ? "الإجمالي" : `إجمالي ${formatYearMonthLabel(maintenanceMonthFilter)}`}: {formatMoney(unifiedMaintenanceTotal)}
                 </p>
               </div>
-              <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAddBuildingRepairOpen(true)}>
+              <Button
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={() => {
+                  setMaintenanceRepeatsMonthly(false);
+                  setAddBuildingRepairOpen(true);
+                }}
+              >
                 <Plus className="ml-1 h-4 w-4" />
                 إضافة صيانة
               </Button>
             </div>
-            {buildingRepairs.length > 0 && (
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
+            {maintenanceHistory.length > 0 && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-bold">فلترة حسب شهر الصيانة</p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    {filteredBuildingRepairs.length} بند صيانة ظاهر
+                    {filteredBuildingRepairs.length + filteredOutstandingRecurringBills.length + filteredDeductedRecurringBills.length} بند صيانة ظاهر
                   </p>
                 </div>
-                <Select value={maintenanceMonthFilter} onValueChange={setMaintenanceMonthFilter}>
-                  <SelectTrigger className="h-9 w-[155px] shrink-0 rounded-xl text-xs">
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0">
+                <Select value={maintenanceMonthFilter} onValueChange={(value) => {
+                  setMaintenanceMonthFilter(value);
+                  setMaintenanceDayFilter("all");
+                }}>
+                  <SelectTrigger className="h-9 w-full rounded-xl text-xs sm:w-[155px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -618,11 +657,26 @@ export default function BuildingDetails() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Select value={maintenanceDayFilter} onValueChange={setMaintenanceDayFilter}>
+                  <SelectTrigger className="h-9 w-full rounded-xl text-xs sm:w-[125px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل الأيام</SelectItem>
+                    {maintenanceDays.map((day) => (
+                      <SelectItem key={day} value={day}>{formatDate(day)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                </div>
               </div>
             )}
-            {buildingRepairs.length === 0 ? (
+            {buildingRepairs.length === 0 && recurringBills.length === 0 ? (
               <EmptyState icon={Wrench} title="لا توجد صيانة عامة للمبنى" description="أضف أعمال الصيانة التي تخص العقار كاملًا من هنا" />
-            ) : filteredBuildingRepairs.length === 0 ? (
+            ) : filteredBuildingRepairs.length === 0
+              && filteredOutstandingRecurringBills.length === 0
+              && filteredDeductedRecurringBills.length === 0
+              && recurringBills.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-border bg-card p-6 text-center">
                 <Wrench className="mx-auto h-8 w-8 text-muted-foreground" />
                 <p className="mt-2 text-sm font-bold">لا توجد أعمال صيانة في هذا الشهر</p>
@@ -751,13 +805,13 @@ export default function BuildingDetails() {
             )}
           </TabsContent>
 
-          <TabsContent value="recurring-bills" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="maintenance" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-2 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-bold text-amber-950">الفواتير الشهرية للعقار</p>
+                  <p className="font-bold text-amber-950">الصيانة الشهرية للمبنى</p>
                   <p className="mt-1 text-xs leading-5 text-amber-800">
-                    مصروفات متكررة مثل المياه والحارس والنظافة، وتظهر تلقائيًا كمقترح عند استلام إيجار من العقار.
+                    بنود صيانة وخدمات متكررة مثل المياه والحارس والنظافة، وتظهر تلقائيًا كمقترح خصم عند استلام إيجار من العقار.
                   </p>
                   <p className="mt-2 text-sm font-bold text-amber-950">
                     الإجمالي الشهري: {formatMoney(monthlyRecurringTotal)}
@@ -767,11 +821,11 @@ export default function BuildingDetails() {
                   size="sm"
                   className="shrink-0 rounded-full"
                   onClick={() => {
-                    setEditRecurringBill(null);
-                    setRecurringBillFormOpen(true);
+                    setMaintenanceRepeatsMonthly(true);
+                    setAddBuildingRepairOpen(true);
                   }}
                 >
-                  <Plus className="ml-1 h-4 w-4" /> إضافة فاتورة
+                  <Plus className="ml-1 h-4 w-4" /> إضافة صيانة شهرية
                 </Button>
               </div>
             </div>
@@ -779,8 +833,8 @@ export default function BuildingDetails() {
             {recurringBills.length === 0 ? (
               <EmptyState
                 icon={ReceiptText}
-                title="لا توجد فواتير شهرية"
-                description="أضف فاتورة المياه أو راتب الحارس أو أي مصروف متكرر للعقار"
+                title="لا توجد صيانة شهرية"
+                description="أضف بند مياه أو حارس أو نظافة أو أي صيانة متكررة للمبنى"
               />
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
@@ -848,12 +902,12 @@ export default function BuildingDetails() {
               </div>
             )}
 
-            {outstandingRecurringBills.length > 0 && (
+            {filteredOutstandingRecurringBills.length > 0 && (
               <div className="rounded-3xl border border-amber-200 bg-card p-4">
-                <p className="font-bold">الاستحقاقات غير المخصومة</p>
+                <p className="font-bold">الصيانة الشهرية غير المخصومة</p>
                 <p className="mt-1 text-xs text-muted-foreground">ستظهر هذه البنود في نافذة استلام الدفعة للعقار نفسه.</p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {outstandingRecurringBills.map((item) => (
+                  {filteredOutstandingRecurringBills.map((item) => (
                     <div key={item.id} className="flex items-center justify-between rounded-2xl bg-amber-50 p-3 text-xs">
                       <div>
                         <p className="font-bold">{item.description}</p>
@@ -866,14 +920,14 @@ export default function BuildingDetails() {
               </div>
             )}
 
-            {deductedRecurringBills.length > 0 && (
+            {filteredDeductedRecurringBills.length > 0 && (
               <div className="rounded-3xl border border-emerald-200 bg-card p-4">
-                <p className="font-bold">سجل الفواتير المخصومة</p>
+                <p className="font-bold">سجل الصيانة الشهرية المخصومة</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   يوضح من أي إيجار خُصمت كل فاتورة شهرية، مع الاحتفاظ بالسجل حتى عند حذف جدول الفاتورة.
                 </p>
                 <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                  {deductedRecurringBills.map((item) => {
+                  {filteredDeductedRecurringBills.map((item) => {
                     const linkedPayment = item.deductedFromPaymentId
                       ? data.payments.find((payment) => payment.id === item.deductedFromPaymentId)
                       : undefined;
@@ -1033,7 +1087,7 @@ export default function BuildingDetails() {
           setRecurringBillFormOpen(open);
           if (!open) setEditRecurringBill(null);
         }}
-        title={editRecurringBill ? "تعديل الفاتورة الشهرية" : "إضافة فاتورة شهرية"}
+        title={editRecurringBill ? "تعديل الصيانة الشهرية" : "إضافة صيانة شهرية"}
       >
         <RecurringBuildingBillForm
           key={editRecurringBill?.id || "new-recurring-bill"}
@@ -1059,7 +1113,7 @@ export default function BuildingDetails() {
             }));
             setRecurringBillFormOpen(false);
             setEditRecurringBill(null);
-            showSuccess(editRecurringBill ? "تم تعديل الفاتورة الشهرية" : "تمت إضافة الفاتورة الشهرية");
+            showSuccess(editRecurringBill ? "تم تعديل الصيانة الشهرية" : "تمت إضافة الصيانة الشهرية");
           }}
         />
       </FormSheet>
@@ -1176,24 +1230,59 @@ export default function BuildingDetails() {
         />
       </FormSheet>
       <FormSheet open={addBuildingRepairOpen} onOpenChange={setAddBuildingRepairOpen} title="إضافة صيانة للمبنى">
-        <RepairForm
-          onSubmit={(values) => {
-            update((prev) => ({
-              ...prev,
-              repairs: [
-                ...prev.repairs,
-                {
-                  id: genId(),
-                  buildingId: building.id,
-                  createdAt: new Date().toISOString(),
-                  ...values,
-                },
-              ],
-            }));
-            setAddBuildingRepairOpen(false);
-            showSuccess("تمت إضافة صيانة المبنى");
-          }}
-        />
+        <div className="space-y-4">
+          <label className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+            <span>
+              <span className="block text-sm font-bold text-amber-950">تتكرر هذه الصيانة شهريًا</span>
+              <span className="mt-1 block text-[10px] leading-5 text-amber-800">
+                عند تفعيلها ينشئ التطبيق استحقاقًا جديدًا كل شهر ويقترح خصمه من دفعات إيجار العقار.
+              </span>
+            </span>
+            <Switch checked={maintenanceRepeatsMonthly} onCheckedChange={setMaintenanceRepeatsMonthly} />
+          </label>
+          {maintenanceRepeatsMonthly ? (
+            <RecurringBuildingBillForm
+              showActiveToggle={false}
+              onSubmit={async (values) => {
+                const pausedYearMonth = values.active ? undefined : monthKey(new Date());
+                await update((prev) => ({
+                  ...prev,
+                  recurringBuildingBills: [
+                    ...prev.recurringBuildingBills,
+                    {
+                      id: genId(),
+                      buildingId: building.id,
+                      createdAt: new Date().toISOString(),
+                      pausedYearMonth,
+                      ...values,
+                    },
+                  ],
+                }));
+                setAddBuildingRepairOpen(false);
+                showSuccess("تمت إضافة صيانة شهرية للمبنى");
+              }}
+            />
+          ) : (
+            <RepairForm
+              onSubmit={(values) => {
+                update((prev) => ({
+                  ...prev,
+                  repairs: [
+                    ...prev.repairs,
+                    {
+                      id: genId(),
+                      buildingId: building.id,
+                      createdAt: new Date().toISOString(),
+                      ...values,
+                    },
+                  ],
+                }));
+                setAddBuildingRepairOpen(false);
+                showSuccess("تمت إضافة صيانة المبنى");
+              }}
+            />
+          )}
+        </div>
       </FormSheet>
       <FormSheet open={!!editBuildingRepair} onOpenChange={(open) => !open && setEditBuildingRepair(null)} title="تعديل صيانة المبنى">
         {editBuildingRepair && (
