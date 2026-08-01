@@ -204,9 +204,17 @@ export function normalizeData(
           ...DEFAULT_SETTINGS.whatsappTemplates,
           ...(parsedSettings.whatsappTemplates || {}),
         },
+        companyWhatsappTemplates: {
+          ...DEFAULT_SETTINGS.companyWhatsappTemplates,
+          ...(parsedSettings.companyWhatsappTemplates || {}),
+        },
         emailTemplates: {
           ...DEFAULT_SETTINGS.emailTemplates,
           ...(parsedSettings.emailTemplates || {}),
+        },
+        companyEmailTemplates: {
+          ...DEFAULT_SETTINGS.companyEmailTemplates,
+          ...(parsedSettings.companyEmailTemplates || {}),
         },
         automaticCommunications: {
           ...DEFAULT_SETTINGS.automaticCommunications,

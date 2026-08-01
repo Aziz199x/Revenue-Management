@@ -608,7 +608,9 @@ export interface Settings {
   automaticGoogleDriveBackup: boolean;
   backupRetentionCount: number;
   whatsappTemplates: WhatsAppTemplates;
+  companyWhatsappTemplates: WhatsAppTemplates;
   emailTemplates: EmailTemplates;
+  companyEmailTemplates: EmailTemplates;
   automaticCommunications: AutomaticCommunicationSettings;
 }
 
@@ -641,6 +643,15 @@ export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
     "السلام عليكم، نود إفادتكم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي في تاريخ {contractEndDate}. يرجى التواصل لتجديد العقد أو لترتيب التسليم. وشكرًا لكم.",
 };
 
+export const DEFAULT_COMPANY_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
+  paymentReminder:
+    "السلام عليكم، السادة/ {tenantName}، نود تذكيركم بأن موعد سداد إيجار الوحدة {unitName} في عقار {buildingName} قد حلّ، بمبلغ {amount} ر.س. نأمل منكم التكرم بإتمام السداد، وشكرًا لكم.",
+  overduePayment:
+    "السلام عليكم، السادة/ {tenantName}، نفيدكم بأن دفعة إيجار الوحدة {unitName} في عقار {buildingName} مستحقة ولم يتم تسجيل سدادها حتى الآن، بمبلغ {amount} ر.س. نأمل منكم سرعة السداد، وشكرًا لكم.",
+  contractExpiry:
+    "السلام عليكم، السادة/ {tenantName}، نفيدكم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}. يرجى التواصل لتجديد العقد أو ترتيب التسليم، وشكرًا لكم.",
+};
+
 export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
   paymentReminder: {
     subject: "تذكير بموعد سداد الإيجار – {unitName}",
@@ -656,6 +667,24 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
     subject: "تذكير بقرب انتهاء عقد الإيجار – {unitName}",
     body:
       "{recipientGreeting}،\n\nنود إشعاركم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}.\n\nيرجى التواصل معنا لاستكمال إجراءات التجديد أو التسليم حسب الاتفاق.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
+};
+
+export const DEFAULT_COMPANY_EMAIL_TEMPLATES: EmailTemplates = {
+  paymentReminder: {
+    subject: "تذكير بموعد سداد الإيجار – {unitName}",
+    body:
+      "السادة/ {tenantName} المحترمون،\n\nنود تذكيركم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، تستحق بتاريخ {dueDate} بمبلغ {amount}.\n\nنأمل منكم التكرم بإتمام السداد في الموعد المحدد. إذا تم السداد، يرجى تجاهل هذه الرسالة.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
+  overduePayment: {
+    subject: "إشعار بتأخر دفعة الإيجار – {unitName}",
+    body:
+      "السادة/ {tenantName} المحترمون،\n\nنفيدكم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، والمستحقة بتاريخ {dueDate} بمبلغ {amount}، لم يتم تسجيل سدادها حتى تاريخه.\n\nنأمل منكم التكرم بالسداد في أقرب وقت أو التواصل معنا عند وجود أي ملاحظة.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
+  contractExpiry: {
+    subject: "تذكير بقرب انتهاء عقد الإيجار – {unitName}",
+    body:
+      "السادة/ {tenantName} المحترمون،\n\nنود إشعاركم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}.\n\nيرجى التواصل معنا لاستكمال إجراءات التجديد أو التسليم حسب الاتفاق.\n\nوتفضلوا بقبول فائق الاحترام.",
   },
 };
 
@@ -686,7 +715,9 @@ export const DEFAULT_SETTINGS: Settings = {
   automaticGoogleDriveBackup: true,
   backupRetentionCount: 14,
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
+  companyWhatsappTemplates: DEFAULT_COMPANY_WHATSAPP_TEMPLATES,
   emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+  companyEmailTemplates: DEFAULT_COMPANY_EMAIL_TEMPLATES,
   automaticCommunications: {
     enabled: false,
     emailEnabled: false,

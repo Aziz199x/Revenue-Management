@@ -38,8 +38,8 @@ const settingsItems = [
   {
     to: "/settings/whatsapp",
     icon: MessageCircle,
-    title: "إعدادات واتساب",
-    description: "إدارة تطبيق واتساب وقوالب الرسائل",
+    title: "قوالب التبليغ",
+    description: "إدارة قوالب واتساب والبريد للأفراد والشركات",
   },
 ];
 

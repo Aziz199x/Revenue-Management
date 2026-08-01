@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { AtSign, CheckCircle2, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
+import { CheckCircle2, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -26,13 +25,6 @@ import {
 } from "@/utils/communicationAccounts";
 import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
 import { showError, showSuccess } from "@/utils/toast";
-import { DEFAULT_EMAIL_TEMPLATES, EmailTemplates } from "@/data/types";
-
-const templateLabels: Record<keyof EmailTemplates, string> = {
-  paymentReminder: "تذكير بموعد الإيجار",
-  overduePayment: "إشعار دفعة متأخرة",
-  contractExpiry: "تذكير انتهاء العقد",
-};
 
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
@@ -65,23 +57,6 @@ export default function AutomaticCommunicationsSettingsPage() {
         automaticCommunications: {
           ...previous.settings.automaticCommunications,
           ...patch,
-        },
-      },
-    }));
-  };
-
-  const updateEmailTemplate = (
-    kind: keyof EmailTemplates,
-    field: "subject" | "body",
-    value: string,
-  ) => {
-    update((previous) => ({
-      ...previous,
-      settings: {
-        ...previous.settings,
-        emailTemplates: {
-          ...previous.settings.emailTemplates,
-          [kind]: { ...previous.settings.emailTemplates[kind], [field]: value },
         },
       },
     }));
@@ -325,32 +300,6 @@ export default function AutomaticCommunicationsSettingsPage() {
               updateSchedule({ whatsappEnabled: false });
             }}>فصل الحساب</Button>
           </div>
-        </section>
-
-        <section className="space-y-4 rounded-3xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2"><AtSign className="h-5 w-5 text-primary" /><p className="font-bold">قوالب البريد الرسمية</p></div>
-            <Button variant="ghost" size="sm" onClick={() => update((previous) => ({
-              ...previous,
-              settings: { ...previous.settings, emailTemplates: DEFAULT_EMAIL_TEMPLATES },
-            }))}>استعادة الافتراضي</Button>
-          </div>
-          {(Object.keys(templateLabels) as Array<keyof EmailTemplates>).map((kind) => (
-            <div key={kind} className="space-y-2 rounded-2xl bg-muted/60 p-3">
-              <p className="text-sm font-bold">{templateLabels[kind]}</p>
-              <div>
-                <Label className="text-xs">عنوان الرسالة</Label>
-                <Input value={data.settings.emailTemplates[kind].subject} onChange={(event) => updateEmailTemplate(kind, "subject", event.target.value)} className="mt-1 rounded-xl" />
-              </div>
-              <div>
-                <Label className="text-xs">نص الرسالة</Label>
-                <Textarea value={data.settings.emailTemplates[kind].body} onChange={(event) => updateEmailTemplate(kind, "body", event.target.value)} className="mt-1 min-h-40 rounded-xl" />
-              </div>
-            </div>
-          ))}
-          <p className="rounded-xl bg-secondary p-2 text-[10px] leading-5 text-muted-foreground">
-            المتغيرات: {"{tenantName}"} {"{buildingName}"} {"{unitName}"} {"{amount}"} {"{dueDate}"} {"{periodStart}"} {"{periodEnd}"} {"{contractEndDate}"}
-          </p>
         </section>
 
         <section className="space-y-3 rounded-3xl border border-border bg-card p-4">

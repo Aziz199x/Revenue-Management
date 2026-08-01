@@ -40,7 +40,7 @@ import {
   calculateNetAmountToTransferToOwner,
 } from "@/data/helpers";
 import { fillTemplate } from "@/utils/whatsapp";
-import { getTenantPhoneNumbers } from "@/utils/automaticCommunications";
+import { getTenantPhoneNumbers, getWhatsAppTemplatesForTenant } from "@/utils/automaticCommunications";
 import { useMemo, useState } from "react";
 
 const DASHBOARD_PROPERTY_KEY = "dashboard_selected_property";
@@ -419,7 +419,7 @@ export default function Index() {
                       const phones = getTenantPhoneNumbers(tenant);
                       if (phones.length === 0) return;
                       const msg = fillTemplate(
-                        data.settings.whatsappTemplates.overduePayment,
+                        getWhatsAppTemplatesForTenant(data, tenant).overduePayment,
                         {
                           tenantName: tenant.name,
                           buildingName: pc.buildingName,

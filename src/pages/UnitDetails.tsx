@@ -146,6 +146,7 @@ import {
   getTenantEmailAddresses,
   getTenantPhoneNumbers,
   getFormalTenantGreeting,
+  getWhatsAppTemplatesForTenant,
 } from "@/utils/automaticCommunications";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
@@ -790,7 +791,7 @@ export default function UnitDetails() {
                         className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700 transition-transform active:scale-95"
                         onClick={() => {
                           const msg = fillTemplate(
-                            data.settings.whatsappTemplates.paymentReminder,
+                            getWhatsAppTemplatesForTenant(data, tenant).paymentReminder,
                             {
                               tenantName: tenant.name,
                               buildingName: building?.name || "",
@@ -812,7 +813,7 @@ export default function UnitDetails() {
                           type="button"
                           className="flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-[11px] font-semibold text-violet-700 transition-transform active:scale-95"
                           onClick={() => {
-                            const msg = fillTemplate(data.settings.whatsappTemplates.paymentReminder, {
+                            const msg = fillTemplate(getWhatsAppTemplatesForTenant(data, tenant).paymentReminder, {
                               tenantName: tenant.name,
                               buildingName: building?.name || "",
                               unitName: unit.name,

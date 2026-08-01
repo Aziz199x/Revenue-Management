@@ -83,6 +83,18 @@ export function getFormalTenantGreeting(tenant?: Tenant, fallbackName = ""): str
     : `السيد/السيدة ${name} المحترم/ة`;
 }
 
+export function getWhatsAppTemplatesForTenant(data: AppData, tenant?: Tenant) {
+  return tenant?.tenantType === "company"
+    ? (data.settings.companyWhatsappTemplates || data.settings.whatsappTemplates)
+    : data.settings.whatsappTemplates;
+}
+
+export function getEmailTemplatesForTenant(data: AppData, tenant?: Tenant) {
+  return tenant?.tenantType === "company"
+    ? (data.settings.companyEmailTemplates || data.settings.emailTemplates)
+    : data.settings.emailTemplates;
+}
+
 function fillTenantTemplate(
   template: string,
   vars: Record<string, string | undefined>,
@@ -142,7 +154,7 @@ export function buildPaymentEmailContent(
   const kind = forcedKind || (effectiveStatus(payment) === "overdue" || dueDate < localDate(new Date())
     ? "overduePayment"
     : "paymentReminder");
-  const template = data.settings.emailTemplates[kind];
+  const template = getEmailTemplatesForTenant(data, tenant)[kind];
   const vars = templateVars(data, payment, tenant);
   return {
     kind,
@@ -165,11 +177,12 @@ export function buildContractCommunicationContent(data: AppData, contract: Contr
     contractEndDate: formatFormalDate(contract.endDate),
     ownerName: "",
   };
-  const emailTemplate = data.settings.emailTemplates.contractExpiry;
+  const emailTemplate = getEmailTemplatesForTenant(data, tenant).contractExpiry;
+  const whatsappTemplate = getWhatsAppTemplatesForTenant(data, tenant).contractExpiry;
   return {
     emailSubject: fillTenantTemplate(emailTemplate.subject, vars, tenant),
     emailBody: fillTenantTemplate(emailTemplate.body, vars, tenant),
-    whatsappBody: fillTemplate(data.settings.whatsappTemplates.contractExpiry, vars),
+    whatsappBody: fillTemplate(whatsappTemplate, vars),
   };
 }
 
@@ -252,7 +265,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           contractId: payment.contractId,
           templateKind: kind,
           provider: "whatsapp_business",
-          body: fillTemplate(data.settings.whatsappTemplates[kind], vars),
+          body: fillTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars),
           dedupeKey,
         });
       }
