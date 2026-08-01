@@ -796,3 +796,65 @@ test("automatic WhatsApp schedule supports every enabled tenant phone without du
   );
   assert.deepEqual(jobs.map((job) => job.recipient).sort(), ["966500000000", "966511111111"]);
 });
+
+test("automatic SMS schedule creates native SMS jobs for enabled tenant phones", () => {
+  const record = payment({
+    tenantId: "t-sms",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-sms",
+      unitId: "u1",
+      name: "مستأجر الرسائل",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        sendMissedAsSoonAsPossible: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: null,
+      },
+    },
+  });
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T08:00:00"),
+  );
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].channel, "sms");
+  assert.equal(jobs[0].provider, "device_sms");
+  assert.equal(jobs[0].recipient, "966500000000");
+});
+
+test("normalization gives every contract payment a stable chronological number", () => {
+  const later = payment({
+    id: "p-later",
+    paymentNumber: undefined,
+    paymentDate: "2026-08-01",
+    dueDateGregorian: "2026-08-01",
+    createdAt: "2026-01-02",
+  });
+  const earlier = payment({
+    id: "p-earlier",
+    paymentNumber: undefined,
+    paymentDate: "2026-07-01",
+    dueDateGregorian: "2026-07-01",
+    createdAt: "2026-01-01",
+  });
+  const normalized = storeData.normalizeData(data([later, earlier]));
+  assert.equal(normalized.payments.find((item) => item.id === "p-earlier").paymentNumber, 1);
+  assert.equal(normalized.payments.find((item) => item.id === "p-later").paymentNumber, 2);
+});

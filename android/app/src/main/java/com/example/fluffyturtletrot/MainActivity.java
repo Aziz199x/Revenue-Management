@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NotificationSettingsPlugin.class);
         registerPlugin(NativeRemindersPlugin.class);
         registerPlugin(AppPrintPlugin.class);
+        registerPlugin(SmsSenderPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

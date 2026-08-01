@@ -11,7 +11,11 @@ import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
 import { toast } from "sonner";
 import { runAutomaticBackupIfDue } from "@/utils/automaticBackup";
-import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
+import {
+  buildAutomaticCommunicationJobs,
+  isCommunicationOnline,
+  runAutomaticCommunicationCycle,
+} from "@/utils/automaticCommunications";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Buildings from "./pages/Buildings";
@@ -78,35 +82,98 @@ function AutomaticBackupManager() {
 function AutomaticCommunicationManager() {
   const { data, update } = useStore();
   const latestData = useRef(data);
+  const offlineNoticeShown = useRef(false);
   latestData.current = data;
 
   useEffect(() => {
     let active = true;
     let listener: { remove: () => Promise<void> } | undefined;
-    const run = async () => {
-      if (!active || !latestData.current.settings.automaticCommunications?.enabled) return;
-      const logs = await runAutomaticCommunicationCycle(latestData.current);
-      if (!active) return;
-      if (logs.length > 0) {
-        await update((previous) => ({
-          ...previous,
-          communicationLogs: [...(previous.communicationLogs || []), ...logs].slice(-2000),
-          settings: {
-            ...previous.settings,
-            automaticCommunications: {
-              ...previous.settings.automaticCommunications,
-              lastRunAt: new Date().toISOString(),
-            },
-          },
-        }));
+    const notify = async (title: string, body: string, kind: "success" | "warning" = "success") => {
+      if (kind === "warning") toast.warning(title, { description: body });
+      else toast.success(title, { description: body });
+      if (!Capacitor.isNativePlatform()) return;
+      try {
+        const { LocalNotifications } = await import("@capacitor/local-notifications");
+        const permission = await LocalNotifications.checkPermissions();
+        if (permission.display !== "granted") return;
+        await LocalNotifications.schedule({
+          notifications: [{
+            id: Math.max(1, Math.floor(Date.now() % 2_000_000_000)),
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 500) },
+          }],
+        });
+      } catch (error) {
+        console.warn("[Automatic Communications] unable to show status notification", error);
       }
     };
-    const startup = window.setTimeout(() => { void run(); }, 4000);
+    const run = async () => {
+      if (!active || !latestData.current.settings.automaticCommunications?.enabled) return;
+      const pendingJobs = buildAutomaticCommunicationJobs(latestData.current);
+      if (pendingJobs.length === 0) return;
+      if (!isCommunicationOnline()) {
+        if (!offlineNoticeShown.current) {
+          offlineNoticeShown.current = true;
+          await notify(
+            "تعذر الإرسال التلقائي",
+            "لا يوجد اتصال بالإنترنت. الرسائل معلقة وستتم المحاولة فور عودة الاتصال.",
+            "warning",
+          );
+        }
+        return;
+      }
+      offlineNoticeShown.current = false;
+      try {
+        const logs = await runAutomaticCommunicationCycle(latestData.current);
+        if (!active) return;
+        if (logs.length > 0) {
+          await update((previous) => ({
+            ...previous,
+            communicationLogs: [...(previous.communicationLogs || []), ...logs].slice(-2000),
+            settings: {
+              ...previous.settings,
+              automaticCommunications: {
+                ...previous.settings.automaticCommunications,
+                lastRunAt: new Date().toISOString(),
+              },
+            },
+          }));
+          latestData.current = {
+            ...latestData.current,
+            communicationLogs: [...(latestData.current.communicationLogs || []), ...logs].slice(-2000),
+            settings: {
+              ...latestData.current.settings,
+              automaticCommunications: {
+                ...latestData.current.settings.automaticCommunications,
+                lastRunAt: new Date().toISOString(),
+              },
+            },
+          };
+        }
+        for (const log of logs.filter((item) => item.status === "sent")) {
+          const channel = log.channel === "email" ? "البريد" : log.channel === "whatsapp" ? "واتساب" : "SMS";
+          await notify(
+            `تم إشعار ${log.tenantName || "المستأجر"}`,
+            `تم الإرسال عبر ${channel} للوحدة ${log.unitName || "غير محددة"}.`,
+          );
+        }
+        const failures = logs.filter((item) => item.status === "failed");
+        if (failures.length > 0) {
+          toast.error(`تعذر إرسال ${failures.length} رسالة؛ ستتم إعادة المحاولة تلقائيًا`);
+        }
+      } catch (error) {
+        console.warn("[Automatic Communications] cycle postponed", error);
+      }
+    };
+    const onlineHandler = () => { void run(); };
+    window.addEventListener("online", onlineHandler);
+    const startup = window.setTimeout(() => { void run(); }, 1500);
     const interval = window.setInterval(() => { void run(); }, 5 * 60 * 1000);
     if (Capacitor.isNativePlatform()) {
       void import("@capacitor/app").then(async ({ App }) => {
-        listener = await App.addListener("appStateChange", ({ isActive }) => {
-          if (isActive) void run();
+        listener = await App.addListener("appStateChange", () => {
+          void run();
         });
       });
     }
@@ -114,9 +181,10 @@ function AutomaticCommunicationManager() {
       active = false;
       window.clearTimeout(startup);
       window.clearInterval(interval);
+      window.removeEventListener("online", onlineHandler);
       void listener?.remove();
     };
-  }, [update]);
+  }, [data.settings.automaticCommunications, update]);
   return null;
 }
 

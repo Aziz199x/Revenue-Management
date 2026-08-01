@@ -14,6 +14,7 @@ import {
   paymentDueDateValue,
 } from "@/data/helpers";
 import { fillTemplate, validatePhone } from "@/utils/whatsapp";
+import { sendAutomaticSms } from "@/utils/sms";
 import {
   sendGmailEmail,
   sendOutlookEmail,
@@ -32,7 +33,7 @@ export interface AutomaticCommunicationJob {
   periodEnd?: string;
   dueDate?: string;
   templateKind: "paymentReminder" | "overduePayment" | "contractExpiry";
-  provider: "gmail" | "outlook" | "whatsapp_business";
+  provider: "gmail" | "outlook" | "whatsapp_business" | "device_sms";
   subject?: string;
   body: string;
   dedupeKey: string;
@@ -40,6 +41,10 @@ export interface AutomaticCommunicationJob {
 
 const DAY = 86_400_000;
 let running: Promise<CommunicationLog[]> | null = null;
+
+export function isCommunicationOnline(): boolean {
+  return typeof navigator === "undefined" || navigator.onLine !== false;
+}
 
 function localDate(now: Date): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -204,7 +209,7 @@ function wasRecentlyAttempted(
   if (!latest) return false;
   if (retryFailedNow && latest.status === "failed") return false;
   const elapsed = now.getTime() - new Date(latest.createdAt).getTime();
-  const retryWindow = latest.status === "sent" ? frequencyDays * DAY : 6 * 60 * 60 * 1000;
+  const retryWindow = latest.status === "sent" ? frequencyDays * DAY : 5 * 60 * 1000;
   return elapsed < retryWindow;
 }
 
@@ -214,7 +219,7 @@ function scheduleIsActive(data: AppData, now: Date, force = false): boolean {
   const today = localDate(now);
   if (settings.activeFrom && today < settings.activeFrom) return false;
   if (settings.activeUntil && today > settings.activeUntil) return false;
-  if (force) return true;
+  if (force || settings.sendMissedAsSoonAsPossible) return true;
   const [hour, minute] = (settings.sendTime || "09:00").split(":").map(Number);
   return now.getHours() * 60 + now.getMinutes() >= (hour || 0) * 60 + (minute || 0);
 }
@@ -289,6 +294,31 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       }
       }
     }
+
+    if (settings.smsEnabled) {
+      for (const phone of getTenantPhoneNumbers(tenant)) {
+        const recipient = validatePhone(phone);
+        if (!recipient) continue;
+        const dedupeKey = `${payment.id}:sms:${recipient}:${kind}`;
+        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        jobs.push({
+          channel: "sms",
+          recipient,
+          tenantId: tenant?.id,
+          tenantName: tenant?.name || payment.tenantName || "",
+          unitName: vars.unitName,
+          paymentId: payment.id,
+          contractId: payment.contractId,
+          periodStart: period.start,
+          periodEnd: period.end,
+          dueDate,
+          templateKind: kind,
+          provider: "device_sms",
+          body: fillTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars),
+          dedupeKey,
+        });
+      }
+    }
   }
   for (const contract of data.contracts) {
     if (contract.deletedAt || contract.status === "cancelled" || contract.status === "terminated" || !contract.endDate) continue;
@@ -344,6 +374,28 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       }
       }
     }
+    if (settings.smsEnabled) {
+      for (const phone of getTenantPhoneNumbers(tenant)) {
+        const recipient = validatePhone(phone);
+        if (!recipient) continue;
+        const dedupeKey = `${contract.id}:sms:${recipient}:contractExpiry`;
+        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        jobs.push({
+          channel: "sms",
+          recipient,
+          tenantId: tenant?.id,
+          tenantName: tenant?.name || contract.tenantName || "",
+          unitName: unit?.name || "",
+          contractId: contract.id,
+          periodStart: contract.startDate,
+          periodEnd: contract.endDate,
+          templateKind: "contractExpiry",
+          provider: "device_sms",
+          body: content.whatsappBody,
+          dedupeKey,
+        });
+      }
+    }
   }
   return jobs.slice(0, 100);
 }
@@ -353,12 +405,17 @@ async function executeJob(job: AutomaticCommunicationJob): Promise<void> {
     await sendGmailEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "outlook") {
     await sendOutlookEmail(job.recipient, job.subject || "تذكير", job.body);
+  } else if (job.provider === "device_sms") {
+    await sendAutomaticSms(job.recipient, job.body);
   } else {
     await sendWhatsAppTemplate(job.recipient, job.templateKind, job.body);
   }
 }
 
 export async function runAutomaticCommunicationCycle(data: AppData, now = new Date(), force = false): Promise<CommunicationLog[]> {
+  if (!isCommunicationOnline()) {
+    throw new Error("لا يوجد اتصال بالإنترنت؛ تم تأجيل الرسائل وستتم المحاولة تلقائيًا عند عودة الاتصال");
+  }
   if (running) return running;
   running = (async () => {
     const jobs = buildAutomaticCommunicationJobs(data, now, force);

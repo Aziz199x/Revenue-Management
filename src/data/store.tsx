@@ -37,8 +37,35 @@ function netOwnerAmount(payment: Payment): number {
   return Math.round((gross - (deductFee ? fee : 0) - maintenance) * 100) / 100;
 }
 
+function synchronizePaymentNumbers(payments: Payment[]): Payment[] {
+  const sequenceById = new Map<string, number>();
+  const groups = new Map<string, Payment[]>();
+  for (const payment of payments) {
+    if (payment.deletedAt || payment.status === "cancelled") continue;
+    const groupKey = payment.contractId ? `contract:${payment.contractId}` : `unit:${payment.unitId}`;
+    const group = groups.get(groupKey) || [];
+    group.push(payment);
+    groups.set(groupKey, group);
+  }
+  for (const group of groups.values()) {
+    group
+      .sort((a, b) =>
+        (a.dueDateGregorian || a.nextDueDate || a.paymentDate).localeCompare(
+          b.dueDateGregorian || b.nextDueDate || b.paymentDate,
+        )
+        || a.createdAt.localeCompare(b.createdAt)
+        || a.id.localeCompare(b.id)
+      )
+      .forEach((payment, index) => sequenceById.set(payment.id, index + 1));
+  }
+  return payments.map((payment) => ({
+    ...payment,
+    paymentNumber: sequenceById.get(payment.id) || payment.paymentNumber,
+  }));
+}
+
 function migratePayments(payments: Payment[], units: Unit[], buildings: Building[], contracts: Contract[]): Payment[] {
-  return payments.map((payment) => {
+  const migratedPayments = payments.map((payment) => {
     const gross = payment.grossAmount ?? payment.amount;
     const unit = units.find((item) => item.id === payment.unitId);
     const buildingPercent = buildings.find((item) => item.id === unit?.buildingId)?.collectionFeePercent ?? 0;
@@ -96,6 +123,8 @@ function migratePayments(payments: Payment[], units: Unit[], buildings: Building
     };
     return { ...migrated, netAmountToTransferToOwner: netOwnerAmount(migrated) };
   });
+
+  return synchronizePaymentNumbers(migratedPayments);
 }
 
 const ARABIC_MONTHS: Record<string, number> = {
@@ -280,7 +309,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       let settled = false;
       setData((prev) => {
         try {
-          const next = synchronizeOwnerTransferAllocations(withComputedUnitStatuses(updater(prev)));
+          const updated = updater(prev);
+          const next = synchronizeOwnerTransferAllocations(withComputedUnitStatuses({
+            ...updated,
+            payments: synchronizePaymentNumbers(updated.payments),
+          }));
           const auditEntries = buildFinancialAuditEntries(prev, next, context);
           const nextWithAudit = auditEntries.length > 0
             ? {

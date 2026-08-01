@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, Play, Trash2, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, MessageSquareText, Play, Trash2, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,8 @@ import {
   getWhatsAppBusinessAccount,
   saveWhatsAppBusinessAccount,
 } from "@/utils/communicationAccounts";
-import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
+import { isCommunicationOnline, runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
+import { requestAutomaticSmsPermission } from "@/utils/sms";
 import { showError, showSuccess } from "@/utils/toast";
 
 function formatLogDate(value?: string): string {
@@ -167,6 +168,10 @@ export default function AutomaticCommunicationsSettingsPage() {
       showError("فعّل الإرسال التلقائي أولًا");
       return;
     }
+    if (!isCommunicationOnline()) {
+      showError("لا يوجد اتصال بالإنترنت؛ ستتم المحاولة تلقائيًا عند عودة الاتصال");
+      return;
+    }
     setRunning(true);
     try {
       const logs = await runAutomaticCommunicationCycle(data, new Date(), true);
@@ -213,7 +218,7 @@ export default function AutomaticCommunicationsSettingsPage() {
 
   return (
     <div>
-      <SettingsSubPageHeader title="الإرسال التلقائي" subtitle="جدولة البريد وWhatsApp Business وتوثيق النتائج" />
+      <SettingsSubPageHeader title="الإرسال التلقائي" subtitle="جدولة البريد وWhatsApp Business وSMS وتوثيق النتائج" />
       <div className="space-y-4 p-4">
         <section className="space-y-4 rounded-3xl border border-border bg-card p-4">
           <div className="flex items-center justify-between gap-3">
@@ -224,7 +229,7 @@ export default function AutomaticCommunicationsSettingsPage() {
             <Switch checked={settings.enabled} onCheckedChange={(enabled) => updateSchedule({ enabled })} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-muted p-3">
               <div className="flex items-center justify-between">
                 <Label>البريد الإلكتروني</Label>
@@ -237,7 +242,51 @@ export default function AutomaticCommunicationsSettingsPage() {
                 <Switch checked={settings.whatsappEnabled} onCheckedChange={(whatsappEnabled) => updateSchedule({ whatsappEnabled })} />
               </div>
             </div>
+            <div className="rounded-2xl bg-muted p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1"><MessageSquareText className="h-4 w-4" /> SMS تلقائي</Label>
+                <Switch
+                  checked={settings.smsEnabled}
+                  onCheckedChange={async (smsEnabled) => {
+                    if (!smsEnabled) {
+                      updateSchedule({ smsEnabled: false });
+                      return;
+                    }
+                    try {
+                      const granted = await requestAutomaticSmsPermission();
+                      if (!granted) {
+                        showError("لم يتم منح إذن إرسال رسائل SMS");
+                        return;
+                      }
+                      updateSchedule({ smsEnabled: true });
+                      showSuccess("تم تفعيل الإرسال التلقائي عبر SMS");
+                    } catch (error) {
+                      showError(error instanceof Error ? error.message : "تعذر طلب إذن SMS");
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+            <div>
+              <Label>الإرسال في أقرب وقت عند فوات الموعد</Label>
+              <p className="mt-1 text-[10px] leading-4 text-amber-900">
+                عند تشغيله تُرسل الرسائل المعلقة فور فتح التطبيق أو عودة الإنترنت، مع الالتزام بمدة التكرار.
+              </p>
+            </div>
+            <Switch
+              checked={settings.sendMissedAsSoonAsPossible}
+              onCheckedChange={(sendMissedAsSoonAsPossible) => updateSchedule({ sendMissedAsSoonAsPossible })}
+            />
+          </div>
+          {settings.smsEnabled && (
+            <p className="rounded-xl border border-sky-200 bg-sky-50 p-2 text-[10px] leading-5 text-sky-900">
+              تُرسل رسائل SMS مباشرة من شريحة الهاتف الافتراضية بعد منح الإذن، وتستخدم قالب واتساب الموافق لنوع المستأجر.
+              قد تطبق شركة الاتصالات تكلفة الرسائل المعتادة.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -278,7 +327,8 @@ export default function AutomaticCommunicationsSettingsPage() {
             <Play className="ml-1 h-4 w-4" /> {running ? "جاري فحص وإرسال الرسائل..." : "فحص المستحق وإرساله الآن"}
           </Button>
           <p className="text-[10px] leading-5 text-muted-foreground">
-            الإرسال المحلي يعمل عند تشغيل التطبيق أو عودته للواجهة. الاستمرار أثناء إغلاق الهاتف بالكامل يحتاج لاحقًا خادم جدولة سحابي.
+            الإرسال التلقائي يعمل عندما يكون التطبيق يعمل في الخلفية ويوجد اتصال بالإنترنت.
+            عند إغلاق الهاتف أو التطبيق بالكامل، تُرسل الرسائل المعلقة عند أول تشغيل وفق إعداد «الإرسال في أقرب وقت».
           </p>
         </section>
 
@@ -517,7 +567,9 @@ export default function AutomaticCommunicationsSettingsPage() {
             return (
               <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-bold">{log.channel === "email" ? "بريد" : "واتساب"} · {tenantName}</p>
+                  <p className="font-bold">
+                    {log.channel === "email" ? "بريد" : log.channel === "whatsapp" ? "واتساب" : "SMS"} · {tenantName}
+                  </p>
                   <div className="flex items-center gap-1">
                     <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
                     <Button

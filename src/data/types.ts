@@ -545,6 +545,8 @@ export interface AutomaticCommunicationSettings {
   enabled: boolean;
   emailEnabled: boolean;
   whatsappEnabled: boolean;
+  smsEnabled: boolean;
+  sendMissedAsSoonAsPossible: boolean;
   frequencyDays: number;
   sendTime: string;
   daysBeforeDue: number;
@@ -555,7 +557,7 @@ export interface AutomaticCommunicationSettings {
   lastRunAt?: string;
 }
 
-export type CommunicationChannel = "email" | "whatsapp";
+export type CommunicationChannel = "email" | "whatsapp" | "sms";
 export type CommunicationStatus = "sent" | "failed" | "skipped";
 
 export interface CommunicationLog {
@@ -574,7 +576,7 @@ export interface CommunicationLog {
   periodEnd?: string;
   dueDate?: string;
   templateKind: "paymentReminder" | "overduePayment" | "contractExpiry";
-  provider: "gmail" | "outlook" | "whatsapp_business";
+  provider: "gmail" | "outlook" | "whatsapp_business" | "device_sms";
   subject?: string;
   error?: string;
   dedupeKey: string;
@@ -727,6 +729,8 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     emailEnabled: false,
     whatsappEnabled: false,
+    smsEnabled: false,
+    sendMissedAsSoonAsPossible: true,
     frequencyDays: 1,
     sendTime: "09:00",
     daysBeforeDue: 3,
