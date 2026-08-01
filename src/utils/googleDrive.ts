@@ -2,7 +2,13 @@ import { Capacitor } from "@capacitor/core";
 import { AppData } from "@/data/types";
 
 const CLIENT_ID = "777494765857-lhndrn52q4ptemrekskbf0kgepei21mi.apps.googleusercontent.com";
-const SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"];
+const SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.send",
+];
 const FOLDER_NAME = "Revenue Management Backups";
 
 const TOKEN_KEY = "google_drive_token";
@@ -492,6 +498,7 @@ export async function createBackupPayload(data: AppData): Promise<object> {
       collectionFeeSettlements: data.collectionFeeSettlements,
       financialAuditLog: data.financialAuditLog,
       financialMonthClosures: data.financialMonthClosures,
+      communicationLogs: data.communicationLogs,
       settings: data.settings,
     },
   };

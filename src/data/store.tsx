@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract } from "./types";
+import { AppData, EMPTY_DATA, DEFAULT_SETTINGS, Payment, Building, Unit, Contract, Tenant } from "./types";
 import { withComputedUnitStatuses } from "./unitStatus";
 import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAudit";
 import { loadAppDataFromSQLite, saveAppDataToSQLite } from "./sqliteRepository";
@@ -143,7 +143,10 @@ function migrateContracts(contracts: Contract[]): Contract[] {
 
 const STORAGE_KEY = "rental-manager-data-v1";
 
-function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["settings"]> & { defaultCollectionFeePercent?: number } }): AppData {
+export function normalizeData(
+  parsed: Partial<AppData> & { settings?: Partial<AppData["settings"]> & { defaultCollectionFeePercent?: number } },
+  throwOnError = false,
+): AppData {
   try {
     const parsedSettings = parsed.settings || {};
     const legacyFee = Number(parsedSettings.defaultCollectionFeePercent) || 0;
@@ -157,11 +160,25 @@ function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["
     })) as Building[];
     const units: Unit[] = parsed.units || [];
     const contracts = migrateContracts(parsed.contracts || []);
+    const tenants: Tenant[] = (parsed.tenants || []).map((tenant) => ({
+      ...tenant,
+      emailAddresses: tenant.emailAddresses?.length
+        ? tenant.emailAddresses
+        : tenant.email
+        ? [{
+            id: `email-${tenant.id}-primary`,
+            email: tenant.email,
+            label: "الرئيسي",
+            enabled: true,
+          }]
+        : [],
+    }));
     return synchronizeOwnerTransferAllocations(withComputedUnitStatuses({
       ...EMPTY_DATA,
       ...parsed,
       buildings,
       units,
+      tenants,
       contracts,
       payments: migratePayments(parsed.payments || [], units, buildings, contracts),
       repairs: (parsed.repairs || []).map((repair: AppData["repairs"][number]) => ({
@@ -172,13 +189,26 @@ function normalizeData(parsed: Partial<AppData> & { settings?: Partial<AppData["
       settings: {
         ...DEFAULT_SETTINGS,
         ...settingsWithoutLegacyFee,
+        whatsappTemplates: {
+          ...DEFAULT_SETTINGS.whatsappTemplates,
+          ...(parsedSettings.whatsappTemplates || {}),
+        },
+        emailTemplates: {
+          ...DEFAULT_SETTINGS.emailTemplates,
+          ...(parsedSettings.emailTemplates || {}),
+        },
+        automaticCommunications: {
+          ...DEFAULT_SETTINGS.automaticCommunications,
+          ...(parsedSettings.automaticCommunications || {}),
+        },
         defaultContractExpiryReminderDays:
           parsedSettings.defaultContractExpiryReminderDays
           ?? parsedSettings.contractReminderDays
           ?? DEFAULT_SETTINGS.defaultContractExpiryReminderDays,
       },
     }));
-  } catch {
+  } catch (error) {
+    if (throwOnError) throw error;
     return EMPTY_DATA;
   }
 }
@@ -256,26 +286,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replaceAll = useCallback((newData: AppData) => {
-    const importedSettings = newData.settings as AppData["settings"] & { defaultCollectionFeePercent?: number };
-    const legacyFee = Number(importedSettings.defaultCollectionFeePercent) || 0;
-    const { defaultCollectionFeePercent: _legacyFee, ...settingsWithoutLegacyFee } = importedSettings;
-    const buildings = (newData.buildings || []).map((building) => ({
-      ...building,
-      collectionFeePercent: building.collectionFeePercent ?? legacyFee,
-    }));
-    setData(withComputedUnitStatuses({
-      ...EMPTY_DATA,
-      ...newData,
-      buildings,
-      contracts: migrateContracts(newData.contracts || []),
-      payments: migratePayments(newData.payments || [], newData.units || [], buildings),
-      repairs: (newData.repairs || []).map((repair) => ({
-        ...repair,
-        isDeductedFromOwnerTransfer: repair.isDeductedFromOwnerTransfer ?? false,
-        deductedFromPaymentId: repair.deductedFromPaymentId ?? null,
-      })),
-      settings: { ...DEFAULT_SETTINGS, ...settingsWithoutLegacyFee },
-    }));
+    setData(normalizeData(newData, true));
   }, []);
 
   return (

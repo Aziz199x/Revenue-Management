@@ -11,6 +11,7 @@ import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
 import { toast } from "sonner";
 import { runAutomaticBackupIfDue } from "@/utils/automaticBackup";
+import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Buildings from "./pages/Buildings";
@@ -24,6 +25,7 @@ import SettingsPage from "./pages/SettingsPage";
 import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
 import HomeDisplaySettingsPage from "./pages/settings/HomeDisplaySettingsPage";
 import WhatsAppSettingsPage from "./pages/settings/WhatsAppSettingsPage";
+import AutomaticCommunicationsSettingsPage from "./pages/settings/AutomaticCommunicationsSettingsPage";
 import TenantRequests from "./pages/TenantRequests";
 import RequestDetails from "./pages/RequestDetails";
 import BackupPage from "./pages/BackupPage";
@@ -70,6 +72,51 @@ function AutomaticBackupManager() {
     return () => window.clearTimeout(timer);
   }, [data]);
 
+  return null;
+}
+
+function AutomaticCommunicationManager() {
+  const { data, update } = useStore();
+  const latestData = useRef(data);
+  latestData.current = data;
+
+  useEffect(() => {
+    let active = true;
+    let listener: { remove: () => Promise<void> } | undefined;
+    const run = async () => {
+      if (!active || !latestData.current.settings.automaticCommunications?.enabled) return;
+      const logs = await runAutomaticCommunicationCycle(latestData.current);
+      if (!active) return;
+      if (logs.length > 0) {
+        await update((previous) => ({
+          ...previous,
+          communicationLogs: [...(previous.communicationLogs || []), ...logs].slice(-2000),
+          settings: {
+            ...previous.settings,
+            automaticCommunications: {
+              ...previous.settings.automaticCommunications,
+              lastRunAt: new Date().toISOString(),
+            },
+          },
+        }));
+      }
+    };
+    const startup = window.setTimeout(() => { void run(); }, 4000);
+    const interval = window.setInterval(() => { void run(); }, 5 * 60 * 1000);
+    if (Capacitor.isNativePlatform()) {
+      void import("@capacitor/app").then(async ({ App }) => {
+        listener = await App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) void run();
+        });
+      });
+    }
+    return () => {
+      active = false;
+      window.clearTimeout(startup);
+      window.clearInterval(interval);
+      void listener?.remove();
+    };
+  }, [update]);
   return null;
 }
 
@@ -199,6 +246,7 @@ const App = () => {
       <StoreProvider>
         <NotificationChecker />
         <AutomaticBackupManager />
+        <AutomaticCommunicationManager />
         <BrowserRouter>
           <BackButtonHandler />
           <NotificationNavigationHandler />
@@ -220,6 +268,7 @@ const App = () => {
               <Route path="/settings/home" element={<HomeDisplaySettingsPage />} />
               <Route path="/settings/backup" element={<BackupPage />} />
               <Route path="/settings/whatsapp" element={<WhatsAppSettingsPage />} />
+              <Route path="/settings/communications" element={<AutomaticCommunicationsSettingsPage />} />
               <Route path="/backup" element={<BackupPage />} />
               <Route path="/requests" element={<TenantRequests />} />
               <Route path="/requests/:requestId" element={<RequestDetails />} />

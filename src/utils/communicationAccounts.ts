@@ -1,0 +1,328 @@
+import { Capacitor } from "@capacitor/core";
+import { getConnectedEmail, getValidGoogleAccessToken, signIn as signInGoogle } from "@/utils/googleDrive";
+
+const OUTLOOK_KEY = "automatic_email_outlook_account";
+const WHATSAPP_KEY = "automatic_whatsapp_business_account";
+const OUTLOOK_REDIRECT_URI = "revenuemanagement://oauth/callback";
+
+interface OutlookAccount {
+  clientId: string;
+  email: string;
+  displayName?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+}
+
+export interface WhatsAppBusinessAccount {
+  phoneNumberId: string;
+  accessToken: string;
+  graphVersion: string;
+  languageCode: string;
+  paymentTemplate: string;
+  overdueTemplate: string;
+  contractTemplate: string;
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function utf8ToBase64Url(value: string): string {
+  return bytesToBase64Url(new TextEncoder().encode(value));
+}
+
+function utf8ToBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function randomUrlSafe(size = 32): string {
+  const bytes = new Uint8Array(size);
+  crypto.getRandomValues(bytes);
+  return bytesToBase64Url(bytes);
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return bytesToBase64Url(new Uint8Array(digest));
+}
+
+function readJson<T>(key: string): T | null {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, value: unknown): void {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+export function getGmailAccountEmail(): string | null {
+  return getConnectedEmail();
+}
+
+export async function connectGmail(): Promise<string> {
+  await signInGoogle({ forceAccountSelection: true });
+  const email = getConnectedEmail();
+  if (!email) throw new Error("تعذر قراءة بريد حساب Google");
+  return email;
+}
+
+export async function sendGmailEmail(to: string, subject: string, body: string): Promise<void> {
+  const accessToken = await getValidGoogleAccessToken();
+  const from = getConnectedEmail() || "";
+  const mime = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${utf8ToBase64(subject)}?=`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    body,
+  ].join("\r\n");
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw: utf8ToBase64Url(mime) }),
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`فشل إرسال Gmail (${response.status}): ${details.slice(0, 180)}`);
+  }
+}
+
+export function getOutlookAccount(): Pick<OutlookAccount, "email" | "displayName" | "clientId"> | null {
+  const account = readJson<OutlookAccount>(OUTLOOK_KEY);
+  return account ? { email: account.email, displayName: account.displayName, clientId: account.clientId } : null;
+}
+
+export function disconnectOutlook(): void {
+  localStorage.removeItem(OUTLOOK_KEY);
+}
+
+async function exchangeOutlookCode(clientId: string, code: string, verifier: string): Promise<OutlookAccount> {
+  const form = new URLSearchParams({
+    client_id: clientId,
+    code,
+    redirect_uri: OUTLOOK_REDIRECT_URI,
+    grant_type: "authorization_code",
+    code_verifier: verifier,
+    scope: "openid email offline_access User.Read Mail.Send",
+  });
+  const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form,
+  });
+  const token = await tokenResponse.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error_description?: string;
+  };
+  if (!tokenResponse.ok || !token.access_token) {
+    throw new Error(token.error_description || "تعذر الحصول على صلاحية Outlook");
+  }
+  const profileResponse = await fetch("https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName", {
+    headers: { Authorization: `Bearer ${token.access_token}` },
+  });
+  const profile = await profileResponse.json() as { displayName?: string; mail?: string; userPrincipalName?: string };
+  if (!profileResponse.ok) throw new Error("تعذر قراءة بيانات حساب Outlook");
+  return {
+    clientId,
+    email: profile.mail || profile.userPrincipalName || "",
+    displayName: profile.displayName,
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token,
+    expiresAt: Date.now() + Math.max(60, Number(token.expires_in || 3600) - 120) * 1000,
+  };
+}
+
+export async function connectOutlook(clientId: string): Promise<string> {
+  if (!Capacitor.isNativePlatform()) throw new Error("ربط Outlook متاح من تطبيق الهاتف");
+  if (!clientId.trim()) throw new Error("أدخل Microsoft Application (Client) ID أولًا");
+  const verifier = randomUrlSafe(48);
+  const state = randomUrlSafe(24);
+  const challenge = await sha256(verifier);
+  const authorize = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
+  authorize.search = new URLSearchParams({
+    client_id: clientId.trim(),
+    response_type: "code",
+    redirect_uri: OUTLOOK_REDIRECT_URI,
+    response_mode: "query",
+    scope: "openid email offline_access User.Read Mail.Send",
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    prompt: "select_account",
+  }).toString();
+
+  const { App } = await import("@capacitor/app");
+  const { AppLauncher } = await import("@capacitor/app-launcher");
+  return new Promise<string>(async (resolve, reject) => {
+    let finished = false;
+    const timeout = window.setTimeout(() => finish(new Error("انتهت مهلة ربط Outlook")), 5 * 60 * 1000);
+    let listener: { remove: () => Promise<void> } | undefined;
+    const finish = (error?: Error, email?: string) => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      void listener?.remove();
+      if (error) reject(error);
+      else resolve(email || "");
+    };
+    listener = await App.addListener("appUrlOpen", async ({ url }) => {
+      if (!url.startsWith(OUTLOOK_REDIRECT_URI)) return;
+      try {
+        const parsed = new URL(url);
+        if (parsed.searchParams.get("state") !== state) throw new Error("تعذر التحقق من جلسة Outlook");
+        const oauthError = parsed.searchParams.get("error_description") || parsed.searchParams.get("error");
+        if (oauthError) throw new Error(oauthError);
+        const code = parsed.searchParams.get("code");
+        if (!code) throw new Error("لم يصل رمز التفويض من Outlook");
+        const account = await exchangeOutlookCode(clientId.trim(), code, verifier);
+        writeJson(OUTLOOK_KEY, account);
+        finish(undefined, account.email);
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error("تعذر ربط Outlook"));
+      }
+    });
+    const result = await AppLauncher.openUrl({ url: authorize.toString() });
+    if (!result.completed) finish(new Error("تعذر فتح صفحة تسجيل الدخول إلى Outlook"));
+  });
+}
+
+async function getValidOutlookToken(): Promise<string> {
+  const account = readJson<OutlookAccount>(OUTLOOK_KEY);
+  if (!account) throw new Error("اربط حساب Outlook أولًا");
+  if (account.accessToken && Date.now() < account.expiresAt) return account.accessToken;
+  if (!account.refreshToken) throw new Error("انتهت جلسة Outlook. أعد ربط الحساب.");
+  const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: account.clientId,
+      refresh_token: account.refreshToken,
+      grant_type: "refresh_token",
+      scope: "openid email offline_access User.Read Mail.Send",
+    }),
+  });
+  const refreshed = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error_description?: string;
+  };
+  if (!response.ok || !refreshed.access_token) throw new Error(refreshed.error_description || "تعذر تحديث جلسة Outlook");
+  writeJson(OUTLOOK_KEY, {
+    ...account,
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token || account.refreshToken,
+    expiresAt: Date.now() + Math.max(60, Number(refreshed.expires_in || 3600) - 120) * 1000,
+  });
+  return refreshed.access_token;
+}
+
+export async function sendOutlookEmail(to: string, subject: string, body: string): Promise<void> {
+  const accessToken = await getValidOutlookToken();
+  const response = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: "Text", content: body },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`فشل إرسال Outlook (${response.status}): ${details.slice(0, 180)}`);
+  }
+}
+
+export function getWhatsAppBusinessAccount(): Omit<WhatsAppBusinessAccount, "accessToken"> & { configured: boolean } | null {
+  const account = readJson<WhatsAppBusinessAccount>(WHATSAPP_KEY);
+  return account ? {
+    phoneNumberId: account.phoneNumberId,
+    graphVersion: account.graphVersion,
+    languageCode: account.languageCode,
+    paymentTemplate: account.paymentTemplate,
+    overdueTemplate: account.overdueTemplate,
+    contractTemplate: account.contractTemplate,
+    configured: !!account.accessToken,
+  } : null;
+}
+
+export function saveWhatsAppBusinessAccount(account: WhatsAppBusinessAccount): void {
+  const current = readJson<WhatsAppBusinessAccount>(WHATSAPP_KEY);
+  writeJson(WHATSAPP_KEY, {
+    ...current,
+    ...account,
+    accessToken: account.accessToken || current?.accessToken || "",
+  });
+}
+
+export function disconnectWhatsAppBusiness(): void {
+  localStorage.removeItem(WHATSAPP_KEY);
+}
+
+export async function sendWhatsAppTemplate(
+  recipient: string,
+  templateKind: "paymentReminder" | "overduePayment" | "contractExpiry",
+  message: string,
+): Promise<void> {
+  const account = readJson<WhatsAppBusinessAccount>(WHATSAPP_KEY);
+  if (!account?.accessToken || !account.phoneNumberId) throw new Error("اربط WhatsApp Business API أولًا");
+  const templateName = templateKind === "overduePayment"
+    ? account.overdueTemplate
+    : templateKind === "contractExpiry"
+    ? account.contractTemplate
+    : account.paymentTemplate;
+  if (!templateName) throw new Error("اسم قالب WhatsApp المعتمد غير مسجل");
+  const phone = recipient.replace(/[^\d]/g, "");
+  const response = await fetch(
+    `https://graph.facebook.com/${account.graphVersion || "v23.0"}/${account.phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: account.languageCode || "ar" },
+          components: [{
+            type: "body",
+            parameters: [{ type: "text", text: message }],
+          }],
+        },
+      }),
+    },
+  );
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`فشل إرسال واتساب (${response.status}): ${details.slice(0, 180)}`);
+  }
+}

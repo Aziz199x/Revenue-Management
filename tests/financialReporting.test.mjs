@@ -11,6 +11,8 @@ let monthClose;
 let financialAudit;
 let ownerStatement;
 let buildingOwnership;
+let storeData;
+let automaticCommunications;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -22,6 +24,8 @@ test.before(async () => {
   financialAudit = await server.ssrLoadModule("/src/data/financialAudit.ts");
   ownerStatement = await server.ssrLoadModule("/src/reporting/ownerStatementService.ts");
   buildingOwnership = await server.ssrLoadModule("/src/data/buildingOwnership.ts");
+  storeData = await server.ssrLoadModule("/src/data/store.tsx");
+  automaticCommunications = await server.ssrLoadModule("/src/utils/automaticCommunications.ts");
 });
 
 test.after(async () => {
@@ -613,5 +617,111 @@ test("changing ownership later does not change a captured owner transfer split",
   assert.deepEqual(
     buildingOwnership.getOwnerTransferAllocations(snapshot, transferred).map((item) => item.ownerName),
     ["أحمد", "سارة"],
+  );
+});
+
+test("restoring an older backup safely fills missing contracts and optional collections", () => {
+  const legacyBackup = {
+    buildings: [{ id: "b1", name: "العقار", collectionFeePercent: 5, createdAt: "2026-01-01" }],
+    units: [unit],
+    payments: [payment({ contractId: undefined })],
+    settings: { reportMonthCutoffDay: 25 },
+  };
+
+  const restored = storeData.normalizeData(legacyBackup);
+
+  assert.equal(restored.buildings.length, 1);
+  assert.equal(restored.payments.length, 1);
+  assert.deepEqual(restored.contracts, []);
+  assert.deepEqual(restored.financialAuditLog, []);
+  assert.deepEqual(restored.evidenceAttachments, []);
+  assert.equal(restored.settings.backupRetentionCount, 14);
+});
+
+test("automatic communication schedule sends formal email to every company address without duplicates", () => {
+  const record = payment({
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const snapshot = {
+    ...data([record]),
+    tenants: [{
+      id: "t-company",
+      unitId: "u1",
+      name: "شركة المثال",
+      emailAddresses: [
+        { id: "e1", email: "accounts@example.com", label: "الحسابات", enabled: true },
+        { id: "e2", email: "manager@example.com", label: "المدير", enabled: true },
+      ],
+      createdAt: "2026-01-01",
+    }],
+    communicationLogs: [],
+    settings: {
+      ...data([]).settings,
+      emailTemplates: {
+        paymentReminder: { subject: "تذكير {tenantName}", body: "من {periodStart} إلى {periodEnd} بمبلغ {amount}" },
+        overduePayment: { subject: "متأخر {tenantName}", body: "{dueDate}" },
+        contractExpiry: { subject: "عقد {tenantName}", body: "{contractEndDate}" },
+      },
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: true,
+        whatsappEnabled: false,
+        frequencyDays: 2,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: "gmail",
+      },
+    },
+  };
+  record.tenantId = "t-company";
+  const now = new Date("2026-08-01T10:00:00");
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now);
+
+  assert.equal(jobs.length, 2);
+  assert.deepEqual(jobs.map((job) => job.recipient).sort(), ["accounts@example.com", "manager@example.com"]);
+  assert.equal(jobs.every((job) => job.subject === "تذكير شركة المثال"), true);
+  assert.equal(jobs.every((job) => job.body.includes("1,000")), true);
+
+  snapshot.communicationLogs = [{
+    id: "sent-1",
+    createdAt: "2026-08-01T09:30:00.000Z",
+    sentAt: "2026-08-01T09:30:00.000Z",
+    channel: "email",
+    status: "sent",
+    recipient: "accounts@example.com",
+    tenantId: "t-company",
+    paymentId: record.id,
+    templateKind: "paymentReminder",
+    provider: "gmail",
+    dedupeKey: `${record.id}:email:accounts@example.com:paymentReminder`,
+  }];
+  const afterOneSent = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, now);
+  assert.deepEqual(afterOneSent.map((job) => job.recipient), ["manager@example.com"]);
+});
+
+test("automatic communication schedule never reminds a fully paid installment", () => {
+  const paid = payment({ receivedDate: "2026-08-01", status: "paid" });
+  const snapshot = storeData.normalizeData({
+    ...data([paid]),
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: true,
+        whatsappEnabled: true,
+        frequencyDays: 1,
+        sendTime: "00:00",
+        daysBeforeDue: 10,
+        overdueTailDays: 30,
+        emailProvider: "gmail",
+      },
+    },
+  });
+  assert.deepEqual(
+    automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T12:00:00"), true),
+    [],
   );
 });

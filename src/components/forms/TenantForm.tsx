@@ -1,15 +1,18 @@
 import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tenant } from "@/data/types";
+import { Tenant, TenantEmailAddress } from "@/data/types";
+import { showError } from "@/utils/toast";
 
 export interface TenantFormValues {
   name: string;
   phone?: string;
   nationalId?: string;
   email?: string;
+  emailAddresses?: TenantEmailAddress[];
   notes?: string;
   extraInfo?: string;
   electricityAccountName?: string;
@@ -27,7 +30,13 @@ export default function TenantForm({ initial, onSubmit }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [nationalId, setNationalId] = useState(initial?.nationalId ?? "");
-  const [email, setEmail] = useState(initial?.email ?? "");
+  const [emailAddresses, setEmailAddresses] = useState<TenantEmailAddress[]>(
+    initial?.emailAddresses?.length
+      ? initial.emailAddresses
+      : initial?.email
+      ? [{ id: `email-${initial.id}-primary`, email: initial.email, label: "الرئيسي", enabled: true }]
+      : [],
+  );
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [extraInfo, setExtraInfo] = useState(initial?.extraInfo ?? "");
   const [electricityAccountName, setElectricityAccountName] = useState(
@@ -49,11 +58,20 @@ export default function TenantForm({ initial, onSubmit }: Props) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) return;
+        const normalizedEmails = emailAddresses
+          .map((item) => ({ ...item, email: item.email.trim(), label: item.label?.trim() || undefined }))
+          .filter((item) => item.email);
+        const invalidEmail = normalizedEmails.find((item) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.email));
+        if (invalidEmail) {
+          showError(`البريد الإلكتروني غير صحيح: ${invalidEmail.email}`);
+          return;
+        }
         onSubmit({
           name: name.trim(),
           phone: phone.trim() || undefined,
           nationalId: nationalId.trim() || undefined,
-          email: email.trim() || undefined,
+          email: normalizedEmails[0]?.email,
+          emailAddresses: normalizedEmails,
           notes: notes.trim() || undefined,
           extraInfo: extraInfo.trim() || undefined,
           electricityAccountName: electricityAccountName.trim() || undefined,
@@ -78,8 +96,64 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>البريد الإلكتروني (اختياري)</Label>
-        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" className="rounded-xl text-right" />
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <Label>عناوين البريد الإلكتروني</Label>
+            <p className="mt-1 text-[10px] text-muted-foreground">يمكن إضافة أكثر من بريد للشركات، وستصل الرسالة إلى جميع العناوين المسجلة.</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-xl text-xs"
+            onClick={() => setEmailAddresses((current) => [...current, {
+              id: `email-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+              email: "",
+              label: current.length === 0 ? "الرئيسي" : "",
+              enabled: true,
+            }])}
+          >
+            <Plus className="ml-1 h-3.5 w-3.5" /> إضافة
+          </Button>
+        </div>
+        {emailAddresses.length === 0 ? (
+          <button
+            type="button"
+            className="w-full rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground"
+            onClick={() => setEmailAddresses([{
+              id: `email-${Date.now().toString(36)}`,
+              email: "",
+              label: "الرئيسي",
+              enabled: true,
+            }])}
+          >
+            إضافة بريد للمستأجر
+          </button>
+        ) : (
+          <div className="space-y-2">
+            {emailAddresses.map((item) => (
+              <div key={item.id} className="grid grid-cols-[1fr_105px_36px] gap-2">
+                <Input
+                  type="email"
+                  value={item.email}
+                  onChange={(event) => setEmailAddresses((current) => current.map((email) => email.id === item.id ? { ...email, email: event.target.value } : email))}
+                  placeholder="name@company.com"
+                  dir="ltr"
+                  className="rounded-xl text-left"
+                />
+                <Input
+                  value={item.label || ""}
+                  onChange={(event) => setEmailAddresses((current) => current.map((email) => email.id === item.id ? { ...email, label: event.target.value } : email))}
+                  placeholder="الحسابات"
+                  className="rounded-xl"
+                />
+                <Button type="button" variant="ghost" size="icon" className="h-10 w-9 text-destructive" onClick={() => setEmailAddresses((current) => current.filter((email) => email.id !== item.id))}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="space-y-1.5">
         <Label>ملاحظات</Label>

@@ -19,7 +19,13 @@ const config: CapacitorConfig = {
       androidClientId: "777494765857-ebqhqcdvmvnevheq0qep52thgrgnq5qa.apps.googleusercontent.com",
       serverClientId: "777494765857-lhndrn52q4ptemrekskbf0kgepei21mi.apps.googleusercontent.com",
       forceCodeForRefreshToken: true,
-      scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
+      scopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/gmail.send",
+      ],
     },
   },
 };

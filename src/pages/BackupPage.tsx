@@ -90,6 +90,15 @@ function formatDate(iso: string): string {
   }
 }
 
+function restoreErrorMessage(error: unknown): string {
+  console.error("[Backup Restore] failed", error);
+  const message = error instanceof Error ? error.message : "";
+  if (/session expired|401/i.test(message)) return "انتهت جلسة Google. أعد ربط حساب Google ثم حاول مرة أخرى.";
+  if (/permission|403/i.test(message)) return "صلاحية Google Drive غير متاحة. افصل الحساب ثم أعد ربطه.";
+  if (/invalid|غير صالحة/i.test(message)) return "ملف النسخة الاحتياطية غير صالح أو غير مكتمل.";
+  return "تعذر استعادة النسخة. لم تُفقد البيانات الحالية ويمكنك المحاولة مرة أخرى.";
+}
+
 export default function BackupPage() {
   const { data, update, replaceAll } = useStore();
   const location = useLocation();
@@ -216,13 +225,14 @@ export default function BackupPage() {
       clearEmergencySnapshot();
       showSuccess("تمت استعادة البيانات بنجاح");
     } catch (e) {
+      const errorMessage = restoreErrorMessage(e);
       const snapshot = getEmergencySnapshot();
       if (snapshot) {
         replaceAll(snapshot);
         clearEmergencySnapshot();
-        showError(e instanceof Error ? e.message : "فشلت الاستعادة، تم الرجوع للبيانات السابقة");
+        showError(errorMessage);
       } else {
-        showError(e instanceof Error ? e.message : "فشلت استعادة النسخة الاحتياطية");
+        showError(errorMessage);
       }
     } finally {
       setRestoring(false);
@@ -605,7 +615,7 @@ export default function BackupPage() {
                     setAutomaticVersionsOpen(false);
                     showSuccess("تمت استعادة النسخة، مع حفظ نسخة طوارئ من البيانات السابقة");
                   } catch (error) {
-                    showError(error instanceof Error ? error.message : "تعذر استعادة النسخة");
+                    showError(restoreErrorMessage(error));
                   } finally {
                     setRestoring(false);
                   }

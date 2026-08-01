@@ -785,11 +785,21 @@ export default function UnitDetails() {
                       <span dir="ltr">{tenant.nationalId}</span>
                     </p>
                   )}
-                  {tenant.email && (
-                    <p className="flex items-center gap-2">
+                  {(tenant.emailAddresses?.length || tenant.email) && (
+                    <div className="flex items-start gap-2">
                       <Mail className="h-4 w-4 text-muted-foreground" />
-                      <span dir="ltr">{tenant.email}</span>
-                    </p>
+                      <div className="space-y-1">
+                        {(tenant.emailAddresses?.length
+                          ? tenant.emailAddresses
+                          : [{ id: "legacy", email: tenant.email || "", enabled: true }]
+                        ).filter((item) => item.enabled !== false).map((item) => (
+                          <p key={item.id} dir="ltr" className="text-left">
+                            {item.email}
+                            {"label" in item && item.label ? <span className="mr-1 text-[10px] text-muted-foreground">({item.label})</span> : null}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   {tenant.notes && (
                     <p className="rounded-2xl bg-muted p-3 text-muted-foreground">{tenant.notes}</p>

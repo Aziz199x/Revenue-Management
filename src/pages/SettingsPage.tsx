@@ -5,6 +5,7 @@ import {
   Cloud,
   LayoutDashboard,
   MessageCircle,
+  Send,
   ShieldCheck,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
@@ -27,6 +28,12 @@ const settingsItems = [
     icon: Cloud,
     title: "النسخ الاحتياطي والاستعادة",
     description: "النسخ المحلي وGoogle Drive وإدارة البيانات",
+  },
+  {
+    to: "/settings/communications",
+    icon: Send,
+    title: "الإرسال التلقائي والبريد",
+    description: "جدولة تذكيرات الإيجار وربط Gmail أو Outlook وWhatsApp Business",
   },
   {
     to: "/settings/whatsapp",

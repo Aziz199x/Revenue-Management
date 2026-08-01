@@ -76,6 +76,7 @@ export interface Tenant {
   phone?: string;
   nationalId?: string;
   email?: string;
+  emailAddresses?: TenantEmailAddress[];
   notes?: string;
   extraInfo?: string;
   electricityAccountName?: string;
@@ -85,6 +86,13 @@ export interface Tenant {
   activeContractId?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface TenantEmailAddress {
+  id: string;
+  email: string;
+  label?: string;
+  enabled: boolean;
 }
 
 export interface Payment {
@@ -513,6 +521,51 @@ export interface WhatsAppTemplates {
   contractExpiry: string;
 }
 
+export interface EmailTemplate {
+  subject: string;
+  body: string;
+}
+
+export interface EmailTemplates {
+  paymentReminder: EmailTemplate;
+  overduePayment: EmailTemplate;
+  contractExpiry: EmailTemplate;
+}
+
+export interface AutomaticCommunicationSettings {
+  enabled: boolean;
+  emailEnabled: boolean;
+  whatsappEnabled: boolean;
+  frequencyDays: number;
+  sendTime: string;
+  daysBeforeDue: number;
+  overdueTailDays: number;
+  activeFrom?: string;
+  activeUntil?: string;
+  emailProvider: "gmail" | "outlook" | null;
+  lastRunAt?: string;
+}
+
+export type CommunicationChannel = "email" | "whatsapp";
+export type CommunicationStatus = "sent" | "failed" | "skipped";
+
+export interface CommunicationLog {
+  id: string;
+  createdAt: string;
+  sentAt?: string;
+  channel: CommunicationChannel;
+  status: CommunicationStatus;
+  recipient: string;
+  tenantId?: string;
+  paymentId?: string;
+  contractId?: string;
+  templateKind: "paymentReminder" | "overduePayment" | "contractExpiry";
+  provider: "gmail" | "outlook" | "whatsapp_business";
+  subject?: string;
+  error?: string;
+  dedupeKey: string;
+}
+
 export interface Settings {
   contractReminderDays: number;
   defaultContractExpiryReminderDays: number;
@@ -546,6 +599,8 @@ export interface Settings {
   automaticGoogleDriveBackup: boolean;
   backupRetentionCount: number;
   whatsappTemplates: WhatsAppTemplates;
+  emailTemplates: EmailTemplates;
+  automaticCommunications: AutomaticCommunicationSettings;
 }
 
 export type NotificationSound = "payment_overdue.wav" | "contract_reminder.wav" | "default";
@@ -564,6 +619,7 @@ export interface AppData {
   collectionFeeSettlements: CollectionFeeSettlement[];
   financialAuditLog: FinancialAuditEntry[];
   financialMonthClosures: FinancialMonthClose[];
+  communicationLogs: CommunicationLog[];
   settings: Settings;
 }
 
@@ -574,6 +630,24 @@ export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
     "السلام عليكم، نود إفادتكم بأن دفعة الإيجار للوحدة {unitName} في عقار {buildingName} مستحقة ولم يتم تسجيل سدادها حتى الآن، بمبلغ {amount} ر.س. نأمل سرعة السداد، وشكرًا لكم.",
   contractExpiry:
     "السلام عليكم، نود إفادتكم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي في تاريخ {contractEndDate}. يرجى التواصل لتجديد العقد أو لترتيب التسليم. وشكرًا لكم.",
+};
+
+export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
+  paymentReminder: {
+    subject: "تذكير بموعد سداد الإيجار – {unitName}",
+    body:
+      "السيد/السيدة {tenantName} المحترم/ة،\n\nنود تذكيركم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، تستحق بتاريخ {dueDate} بمبلغ {amount}.\n\nنأمل التكرم بإتمام السداد في الموعد المحدد. إذا تم السداد، يرجى تجاهل هذه الرسالة.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
+  overduePayment: {
+    subject: "إشعار بتأخر دفعة الإيجار – {unitName}",
+    body:
+      "السيد/السيدة {tenantName} المحترم/ة،\n\nنفيدكم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، والمستحقة بتاريخ {dueDate} بمبلغ {amount}، لم يتم تسجيل سدادها حتى تاريخه.\n\nنأمل التكرم بالسداد في أقرب وقت أو التواصل معنا عند وجود أي ملاحظة.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
+  contractExpiry: {
+    subject: "تذكير بقرب انتهاء عقد الإيجار – {unitName}",
+    body:
+      "السيد/السيدة {tenantName} المحترم/ة،\n\nنود إشعاركم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}.\n\nيرجى التواصل معنا لاستكمال إجراءات التجديد أو التسليم حسب الاتفاق.\n\nوتفضلوا بقبول فائق الاحترام.",
+  },
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -603,6 +677,17 @@ export const DEFAULT_SETTINGS: Settings = {
   automaticGoogleDriveBackup: true,
   backupRetentionCount: 14,
   whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES,
+  emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+  automaticCommunications: {
+    enabled: false,
+    emailEnabled: false,
+    whatsappEnabled: false,
+    frequencyDays: 1,
+    sendTime: "09:00",
+    daysBeforeDue: 3,
+    overdueTailDays: 30,
+    emailProvider: null,
+  },
 };
 
 export const EMPTY_DATA: AppData = {
@@ -619,5 +704,6 @@ export const EMPTY_DATA: AppData = {
   collectionFeeSettlements: [],
   financialAuditLog: [],
   financialMonthClosures: [],
+  communicationLogs: [],
   settings: DEFAULT_SETTINGS,
 };
