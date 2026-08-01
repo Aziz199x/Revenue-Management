@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AtSign, Clock3, Mail, MessageCircle, Play, Unplug } from "lucide-react";
+import { AtSign, Clock3, ExternalLink, Mail, MessageCircle, Play, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,8 @@ import {
   getOutlookAccount,
   getWhatsAppBusinessAccount,
   saveWhatsAppBusinessAccount,
+  GMAIL_API_CONSOLE_URL,
+  openExternalUrl,
 } from "@/utils/communicationAccounts";
 import { runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
 import { showError, showSuccess } from "@/utils/toast";
@@ -217,6 +219,20 @@ export default function AutomaticCommunicationsSettingsPage() {
                 }}
               >
                 {gmailEmail ? "تحديث الصلاحية" : "ربط Gmail"}
+              </Button>
+            </div>
+            <div className="mt-3 rounded-xl bg-amber-50 p-2 text-xs leading-5 text-amber-900">
+              يلزم تفعيل Gmail API في مشروع Google قبل الإرسال المباشر. ربط الحساب وحده لا يفعّل الخدمة.
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="mt-1 h-auto w-full justify-start p-0 text-amber-800"
+                onClick={() => openExternalUrl(GMAIL_API_CONSOLE_URL)
+                  .catch((error) => showError(error instanceof Error ? error.message : "تعذر فتح إعداد Google"))}
+              >
+                <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                فتح صفحة تفعيل Gmail API
               </Button>
             </div>
           </div>

@@ -1,9 +1,24 @@
+import { AppLauncher } from "@capacitor/app-launcher";
 import { Capacitor } from "@capacitor/core";
 import { getConnectedEmail, getValidGoogleAccessToken, signIn as signInGoogle } from "@/utils/googleDrive";
 
 const OUTLOOK_KEY = "automatic_email_outlook_account";
 const WHATSAPP_KEY = "automatic_whatsapp_business_account";
 const OUTLOOK_REDIRECT_URI = "revenuemanagement://oauth/callback";
+const GOOGLE_CLOUD_PROJECT_NUMBER = "777494765857";
+export const GMAIL_API_CONSOLE_URL =
+  `https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=${GOOGLE_CLOUD_PROJECT_NUMBER}`;
+
+export class EmailProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly code: "gmail_api_disabled" | "gmail_permission" | "email_send_failed",
+    public readonly helpUrl?: string,
+  ) {
+    super(message);
+    this.name = "EmailProviderError";
+  }
+}
 
 interface OutlookAccount {
   clientId: string;
@@ -99,8 +114,43 @@ export async function sendGmailEmail(to: string, subject: string, body: string):
   });
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(`فشل إرسال Gmail (${response.status}): ${details.slice(0, 180)}`);
+    if (response.status === 403 && /has not been used|is disabled|accessNotConfigured/i.test(details)) {
+      throw new EmailProviderError(
+        "خدمة Gmail API غير مفعّلة في مشروع Google الخاص بالتطبيق. فعّل الخدمة من Google Cloud ثم انتظر عدة دقائق وأعد المحاولة.",
+        "gmail_api_disabled",
+        GMAIL_API_CONSOLE_URL,
+      );
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new EmailProviderError(
+        "حساب Gmail لا يملك صلاحية الإرسال. أعد ربط Gmail من إعدادات الإرسال ووافق على صلاحية إرسال البريد.",
+        "gmail_permission",
+      );
+    }
+    throw new EmailProviderError(
+      `تعذر إرسال البريد عبر Gmail (رمز ${response.status}).`,
+      "email_send_failed",
+    );
   }
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    const result = await AppLauncher.openUrl({ url });
+    if (!result.completed) throw new Error("تعذر فتح الرابط");
+  } else {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+export async function openEmailComposer(
+  recipients: string[],
+  subject: string,
+  body: string,
+): Promise<void> {
+  const to = recipients.join(",");
+  const url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  await openExternalUrl(url);
 }
 
 export function getOutlookAccount(): Pick<OutlookAccount, "email" | "displayName" | "clientId"> | null {
