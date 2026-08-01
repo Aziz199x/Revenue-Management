@@ -127,7 +127,7 @@ export default function WhatsAppSettingsPage() {
           dir="rtl"
           className="min-[900px]:grid min-[900px]:grid-cols-[12rem_minmax(0,1fr)] min-[900px]:items-start min-[900px]:gap-4 min-[900px]:[direction:ltr]"
         >
-          <TabsList className="grid w-full grid-cols-2 rounded-2xl min-[900px]:sticky min-[900px]:top-4 min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:flex min-[900px]:flex-col min-[900px]:gap-1 min-[900px]:p-2 min-[900px]:[direction:rtl]">
+          <TabsList className="grid w-full grid-cols-2 rounded-2xl min-[900px]:sticky min-[900px]:top-1/2 min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:flex min-[900px]:-translate-y-1/2 min-[900px]:flex-col min-[900px]:gap-2 min-[900px]:rounded-3xl min-[900px]:border min-[900px]:border-border min-[900px]:bg-card min-[900px]:p-3 min-[900px]:shadow-sm min-[900px]:[direction:rtl]">
             <TabsTrigger value="whatsapp" className="rounded-xl min-[900px]:w-full min-[900px]:justify-start">
               <MessageCircle className="ml-1 h-4 w-4" /> واتساب
             </TabsTrigger>

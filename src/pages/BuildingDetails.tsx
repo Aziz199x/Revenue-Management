@@ -339,9 +339,9 @@ export default function BuildingDetails() {
           value={activeTab}
           onValueChange={setActiveTab}
           dir="rtl"
-          className="min-[500px]:grid min-[500px]:grid-cols-[12rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-4 min-[500px]:[direction:ltr]"
+          className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-4 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-4 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:flex-col min-[500px]:gap-1 min-[500px]:p-2 min-[500px]:[direction:rtl]">
+          <TabsList className="grid h-auto w-full grid-cols-4 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
             <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الوحدات
             </TabsTrigger>
