@@ -52,6 +52,7 @@ import LateCollectionsList from "@/components/reports/LateCollectionsList";
 import { UnitMonthStatus, UnitMonthRow } from "@/reporting/types";
 import { formatYearMonthLabel } from "@/reporting/dateUtils";
 import { appendOwnershipVersion, ownersForDate, ownershipChanged } from "@/data/buildingOwnership";
+import { useAppDialog } from "@/components/shared/AppDialogProvider";
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -121,6 +122,7 @@ export default function BuildingDetails() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, update } = useStore();
+  const appDialog = useAppDialog();
   const [addUnitOpen, setAddUnitOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(monthKey(new Date()));
@@ -689,10 +691,16 @@ export default function BuildingDetails() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 rounded-full text-destructive"
-                          onClick={() => {
-                            const reason = window.prompt("اكتب سبب حذف الصيانة ليُحفظ في سجل التدقيق:");
+                          onClick={async () => {
+                            const reason = await appDialog.prompt({
+                              title: "حذف الصيانة",
+                              description: "اكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.",
+                              inputLabel: "سبب الحذف",
+                              confirmLabel: "حذف الصيانة",
+                              tone: "destructive",
+                              required: true,
+                            });
                             if (!reason?.trim()) {
-                              showError("لا يمكن حذف عملية مالية دون كتابة السبب");
                               return;
                             }
                             update(
@@ -896,12 +904,18 @@ export default function BuildingDetails() {
       <FormSheet open={editOpen} onOpenChange={setEditOpen} title="تعديل العقار">
         <BuildingForm
           initial={building}
-          onSubmit={(values) => {
+          onSubmit={async (values) => {
             const { ownershipEffectiveFrom, ownershipChangeReason, ...buildingValues } = values;
             const feeChanged = values.collectionFeePercent !== (building.collectionFeePercent ?? 0);
             const ownersChanged = ownershipChanged(building.owners, values.owners)
               || !!building.multipleOwnersEnabled !== values.multipleOwnersEnabled;
-            const updatePayments = feeChanged && window.confirm("هل تريد تحديث رسوم التحصيل للدفعات غير المدفوعة التابعة لهذا العقار؟\nموافق: تحديث الدفعات\nإلغاء: حفظ بدون تحديث الدفعات");
+            const updatePayments = feeChanged
+              ? await appDialog.confirm({
+                  title: "تحديث رسوم الدفعات؟",
+                  description: "هل تريد تطبيق نسبة التحصيل الجديدة على الدفعات غير المدفوعة التابعة لهذا العقار؟\n\nيمكن الإلغاء لحفظ بيانات العقار دون تعديل الدفعات الحالية.",
+                  confirmLabel: "تحديث الدفعات",
+                })
+              : false;
             update((prev) => ({
               ...prev,
               buildings: prev.buildings.map((b) =>
@@ -951,10 +965,15 @@ export default function BuildingDetails() {
         {editBuildingRepair && (
           <RepairForm
             initial={editBuildingRepair}
-            onSubmit={(values) => {
-              const reason = window.prompt("اكتب سبب تعديل الصيانة ليُحفظ في سجل التدقيق:");
+            onSubmit={async (values) => {
+              const reason = await appDialog.prompt({
+                title: "تعديل صيانة المبنى",
+                description: "اكتب سبب التعديل ليُحفظ في سجل التدقيق المالي.",
+                inputLabel: "سبب التعديل",
+                confirmLabel: "حفظ التعديل",
+                required: true,
+              });
               if (!reason?.trim()) {
-                showError("لا يمكن تعديل عملية مالية دون كتابة السبب");
                 return;
               }
               update((prev) => ({

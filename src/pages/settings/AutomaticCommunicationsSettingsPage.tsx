@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, MessageSquareText, Play, RotateCcw, Trash2, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Mail, MessageCircle, MessageSquareText, Pencil, Play, Trash2, Unplug } from "lucide-react";
 import SettingsSubPageHeader from "@/components/settings/SettingsSubPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import {
 import { isCommunicationOnline, runAutomaticCommunicationCycle } from "@/utils/automaticCommunications";
 import { requestAutomaticSmsPermission } from "@/utils/sms";
 import { showError, showSuccess } from "@/utils/toast";
+import { useAppDialog } from "@/components/shared/AppDialogProvider";
 
 function formatLogDate(value?: string): string {
   if (!value) return "";
@@ -90,6 +91,7 @@ function derivePaymentPeriod(data: AppData, payment: Payment): { start: string; 
 
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
+  const appDialog = useAppDialog();
   const settings = data.settings.automaticCommunications;
   const [gmailStatus, setGmailStatus] = useState(getGmailAccountStatus());
   const gmailEmail = gmailStatus.email;
@@ -154,7 +156,13 @@ export default function AutomaticCommunicationsSettingsPage() {
     const protectionNote = protectedCount
       ? `\nسيتم الاحتفاظ بـ ${protectedCount} سجل ناجح حديث مؤقتًا لمنع إرسال الرسالة مرتين.`
       : "";
-    if (!window.confirm(`حذف ${deletable.length} سجل من ${description}؟${protectionNote}\nلا يمكن التراجع عن الحذف.`)) return;
+    const confirmed = await appDialog.confirm({
+      title: "حذف سجلات الإرسال؟",
+      description: `سيتم حذف ${deletable.length} سجل من ${description}.${protectionNote}\nلا يمكن التراجع عن الحذف.`,
+      confirmLabel: "حذف السجلات",
+      tone: "destructive",
+    });
+    if (!confirmed) return;
     const ids = new Set(deletable.map((log) => log.id));
     await update((previous) => ({
       ...previous,
@@ -163,17 +171,21 @@ export default function AutomaticCommunicationsSettingsPage() {
     showSuccess(`تم حذف ${deletable.length} سجل وتقليل البيانات المحفوظة`);
   };
 
-  const markSuccessfulLogAsFailedForTesting = async (
+  const editSuccessfulLogForTesting = async (
     log: AppData["communicationLogs"][number],
   ) => {
-    const reason = window.prompt(
-      "اكتب سبب إعادة اختبار هذه الرسالة. سيبقى السجل محفوظًا وتتحول حالته إلى «فشل بواسطة المستخدم» لتصبح مؤهلة للإرسال مرة أخرى:",
-    );
+    const reason = await appDialog.prompt({
+      title: "تعديل حالة الرسالة",
+      description: "سيبقى السجل محفوظًا، وستتحول حالته إلى «فشل بواسطة المستخدم» لتصبح الرسالة مؤهلة للإرسال مرة أخرى.",
+      inputLabel: "سبب التعديل",
+      placeholder: "مثال: اختبار الإرسال بعد تعديل الإعدادات",
+      confirmLabel: "حفظ التعديل",
+      tone: "warning",
+      required: true,
+    });
     if (!reason?.trim()) {
-      showError("يجب كتابة سبب إعادة الاختبار");
       return;
     }
-    if (!window.confirm("تحويل حالة الرسالة إلى فشل والسماح بإعادة إرسالها؟")) return;
     await update((previous) => ({
       ...previous,
       communicationLogs: (previous.communicationLogs || []).map((item) =>
@@ -182,12 +194,12 @@ export default function AutomaticCommunicationsSettingsPage() {
               ...item,
               status: "failed" as const,
               sentAt: undefined,
-              error: `حوّلها المستخدم إلى فشل لإعادة الاختبار. السبب: ${reason.trim()}`,
+              error: `عدّلها المستخدم إلى حالة فشل. السبب: ${reason.trim()}`,
             }
           : item
       ),
     }));
-    showSuccess("تم تحويل الرسالة إلى فشل ويمكن إعادة اختبار الإرسال الآن");
+    showSuccess("تم تعديل الحالة إلى فشل ويمكن إرسال الرسالة مرة أخرى");
   };
 
   const runNow = async () => {
@@ -568,7 +580,7 @@ export default function AutomaticCommunicationsSettingsPage() {
           )}
 
           <p className="text-[10px] leading-5 text-muted-foreground">
-            لحمايتك من التكرار لا تُحذف الرسائل الناجحة الحديثة. للاختبار استخدم زر «إعادة اختبار»؛ سيطلب السبب ويحفظه ثم يحول الحالة إلى فشل.
+            لحمايتك من التكرار لا تُحذف الرسائل الناجحة الحديثة. استخدم زر «تعديل» لتسجيل السبب وتحويل الحالة إلى فشل قبل إرسالها مرة أخرى.
           </p>
 
           {visibleLogs.length === 0 ? (
@@ -605,12 +617,12 @@ export default function AutomaticCommunicationsSettingsPage() {
                         variant="ghost"
                         size="sm"
                         className="h-7 rounded-full px-2 text-amber-700"
-                        aria-label="إعادة اختبار الرسالة"
-                        title="تحويل إلى فشل لإعادة الاختبار"
-                        onClick={() => void markSuccessfulLogAsFailedForTesting(log)}
+                        aria-label="تعديل حالة الرسالة"
+                        title="تعديل حالة الرسالة"
+                        onClick={() => void editSuccessfulLogForTesting(log)}
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        <span className="mr-1 hidden sm:inline">إعادة اختبار</span>
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="mr-1 hidden sm:inline">تعديل</span>
                       </Button>
                     )}
                     <Button

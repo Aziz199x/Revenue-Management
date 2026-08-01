@@ -17,6 +17,7 @@ import {
   runAutomaticCommunicationCycle,
 } from "@/utils/automaticCommunications";
 import AppLayout from "@/components/layout/AppLayout";
+import { AppDialogProvider } from "@/components/shared/AppDialogProvider";
 import Index from "./pages/Index";
 import Buildings from "./pages/Buildings";
 import BuildingDetails from "./pages/BuildingDetails";
@@ -315,10 +316,11 @@ const App = () => {
         <NotificationChecker />
         <AutomaticBackupManager />
         <AutomaticCommunicationManager />
-        <BrowserRouter>
-          <BackButtonHandler />
-          <NotificationNavigationHandler />
-          <Routes>
+        <AppDialogProvider>
+          <BrowserRouter>
+            <BackButtonHandler />
+            <NotificationNavigationHandler />
+            <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Index />} />
               <Route path="/buildings" element={<Buildings />} />
@@ -343,8 +345,9 @@ const App = () => {
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+            </Routes>
+          </BrowserRouter>
+        </AppDialogProvider>
       </StoreProvider>
     </TooltipProvider>
   </QueryClientProvider>

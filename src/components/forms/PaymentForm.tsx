@@ -16,6 +16,7 @@ import { isValidDate, todayISO, parseLocalDate, getPaymentReportYearMonth, getPa
 import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useAppDialog } from "@/components/shared/AppDialogProvider";
 
 export interface PaymentFormValues {
   amount: number;
@@ -64,6 +65,7 @@ interface Props {
 
 export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapacity, requiresAuditReason = false, onSubmit }: Props) {
   const { data } = useStore();
+  const appDialog = useAppDialog();
   const [amount, setAmount] = useState(
     initial?.amount?.toString() ?? (defaultAmount ? String(defaultAmount) : ""),
   );
@@ -150,7 +152,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
   return (
     <form
       className="space-y-4"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
         const values = buildValues();
         const error = validate(values);
@@ -174,11 +176,14 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
           const earlierOutstanding = findEarlierUnreceivedPayments(data, candidate);
           if (earlierOutstanding.length > 0) {
             const oldest = earlierOutstanding[0];
-            const shouldContinue = window.confirm(
-              `تنبيه في تسلسل الدفعات:\nتوجد ${earlierOutstanding.length} دفعة أقدم لم تُستلم بعد.\n`
-              + `أقدم دفعة مستحقة بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
-              + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد تسجيل الدفعة الحالية رغم ذلك؟`,
-            );
+            const shouldContinue = await appDialog.confirm({
+              title: "تنبيه في تسلسل الدفعات",
+              description: `توجد ${earlierOutstanding.length} دفعة أقدم لم تُستلم بعد.\n`
+                + `أقدم دفعة مستحقة بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+                + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد تسجيل الدفعة الحالية رغم ذلك؟`,
+              confirmLabel: "متابعة التسجيل",
+              tone: "warning",
+            });
             if (!shouldContinue) return;
           }
         }

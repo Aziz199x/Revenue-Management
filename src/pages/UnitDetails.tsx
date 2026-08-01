@@ -147,6 +147,7 @@ import {
   getTenantPhoneNumbers,
   getFormalTenantGreeting,
 } from "@/utils/automaticCommunications";
+import { useAppDialog } from "@/components/shared/AppDialogProvider";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
 
@@ -402,6 +403,7 @@ export default function UnitDetails() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data, update } = useStore();
+  const appDialog = useAppDialog();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState(
     requestedTab && UNIT_DETAIL_TABS.includes(requestedTab) ? requestedTab : "tenant",
@@ -571,7 +573,7 @@ export default function UnitDetails() {
     navigate(building ? `/buildings/${building.id}` : "/buildings");
   };
 
-  const removeItem = (key: "payments" | "contracts" | "bills" | "repairs" | "tenants", id: string) => {
+  const removeItem = async (key: "payments" | "contracts" | "bills" | "repairs" | "tenants", id: string) => {
     let auditReason: string | undefined;
     if (key === "payments") {
       const payment = data.payments.find((item) => item.id === id);
@@ -587,9 +589,15 @@ export default function UnitDetails() {
     }
     if (key === "payments" || key === "repairs") {
       const label = key === "payments" ? "الدفعة" : "الصيانة";
-      const reason = window.prompt(`اكتب سبب حذف ${label} ليُحفظ في سجل التدقيق:`);
+      const reason = await appDialog.prompt({
+        title: `حذف ${label}`,
+        description: "اكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.",
+        inputLabel: "سبب الحذف",
+        confirmLabel: "تأكيد الحذف",
+        tone: "destructive",
+        required: true,
+      });
       if (!reason?.trim()) {
-        showError("لا يمكن حذف عملية مالية دون كتابة السبب");
         return;
       }
       auditReason = reason.trim();
@@ -1647,7 +1655,13 @@ export default function UnitDetails() {
             }
             const overrideChanged = values.collectionFeeOverrideEnabled !== (unit.collectionFeeOverrideEnabled ?? false)
               || values.collectionFeePercent !== (unit.collectionFeePercent ?? null);
-            const updatePayments = overrideChanged && window.confirm("هل تريد تطبيق نسبة التحصيل على الدفعات غير المدفوعة لهذه الوحدة؟\n\nموافق: سيتم تحديث الدفعات غير المدفوعة فقط.\nإلغاء: سيتم حفظ النسبة دون تطبيقها على الدفعات الحالية.");
+            const updatePayments = overrideChanged
+              ? await appDialog.confirm({
+                  title: "تطبيق نسبة التحصيل؟",
+                  description: "هل تريد تطبيق النسبة الجديدة على الدفعات غير المدفوعة لهذه الوحدة؟\n\nسيتم تحديث الدفعات غير المدفوعة فقط، ويمكن الإلغاء لحفظ النسبة دون تعديل الدفعات الحالية.",
+                  confirmLabel: "تطبيق على الدفعات",
+                })
+              : false;
             const resolvedFee = values.collectionFeeOverrideEnabled ? (values.collectionFeePercent ?? 0) : (building?.collectionFeePercent ?? 0);
             update((prev) => ({
               ...prev,
@@ -2031,10 +2045,15 @@ export default function UnitDetails() {
         {editRepair && (
           <RepairForm
             initial={editRepair}
-            onSubmit={(values) => {
-              const reason = window.prompt("اكتب سبب تعديل الصيانة ليُحفظ في سجل التدقيق:");
+            onSubmit={async (values) => {
+              const reason = await appDialog.prompt({
+                title: "تعديل الصيانة",
+                description: "اكتب سبب التعديل ليُحفظ في سجل التدقيق المالي.",
+                inputLabel: "سبب التعديل",
+                confirmLabel: "حفظ التعديل",
+                required: true,
+              });
               if (!reason?.trim()) {
-                showError("لا يمكن تعديل عملية مالية دون كتابة السبب");
                 return;
               }
               update((prev) => ({
@@ -2057,7 +2076,7 @@ export default function UnitDetails() {
           feeSuggestions={officeFeeSuggestions}
           repairSuggestions={maintenanceSuggestions}
           earlierOutstandingPayments={earlierOutstandingPayments}
-          onConfirm={(receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseItems) => {
+          onConfirm={async (receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseItems) => {
             const duplicate = findPotentialDuplicateReceivedPayments(data, normalizePaymentFinancials({
               ...markReceived,
               status: "paid",
@@ -2071,11 +2090,14 @@ export default function UnitDetails() {
             }
             if (earlierOutstandingPayments.length > 0) {
               const oldest = earlierOutstandingPayments[0];
-              const shouldContinue = window.confirm(
-                `يوجد خطأ محتمل في تسلسل الدفعات: ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
-                + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
-                + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
-              );
+              const shouldContinue = await appDialog.confirm({
+                title: "خطأ محتمل في تسلسل الدفعات",
+                description: `توجد ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
+                  + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+                  + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
+                confirmLabel: "متابعة الاستلام",
+                tone: "warning",
+              });
               if (!shouldContinue) return;
             }
             const grossAmount = markReceived.grossAmount ?? markReceived.amount;

@@ -39,6 +39,7 @@ import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/d
 import { showSuccess, showError } from "@/utils/toast";
 import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
 import { buildPaymentEmailContent, buildPaymentMessageContent, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
+import { useAppDialog } from "@/components/shared/AppDialogProvider";
 
 const PAYMENT_FILTERS_KEY = "payments_filters";
 
@@ -85,6 +86,7 @@ function savePaymentFilters(filters: typeof defaultPaymentFilters) {
 
 export default function Payments() {
   const { data, update } = useStore();
+  const appDialog = useAppDialog();
   const navigate = useNavigate();
   const [filters, setFilters] = useState(loadPaymentFilters);
   const [showAllPayments, setShowAllPayments] = useState(false);
@@ -123,15 +125,22 @@ export default function Payments() {
     kind: "paymentReminder" | "overduePayment";
   } | null>(null);
 
-  const deletePayment = (payment: Payment) => {
+  const deletePayment = async (payment: Payment) => {
     const reportMonth = getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay);
     if (data.financialMonthClosures.some((closure) => closure.yearMonth === reportMonth)) {
       showError("لا يمكن حذف دفعة من شهر مالي مقفل. افتح الدفعة وعدّلها مع كتابة سبب التسوية.");
       return;
     }
-    const reason = window.prompt("اكتب سبب حذف الدفعة ليُحفظ في سجل التدقيق:");
+    const reason = await appDialog.prompt({
+      title: "حذف الدفعة",
+      description: "اكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.",
+      inputLabel: "سبب الحذف",
+      placeholder: "مثال: دفعة مكررة أُضيفت بالخطأ",
+      confirmLabel: "حذف الدفعة",
+      tone: "destructive",
+      required: true,
+    });
     if (!reason?.trim()) {
-      showError("لا يمكن حذف عملية مالية دون كتابة السبب");
       return;
     }
     update((prev) => ({
@@ -274,7 +283,7 @@ export default function Payments() {
     ? findEarlierUnreceivedPayments(data, markReceivedSource)
     : [];
 
-  const handleMarkReceived = () => {
+  const handleMarkReceived = async () => {
     if (!markReceived) return;
     const sourcePayment = data.payments.find((payment) => payment.id === markReceived.id);
     if (!sourcePayment) return;
@@ -291,11 +300,14 @@ export default function Payments() {
     }
     if (earlierOutstandingPayments.length > 0) {
       const oldest = earlierOutstandingPayments[0];
-      const shouldContinue = window.confirm(
-        `يوجد خطأ محتمل في تسلسل الدفعات: ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
-        + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
-        + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
-      );
+      const shouldContinue = await appDialog.confirm({
+        title: "خطأ محتمل في تسلسل الدفعات",
+        description: `توجد ${earlierOutstandingPayments.length} دفعة أقدم لم تُستلم.\n`
+          + `أقدمها بتاريخ ${formatDate(oldest.dueDateGregorian || oldest.nextDueDate || oldest.paymentDate)}`
+          + ` والمتبقي ${formatMoney(getRemainingPaymentAmount(oldest))}.\n\nهل تريد متابعة استلام الدفعة الحالية؟`,
+        confirmLabel: "متابعة الاستلام",
+        tone: "warning",
+      });
       if (!shouldContinue) return;
     }
     if (settleWithBuildingMaintenance && hasInvalidMaintenanceExpenseItems(maintenanceExpenseItems)) {
