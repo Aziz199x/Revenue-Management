@@ -14,6 +14,7 @@ let buildingOwnership;
 let storeData;
 let automaticCommunications;
 let recurringBuildingBills;
+let communicationLogs;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -28,6 +29,7 @@ test.before(async () => {
   storeData = await server.ssrLoadModule("/src/data/store.tsx");
   automaticCommunications = await server.ssrLoadModule("/src/utils/automaticCommunications.ts");
   recurringBuildingBills = await server.ssrLoadModule("/src/data/recurringBuildingBills.ts");
+  communicationLogs = await server.ssrLoadModule("/src/data/communicationLogs.ts");
 });
 
 test.after(async () => {
@@ -988,6 +990,34 @@ test("reverted received payment waits for the 40-second safety window before mes
   assert.equal(duringHold.length, 0);
   assert.equal(afterHold.length, 1);
   assert.equal(afterHold[0].paymentId, record.id);
+});
+
+test("stored communication log copies are collapsed and selected deletion expands to every duplicate", () => {
+  const baseLog = {
+    createdAt: "2026-08-01T08:09:18.000Z",
+    sentAt: "2026-08-01T08:09:18.500Z",
+    channel: "sms",
+    status: "sent",
+    recipient: "966538824240",
+    tenantId: "tenant-log",
+    paymentId: "payment-log",
+    templateKind: "overduePayment",
+    provider: "device_sms",
+    dedupeKey: "payment-log:sms:966538824240:overduePayment",
+  };
+  const copies = [
+    { ...baseLog, id: "log-copy-1" },
+    { ...baseLog, id: "log-copy-2", createdAt: "2026-08-01T08:09:18.300Z" },
+    { ...baseLog, id: "log-copy-3", createdAt: "2026-08-01T08:09:19.000Z" },
+  ];
+  const normalized = storeData.normalizeData({
+    ...data([]),
+    communicationLogs: copies,
+  });
+  assert.equal(normalized.communicationLogs.length, 1);
+
+  const expanded = communicationLogs.expandCommunicationLogSelection(copies, [copies[1]]);
+  assert.deepEqual(expanded.map((log) => log.id), ["log-copy-1", "log-copy-2", "log-copy-3"]);
 });
 
 test("normalization gives every contract payment a stable chronological number", () => {

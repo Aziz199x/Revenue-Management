@@ -11,6 +11,7 @@ import { withComputedUnitStatuses } from "./unitStatus";
 import { buildFinancialAuditEntries, FinancialAuditContext } from "./financialAudit";
 import { loadAppDataFromSQLite, saveAppDataToSQLite } from "./sqliteRepository";
 import { normalizeOwners, synchronizeOwnerTransferAllocations } from "./buildingOwnership";
+import { deduplicateCommunicationLogs } from "./communicationLogs";
 
 function upgradePaymentMessageTemplate(template: string): string {
   let upgraded = template
@@ -243,6 +244,7 @@ export function normalizeData(
       tenants,
       contracts,
       payments: migratePayments(parsed.payments || [], units, buildings, contracts),
+      communicationLogs: deduplicateCommunicationLogs(parsed.communicationLogs || []),
       repairs: (parsed.repairs || []).map((repair: AppData["repairs"][number]) => ({
         ...repair,
         isDeductedFromOwnerTransfer: repair.isDeductedFromOwnerTransfer ?? false,
@@ -354,6 +356,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const next = synchronizeOwnerTransferAllocations(withComputedUnitStatuses({
             ...updated,
             payments: synchronizePaymentNumbers(updated.payments),
+            communicationLogs: deduplicateCommunicationLogs(updated.communicationLogs || []),
           }));
           const auditEntries = buildFinancialAuditEntries(prev, next, context);
           const nextWithAudit = auditEntries.length > 0

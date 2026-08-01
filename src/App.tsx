@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { StoreProvider, useStore } from "@/data/store";
+import { mergeCommunicationLogs } from "@/data/communicationLogs";
 import { syncScheduledNotifications } from "@/utils/notifications";
 import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
@@ -182,7 +183,7 @@ function AutomaticCommunicationManager() {
         if (logs.length > 0) {
           await update((previous) => ({
             ...previous,
-            communicationLogs: [...(previous.communicationLogs || []), ...logs].slice(-2000),
+            communicationLogs: mergeCommunicationLogs(previous.communicationLogs || [], logs),
             settings: {
               ...previous.settings,
               automaticCommunications: {
@@ -193,7 +194,7 @@ function AutomaticCommunicationManager() {
           }));
           latestData.current = {
             ...latestData.current,
-            communicationLogs: [...(latestData.current.communicationLogs || []), ...logs].slice(-2000),
+            communicationLogs: mergeCommunicationLogs(latestData.current.communicationLogs || [], logs),
             settings: {
               ...latestData.current.settings,
               automaticCommunications: {

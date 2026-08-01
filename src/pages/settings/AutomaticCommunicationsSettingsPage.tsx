@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useStore } from "@/data/store";
+import { expandCommunicationLogSelection, mergeCommunicationLogs } from "@/data/communicationLogs";
 import type { AppData, AutomaticCommunicationRuleSettings, Payment } from "@/data/types";
 import { formatMoney, getPaymentReportMonth, paymentDueDateValue } from "@/data/helpers";
 import {
@@ -229,12 +230,16 @@ export default function AutomaticCommunicationsSettingsPage() {
     selectedLogs: typeof filteredLogs,
     description: string,
   ) => {
+    const expandedSelection = expandCommunicationLogSelection(
+      data.communicationLogs || [],
+      selectedLogs,
+    );
     const repeatProtectionMs = Math.max(1, Number(settings.frequencyDays) || 1) * 86_400_000;
     const now = Date.now();
-    const deletable = selectedLogs.filter((log) =>
+    const deletable = expandedSelection.filter((log) =>
       log.status !== "sent" || now - new Date(log.createdAt).getTime() >= repeatProtectionMs
     );
-    const protectedCount = selectedLogs.length - deletable.length;
+    const protectedCount = expandedSelection.length - deletable.length;
     if (deletable.length === 0) {
       showError("لا يمكن حذف الرسائل الناجحة الحديثة حتى تنتهي مدة الحماية من تكرار الإرسال");
       return;
@@ -303,7 +308,7 @@ export default function AutomaticCommunicationsSettingsPage() {
       if (logs.length > 0) {
         await update((previous) => ({
           ...previous,
-          communicationLogs: [...(previous.communicationLogs || []), ...logs].slice(-2000),
+          communicationLogs: mergeCommunicationLogs(previous.communicationLogs || [], logs),
           settings: {
             ...previous.settings,
             automaticCommunications: {
