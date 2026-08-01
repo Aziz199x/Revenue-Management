@@ -38,7 +38,7 @@ import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LAB
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { showSuccess, showError } from "@/utils/toast";
 import { getOwnerTransferAllocations } from "@/data/buildingOwnership";
-import { buildPaymentEmailContent, buildPaymentMessageContent, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
+import { buildPaymentEmailContent, buildPaymentMessageContent, findTenantForPayment, getTenantEmailAddresses, getTenantPhoneNumbers } from "@/utils/automaticCommunications";
 import { useAppDialog } from "@/components/shared/AppDialogProvider";
 import { getOutstandingRecurringBillRepairs, isRecurringBillRepair } from "@/data/recurringBuildingBills";
 
@@ -189,14 +189,16 @@ export default function Payments() {
         const building = unit
           ? data.buildings.find((b) => b.id === unit.buildingId)
           : undefined;
-        const tenant = data.tenants.find((t) => t.unitId === p.unitId);
+        const tenant = findTenantForPayment(data, p);
+        const tenantName = p.tenantName && !isCorruptedArabic(p.tenantName)
+          ? p.tenantName
+          : tenant?.name && !isCorruptedArabic(tenant.name) ? tenant.name : undefined;
         return {
           payment: p,
           unit,
           building,
-          tenant: p.tenantName && !isCorruptedArabic(p.tenantName)
-            ? { name: p.tenantName }
-            : tenant?.name && !isCorruptedArabic(tenant.name) ? tenant : undefined,
+          tenant,
+          tenantName,
           status: effectiveStatus(p),
         };
       })
@@ -206,7 +208,7 @@ export default function Payments() {
         if (filters.month !== "all" && getPaymentReportMonth(r.payment, data.settings.reportMonthCutoffDay) !== filters.month) return false;
         if (filters.search.trim()) {
           const q = filters.search.trim();
-          const hay = `${r.unit?.name ?? ""} ${r.building?.name ?? ""} ${r.tenant?.name ?? ""}`;
+          const hay = `${r.unit?.name ?? ""} ${r.building?.name ?? ""} ${r.tenantName ?? ""}`;
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -260,7 +262,7 @@ export default function Payments() {
       )
       .map((payment) => {
         const unit = data.units.find((item) => item.id === payment.unitId);
-        const tenant = data.tenants.find((item) => item.id === payment.tenantId || item.unitId === payment.unitId);
+        const tenant = findTenantForPayment(data, payment);
         return {
           payment,
           unit,
@@ -531,7 +533,7 @@ export default function Payments() {
       return;
     }
 
-    const tenant = data.tenants.find((t) => t.unitId === payment.unitId);
+    const tenant = findTenantForPayment(data, payment);
     const tenantPhones = Array.from(new Set([
       ...(payment.tenantPhone ? [payment.tenantPhone] : []),
       ...getTenantPhoneNumbers(tenant),
@@ -640,7 +642,7 @@ export default function Payments() {
             description="سجّل الدفعات من صفحة تفاصيل الوحدة"
           />
         ) : (
-          rows.map(({ payment: p, unit, building, tenant, status }) => {
+          rows.map(({ payment: p, unit, building, tenant, tenantName, status }) => {
             const maintenanceNote = paymentMaintenanceNote(p);
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
             const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
@@ -684,7 +686,7 @@ export default function Payments() {
                   <p className="min-w-0 whitespace-normal font-bold [overflow-wrap:anywhere]">{unit?.name ?? "وحدة محذوفة"}</p>
                   <p className="min-w-0 whitespace-normal text-xs text-muted-foreground [overflow-wrap:anywhere]">
                     {building?.name}
-                    {tenant ? ` · ${tenant.name}` : ""}
+                    {tenantName ? ` · ${tenantName}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     موعد السداد: {formatDate(p.dueDateGregorian || p.paymentDate)}

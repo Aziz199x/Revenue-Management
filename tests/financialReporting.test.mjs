@@ -768,6 +768,27 @@ test("automatic communication schedule sends formal email to every company addre
   );
 });
 
+test("payment tenant lookup keeps registered email when payment also stores tenant name", () => {
+  const registeredTenant = {
+    id: "tenant-with-email",
+    unitId: "u1",
+    name: "فارس المطيري",
+    email: "tenant@example.com",
+    createdAt: "2026-01-01",
+  };
+  const record = payment({
+    tenantId: "tenant-with-email",
+    tenantName: "فارس المطيري",
+  });
+  const resolved = automaticCommunications.findTenantForPayment({
+    tenants: [registeredTenant],
+    contracts: [],
+  }, record);
+
+  assert.equal(resolved?.id, registeredTenant.id);
+  assert.deepEqual(automaticCommunications.getTenantEmailAddresses(resolved), ["tenant@example.com"]);
+});
+
 test("automatic communication schedule never reminds a fully paid installment", () => {
   const paid = payment({ receivedDate: "2026-08-01", status: "paid" });
   const snapshot = storeData.normalizeData({

@@ -78,6 +78,33 @@ export function getTenantEmailAddresses(tenant?: Tenant): string[] {
   return Array.from(new Set(addresses.filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))));
 }
 
+export function findTenantForPayment(
+  data: Pick<AppData, "tenants" | "contracts">,
+  payment: Payment,
+): Tenant | undefined {
+  const contractTenantId = payment.contractId
+    ? data.contracts.find((contract) => contract.id === payment.contractId)?.tenantId
+    : undefined;
+  const linkedTenantId = payment.tenantId || contractTenantId;
+  if (linkedTenantId) {
+    const linkedTenant = data.tenants.find((tenant) => tenant.id === linkedTenantId);
+    if (linkedTenant) return linkedTenant;
+  }
+
+  const unitTenants = data.tenants.filter((tenant) => tenant.unitId === payment.unitId);
+  if (payment.tenantName) {
+    const namedTenant = unitTenants.find((tenant) => tenant.name.trim() === payment.tenantName?.trim());
+    if (namedTenant) return namedTenant;
+  }
+
+  return [...unitTenants].sort((a, b) => {
+    const aMatchesContract = a.activeContractId === payment.contractId ? 1 : 0;
+    const bMatchesContract = b.activeContractId === payment.contractId ? 1 : 0;
+    return bMatchesContract - aMatchesContract
+      || (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "");
+  })[0];
+}
+
 export function getTenantPhoneNumbers(tenant?: Tenant): string[] {
   const numbers = tenant?.phoneNumbers?.length
     ? tenant.phoneNumbers.filter((item) => item.enabled !== false).map((item) => item.phone.trim())
@@ -271,10 +298,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     const dueDate = paymentDueDateValue(payment);
     const daysUntilDue = Math.ceil((dateValue(dueDate) - dateValue(today)) / DAY);
     if (daysUntilDue > Math.max(0, settings.daysBeforeDue) || daysUntilDue < -Math.max(0, settings.overdueTailDays)) continue;
-    const tenant = data.tenants.find((item) =>
-      item.id === payment.tenantId
-      || (!payment.tenantId && item.unitId === payment.unitId)
-    );
+    const tenant = findTenantForPayment(data, payment);
     const kind = effectiveStatus(payment) === "overdue" || daysUntilDue < 0 ? "overduePayment" : "paymentReminder";
     const vars = templateVars(data, payment, tenant);
     const period = paymentPeriod(data, payment);
