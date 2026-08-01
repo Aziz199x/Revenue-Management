@@ -275,31 +275,63 @@ function wasRecentlyAttempted(
   return elapsed < retryWindow;
 }
 
-function scheduleIsActive(data: AppData, now: Date, force = false): boolean {
+type ScheduleKind = "paymentReminder" | "overduePayment" | "contractExpiry";
+
+function scheduleIsActive(data: AppData, now: Date): boolean {
   const settings = data.settings.automaticCommunications;
   if (!settings?.enabled) return false;
   const today = localDate(now);
   if (settings.activeFrom && today < settings.activeFrom) return false;
   if (settings.activeUntil && today > settings.activeUntil) return false;
-  if (force || settings.sendMissedAsSoonAsPossible) return true;
-  const [hour, minute] = (settings.sendTime || "09:00").split(":").map(Number);
+  return true;
+}
+
+function resolvedSchedule(data: AppData, kind: ScheduleKind) {
+  const settings = data.settings.automaticCommunications;
+  const custom = kind === "paymentReminder"
+    ? settings.paymentReminderSchedule
+    : kind === "overduePayment"
+      ? settings.overduePaymentSchedule
+      : settings.contractExpirySchedule;
+  const useCustom = !!custom?.useCustomSchedule;
+  return {
+    enabled: !useCustom || custom.enabled,
+    frequencyDays: Math.max(1, Number(useCustom ? custom.frequencyDays : settings.frequencyDays) || 1),
+    sendTime: (useCustom ? custom.sendTime : settings.sendTime) || "09:00",
+    daysBeforeDue: Math.max(0, Number(useCustom ? custom.daysBeforeDue : settings.daysBeforeDue) || 0),
+    overdueTailDays: Math.max(0, Number(useCustom ? custom.overdueTailDays : settings.overdueTailDays) || 0),
+    contractReminderDays: Math.max(
+      1,
+      Number(useCustom ? custom.contractReminderDays : data.settings.contractReminderDays) || 60,
+    ),
+  };
+}
+
+function ruleIsReady(data: AppData, kind: ScheduleKind, now: Date, force: boolean): boolean {
+  const rule = resolvedSchedule(data, kind);
+  if (!rule.enabled) return false;
+  if (force || data.settings.automaticCommunications.sendMissedAsSoonAsPossible) return true;
+  const [hour, minute] = rule.sendTime.split(":").map(Number);
   return now.getHours() * 60 + now.getMinutes() >= (hour || 0) * 60 + (minute || 0);
 }
 
 export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(), force = false): AutomaticCommunicationJob[] {
-  if (!scheduleIsActive(data, now, force)) return [];
+  if (!scheduleIsActive(data, now)) return [];
   const settings = data.settings.automaticCommunications;
   const today = localDate(now);
   const jobs: AutomaticCommunicationJob[] = [];
-  const frequencyDays = Math.max(1, Number(settings.frequencyDays) || 1);
 
   for (const payment of data.payments) {
     if (payment.deletedAt || isPaymentPaid(payment) || getRemainingPaymentAmount(payment) <= 0) continue;
+    if (payment.communicationGraceUntil && today <= payment.communicationGraceUntil) continue;
     const dueDate = paymentDueDateValue(payment);
     const daysUntilDue = Math.ceil((dateValue(dueDate) - dateValue(today)) / DAY);
-    if (daysUntilDue > Math.max(0, settings.daysBeforeDue) || daysUntilDue < -Math.max(0, settings.overdueTailDays)) continue;
     const tenant = findTenantForPayment(data, payment);
     const kind = effectiveStatus(payment) === "overdue" || daysUntilDue < 0 ? "overduePayment" : "paymentReminder";
+    const rule = resolvedSchedule(data, kind);
+    if (!ruleIsReady(data, kind, now, force)) continue;
+    if (kind === "paymentReminder" && daysUntilDue > rule.daysBeforeDue) continue;
+    if (kind === "overduePayment" && daysUntilDue < -rule.overdueTailDays) continue;
     const vars = templateVars(data, payment, tenant);
     const period = paymentPeriod(data, payment);
     const emailContent = buildPaymentEmailContent(data, payment, tenant, kind);
@@ -307,7 +339,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -333,7 +365,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:whatsapp:${recipient}:${kind}`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -359,7 +391,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:sms:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,
@@ -382,8 +414,11 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
   for (const contract of data.contracts) {
     if (contract.deletedAt || contract.status === "cancelled" || contract.status === "terminated" || !contract.endDate) continue;
     if (hasContinuingContractForUnit(contract, data.contracts)) continue;
+    if (contract.responseGraceUntil && today <= contract.responseGraceUntil) continue;
+    const rule = resolvedSchedule(data, "contractExpiry");
+    if (!ruleIsReady(data, "contractExpiry", now, force)) continue;
     const daysUntilEnd = Math.ceil((dateValue(contract.endDate) - dateValue(today)) / DAY);
-    if (daysUntilEnd < 0 || daysUntilEnd > Math.max(1, data.settings.contractReminderDays || 60)) continue;
+    if (daysUntilEnd < 0 || daysUntilEnd > rule.contractReminderDays) continue;
     const tenant = data.tenants.find((item) =>
       item.id === contract.tenantId
       || (!contract.tenantId && item.unitId === contract.unitId)
@@ -393,7 +428,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -416,7 +451,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       const recipient = validatePhone(phone);
       if (!recipient) continue;
       const dedupeKey = `${contract.id}:whatsapp:${recipient}:contractExpiry`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -439,7 +474,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${contract.id}:sms:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,

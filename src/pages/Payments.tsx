@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, CheckCircle2, Mail, MessageCircle, MessageSquareText, Pencil, Trash2 } from "lucide-react";
+import { Wallet, Search, CheckCircle2, Mail, MessageCircle, MessageSquareText, Pencil, Trash2, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +25,7 @@ import WhatsappPreview from "@/components/shared/WhatsappPreview";
 import EmailPreview from "@/components/shared/EmailPreview";
 import SmsPreview from "@/components/shared/SmsPreview";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
+import CommunicationGraceDialog from "@/components/shared/CommunicationGraceDialog";
 import {
   createMaintenanceExpenseItemDraft,
   hasInvalidMaintenanceExpenseItems,
@@ -125,6 +126,7 @@ export default function Payments() {
     contractId?: string;
     kind: "paymentReminder" | "overduePayment";
   } | null>(null);
+  const [gracePayment, setGracePayment] = useState<Payment | null>(null);
 
   const deletePayment = async (payment: Payment) => {
     const reportMonth = getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay);
@@ -696,6 +698,23 @@ export default function Payments() {
                       نهاية مهلة السداد: {formatDate(p.paymentDeadlineGregorian)}
                     </p>
                   )}
+                  {p.communicationGraceUntil && (
+                    <div className={`rounded-xl border p-2 text-xs ${
+                      p.communicationGraceUntil >= new Date().toISOString().slice(0, 10)
+                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600"
+                    }`}>
+                      <p className="font-bold">
+                        {p.communicationGraceUntil >= new Date().toISOString().slice(0, 10) ? "مهلة تواصل فعالة" : "انتهت مهلة التواصل"}
+                        {" · حتى "}
+                        {formatDate(p.communicationGraceUntil)}
+                      </p>
+                      {p.communicationGraceReason && <p className="mt-1">{p.communicationGraceReason}</p>}
+                      {p.communicationGraceUntil >= new Date().toISOString().slice(0, 10) && (
+                        <p className="mt-1">لن تُرسل تذكيرات السداد التلقائية خلال المهلة.</p>
+                      )}
+                    </div>
+                  )}
                   {status === "overdue" && <p className="text-xs font-semibold text-red-600">متأخر {Math.abs(daysUntil(p.dueDateGregorian || p.nextDueDate || p.paymentDate))} يوم</p>}
                   {p.receivedDate && (status === "paid" || status === "partial") && (
                     <p className="text-xs text-emerald-700">
@@ -759,6 +778,16 @@ export default function Payments() {
 
               {(status === "unpaid" || status === "overdue") && (
                 <div className="flex w-full min-w-0 flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-auto min-h-8 rounded-full border-amber-300 px-3 py-1.5 text-xs text-amber-800"
+                    onClick={() => setGracePayment(p)}
+                  >
+                    <CalendarClock className="ml-1 h-3.5 w-3.5" />
+                    {p.communicationGraceUntil ? "تعديل المهلة" : "منح مهلة"}
+                  </Button>
                   <Button
                     size="sm"
                     className="h-auto min-h-8 max-w-full shrink-0 whitespace-normal rounded-full bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"
@@ -1155,6 +1184,41 @@ export default function Payments() {
           </div>}
         </DialogContent>
       </Dialog>
+
+      {gracePayment && (
+        <CommunicationGraceDialog
+          open={!!gracePayment}
+          onOpenChange={(open) => !open && setGracePayment(null)}
+          title="مهلة تواصل لدفعة الإيجار"
+          description="حدد المهلة التي طلبها المستأجر. لن يرسل التطبيق تذكيرات تلقائية لهذه الدفعة خلالها."
+          currentUntil={gracePayment.communicationGraceUntil}
+          currentReason={gracePayment.communicationGraceReason}
+          onSave={({ until, reason }) => {
+            update((previous) => ({
+              ...previous,
+              payments: previous.payments.map((payment) => payment.id === gracePayment.id ? {
+                ...payment,
+                communicationGraceUntil: until,
+                communicationGraceReason: reason,
+                communicationGraceCreatedAt: new Date().toISOString(),
+              } : payment),
+            }));
+            showSuccess(`تم منح مهلة للدفعة حتى ${formatDate(until)}`);
+          }}
+          onClear={() => {
+            update((previous) => ({
+              ...previous,
+              payments: previous.payments.map((payment) => payment.id === gracePayment.id ? {
+                ...payment,
+                communicationGraceUntil: undefined,
+                communicationGraceReason: undefined,
+                communicationGraceCreatedAt: undefined,
+              } : payment),
+            }));
+            showSuccess("تم إلغاء المهلة واستئناف التذكيرات التلقائية");
+          }}
+        />
+      )}
 
       {whatsappPreview && (
         <WhatsappPreview

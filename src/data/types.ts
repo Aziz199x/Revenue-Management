@@ -129,6 +129,10 @@ export interface Payment {
   dueDateHijri?: string;
   paymentDeadlineGregorian?: string;
   paymentDeadlineHijri?: string;
+  /** Suppresses automatic payment reminders through this Gregorian date (inclusive). */
+  communicationGraceUntil?: string;
+  communicationGraceReason?: string;
+  communicationGraceCreatedAt?: string;
   rentalPeriod?: string;
   deletedAt?: string;
   grossAmount?: number;
@@ -185,6 +189,10 @@ export interface Contract {
   expiryReminderDays: number;
   autoRenewal: boolean;
   tenantRenewalPreference?: "unknown" | "renewing" | "not_renewing";
+  /** Suppresses automatic contract-expiry reminders while the tenant considers renewal or departure. */
+  responseGraceUntil?: string;
+  responseGraceReason?: string;
+  responseGraceCreatedAt?: string;
   notes?: string;
   createdAt: string;
   contractNumber?: string;
@@ -573,6 +581,24 @@ export interface AutomaticCommunicationSettings {
   activeUntil?: string;
   emailProvider: "gmail" | "outlook" | null;
   lastRunAt?: string;
+  paymentReminderSchedule: AutomaticCommunicationRuleSettings;
+  overduePaymentSchedule: AutomaticCommunicationRuleSettings;
+  contractExpirySchedule: AutomaticCommunicationRuleSettings;
+}
+
+export interface AutomaticCommunicationRuleSettings {
+  /** When false, the rule inherits the shared legacy schedule. */
+  useCustomSchedule: boolean;
+  /** Only applies when useCustomSchedule is true. */
+  enabled: boolean;
+  frequencyDays: number;
+  sendTime: string;
+  /** Payment reminders: how many days before due. */
+  daysBeforeDue?: number;
+  /** Overdue reminders: how long after due reminders continue. */
+  overdueTailDays?: number;
+  /** Contract reminders: how many days before expiry. */
+  contractReminderDays?: number;
 }
 
 export type CommunicationChannel = "email" | "whatsapp" | "sms";
@@ -755,6 +781,27 @@ export const DEFAULT_SETTINGS: Settings = {
     daysBeforeDue: 3,
     overdueTailDays: 30,
     emailProvider: null,
+    paymentReminderSchedule: {
+      useCustomSchedule: false,
+      enabled: true,
+      frequencyDays: 1,
+      sendTime: "09:00",
+      daysBeforeDue: 3,
+    },
+    overduePaymentSchedule: {
+      useCustomSchedule: false,
+      enabled: true,
+      frequencyDays: 1,
+      sendTime: "09:00",
+      overdueTailDays: 30,
+    },
+    contractExpirySchedule: {
+      useCustomSchedule: false,
+      enabled: true,
+      frequencyDays: 1,
+      sendTime: "09:00",
+      contractReminderDays: 80,
+    },
   },
 };
 

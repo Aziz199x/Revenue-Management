@@ -277,6 +277,18 @@ export function normalizeData(
         automaticCommunications: {
           ...DEFAULT_SETTINGS.automaticCommunications,
           ...(parsedSettings.automaticCommunications || {}),
+          paymentReminderSchedule: {
+            ...DEFAULT_SETTINGS.automaticCommunications.paymentReminderSchedule,
+            ...(parsedSettings.automaticCommunications?.paymentReminderSchedule || {}),
+          },
+          overduePaymentSchedule: {
+            ...DEFAULT_SETTINGS.automaticCommunications.overduePaymentSchedule,
+            ...(parsedSettings.automaticCommunications?.overduePaymentSchedule || {}),
+          },
+          contractExpirySchedule: {
+            ...DEFAULT_SETTINGS.automaticCommunications.contractExpirySchedule,
+            ...(parsedSettings.automaticCommunications?.contractExpirySchedule || {}),
+          },
         },
         defaultContractExpiryReminderDays:
           parsedSettings.defaultContractExpiryReminderDays

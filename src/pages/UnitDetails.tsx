@@ -20,6 +20,7 @@ import {
   Gauge,
   MessageCircle,
   MessageSquareText,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,6 +130,7 @@ import EmailPreview from "@/components/shared/EmailPreview";
 import SmsPreview from "@/components/shared/SmsPreview";
 import EjarImportDialog from "@/components/shared/EjarImportDialog";
 import MaintenanceExpenseItemsEditor from "@/components/shared/MaintenanceExpenseItemsEditor";
+import CommunicationGraceDialog from "@/components/shared/CommunicationGraceDialog";
 import {
   createMaintenanceExpenseItemDraft,
   hasInvalidMaintenanceExpenseItems,
@@ -492,6 +494,9 @@ export default function UnitDetails() {
     contractId?: string;
     kind: "paymentReminder" | "overduePayment" | "contractExpiry";
   } | null>(null);
+  const [communicationGraceTarget, setCommunicationGraceTarget] = useState<
+    { kind: "payment"; value: Payment } | { kind: "contract"; value: Contract } | null
+  >(null);
 
   useEffect(() => {
     if (requestedTab && UNIT_DETAIL_TABS.includes(requestedTab)) setActiveTab(requestedTab);
@@ -1061,6 +1066,21 @@ export default function UnitDetails() {
                             نهاية مهلة السداد: {formatDate(p.paymentDeadlineGregorian)}
                           </p>
                         )}
+                        {p.communicationGraceUntil && (
+                          <div className={`mt-2 rounded-xl border p-2 text-xs ${
+                            p.communicationGraceUntil >= todayISO()
+                              ? "border-amber-200 bg-amber-50 text-amber-900"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
+                          }`}>
+                            <p className="font-bold">
+                              {p.communicationGraceUntil >= todayISO() ? "مهلة تواصل فعالة" : "انتهت مهلة التواصل"}
+                              {" · حتى "}
+                              {formatDate(p.communicationGraceUntil)}
+                            </p>
+                            {p.communicationGraceReason && <p className="mt-1">{p.communicationGraceReason}</p>}
+                            {p.communicationGraceUntil >= todayISO() && <p className="mt-1">تذكيرات السداد التلقائية متوقفة لهذه الدفعة.</p>}
+                          </div>
+                        )}
                         {st === "overdue" && <p className="text-xs font-semibold text-red-600">متأخر {Math.abs(daysUntil(p.dueDateGregorian || p.nextDueDate || p.paymentDate))} يوم</p>}
                         {p.receivedDate && (st === "paid" || st === "partial") && (
                           <p className="text-xs text-emerald-700">
@@ -1146,6 +1166,17 @@ export default function UnitDetails() {
 
                     <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {(st === "unpaid" || st === "overdue" || st === "partial") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-auto min-h-8 rounded-full border-amber-300 px-3 py-1.5 text-xs text-amber-800"
+                            onClick={() => setCommunicationGraceTarget({ kind: "payment", value: p })}
+                          >
+                            <CalendarClock className="ml-1 h-3.5 w-3.5" />
+                            {p.communicationGraceUntil ? "تعديل المهلة" : "منح مهلة"}
+                          </Button>
+                        )}
                         {(st === "unpaid" || st === "overdue" || st === "partial") && (
                         <Button
                           size="sm"
@@ -1369,6 +1400,30 @@ export default function UnitDetails() {
                     {c.notes && (
                       <p className="mt-2 rounded-2xl bg-muted p-2.5 text-xs text-muted-foreground">{c.notes}</p>
                     )}
+                    {c.responseGraceUntil && (
+                      <div className={`mt-2 rounded-2xl border p-3 text-xs ${
+                        c.responseGraceUntil >= todayISO()
+                          ? "border-amber-200 bg-amber-50 text-amber-900"
+                          : "border-slate-200 bg-slate-50 text-slate-600"
+                      }`}>
+                        <p className="font-bold">طلب المستأجر مهلة للرد بشأن التجديد أو المغادرة</p>
+                        <p className="mt-1">
+                          {c.responseGraceUntil >= todayISO() ? "المهلة فعالة حتى" : "انتهت المهلة في"}{" "}
+                          {formatDate(c.responseGraceUntil)}
+                        </p>
+                        {c.responseGraceReason && <p className="mt-1">{c.responseGraceReason}</p>}
+                        {c.responseGraceUntil >= todayISO() && <p className="mt-1">تذكيرات انتهاء العقد التلقائية متوقفة خلال المهلة.</p>}
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 w-full rounded-xl border-amber-300 text-xs text-amber-800"
+                      onClick={() => setCommunicationGraceTarget({ kind: "contract", value: c })}
+                    >
+                      <CalendarClock className="ml-1 h-4 w-4" />
+                      {c.responseGraceUntil ? "تعديل مهلة الرد" : "تسجيل طلب مهلة للرد"}
+                    </Button>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <EvidenceAttachments
                         entityType="contract"
@@ -2390,6 +2445,75 @@ export default function UnitDetails() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {communicationGraceTarget && (
+        <CommunicationGraceDialog
+          open={!!communicationGraceTarget}
+          onOpenChange={(open) => !open && setCommunicationGraceTarget(null)}
+          title={communicationGraceTarget.kind === "payment" ? "مهلة تواصل لدفعة الإيجار" : "مهلة الرد على التجديد أو المغادرة"}
+          description={communicationGraceTarget.kind === "payment"
+            ? "حدد مهلة المستأجر للسداد. ستتوقف التذكيرات التلقائية لهذه الدفعة حتى نهايتها."
+            : "حدد المهلة التي طلبها المستأجر لاتخاذ قرار التجديد أو مغادرة الوحدة."}
+          currentUntil={communicationGraceTarget.kind === "payment"
+            ? communicationGraceTarget.value.communicationGraceUntil
+            : communicationGraceTarget.value.responseGraceUntil}
+          currentReason={communicationGraceTarget.kind === "payment"
+            ? communicationGraceTarget.value.communicationGraceReason
+            : communicationGraceTarget.value.responseGraceReason}
+          onSave={({ until, reason }) => {
+            if (communicationGraceTarget.kind === "payment") {
+              const id = communicationGraceTarget.value.id;
+              update((previous) => ({
+                ...previous,
+                payments: previous.payments.map((payment) => payment.id === id ? {
+                  ...payment,
+                  communicationGraceUntil: until,
+                  communicationGraceReason: reason,
+                  communicationGraceCreatedAt: new Date().toISOString(),
+                } : payment),
+              }));
+            } else {
+              const id = communicationGraceTarget.value.id;
+              update((previous) => ({
+                ...previous,
+                contracts: previous.contracts.map((contract) => contract.id === id ? {
+                  ...contract,
+                  responseGraceUntil: until,
+                  responseGraceReason: reason,
+                  responseGraceCreatedAt: new Date().toISOString(),
+                } : contract),
+              }));
+            }
+            showSuccess(`تم حفظ المهلة حتى ${formatDate(until)}`);
+          }}
+          onClear={() => {
+            if (communicationGraceTarget.kind === "payment") {
+              const id = communicationGraceTarget.value.id;
+              update((previous) => ({
+                ...previous,
+                payments: previous.payments.map((payment) => payment.id === id ? {
+                  ...payment,
+                  communicationGraceUntil: undefined,
+                  communicationGraceReason: undefined,
+                  communicationGraceCreatedAt: undefined,
+                } : payment),
+              }));
+            } else {
+              const id = communicationGraceTarget.value.id;
+              update((previous) => ({
+                ...previous,
+                contracts: previous.contracts.map((contract) => contract.id === id ? {
+                  ...contract,
+                  responseGraceUntil: undefined,
+                  responseGraceReason: undefined,
+                  responseGraceCreatedAt: undefined,
+                } : contract),
+              }));
+            }
+            showSuccess("تم إلغاء المهلة واستئناف التذكيرات التلقائية");
+          }}
+        />
+      )}
 
       {/* WhatsApp Preview */}
       {whatsappPreview && (

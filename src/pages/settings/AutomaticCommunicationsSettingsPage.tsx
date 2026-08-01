@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useStore } from "@/data/store";
-import type { AppData, Payment } from "@/data/types";
+import type { AppData, AutomaticCommunicationRuleSettings, Payment } from "@/data/types";
 import { formatMoney, getPaymentReportMonth, paymentDueDateValue } from "@/data/helpers";
 import {
   connectGmail,
@@ -89,6 +89,80 @@ function derivePaymentPeriod(data: AppData, payment: Payment): { start: string; 
   };
 }
 
+function ScheduleRuleCard({
+  title,
+  description,
+  rule,
+  thresholdLabel,
+  thresholdKey,
+  thresholdMax,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  rule: AutomaticCommunicationRuleSettings;
+  thresholdLabel: string;
+  thresholdKey: "daysBeforeDue" | "overdueTailDays" | "contractReminderDays";
+  thresholdMax: number;
+  onChange: (patch: Partial<AutomaticCommunicationRuleSettings>) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-border bg-muted/40 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold">{title}</p>
+          <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Label className="text-[10px]">تخصيص مستقل</Label>
+          <Switch checked={rule.useCustomSchedule} onCheckedChange={(useCustomSchedule) => onChange({ useCustomSchedule })} />
+        </div>
+      </div>
+      {rule.useCustomSchedule ? (
+        <>
+          <div className="flex items-center justify-between rounded-xl bg-card p-2.5">
+            <Label>إرسال هذا النوع</Label>
+            <Switch checked={rule.enabled} onCheckedChange={(enabled) => onChange({ enabled })} />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <Label>التكرار</Label>
+              <Select value={String(rule.frequencyDays)} onValueChange={(value) => onChange({ frequencyDays: Number(value) })}>
+                <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">كل يوم</SelectItem>
+                  <SelectItem value="2">كل يومين</SelectItem>
+                  <SelectItem value="3">كل 3 أيام</SelectItem>
+                  <SelectItem value="7">أسبوعيًا</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>وقت الإرسال</Label>
+              <Input type="time" value={rule.sendTime} onChange={(event) => onChange({ sendTime: event.target.value })} className="mt-1 rounded-xl" />
+            </div>
+            <div>
+              <Label>{thresholdLabel}</Label>
+              <Input
+                type="number"
+                min={thresholdKey === "daysBeforeDue" ? 0 : 1}
+                max={thresholdMax}
+                value={rule[thresholdKey] ?? ""}
+                onChange={(event) => onChange({ [thresholdKey]: Number(event.target.value) })}
+                className="mt-1 rounded-xl"
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="rounded-xl bg-card px-3 py-2 text-[10px] text-muted-foreground">
+          يستخدم إعدادات التكرار والوقت المشتركة الحالية.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function AutomaticCommunicationsSettingsPage() {
   const { data, update } = useStore();
   const appDialog = useAppDialog();
@@ -137,6 +211,18 @@ export default function AutomaticCommunicationsSettingsPage() {
         },
       },
     }));
+  };
+
+  const updateRule = (
+    key: "paymentReminderSchedule" | "overduePaymentSchedule" | "contractExpirySchedule",
+    patch: Partial<AutomaticCommunicationRuleSettings>,
+  ) => {
+    updateSchedule({
+      [key]: {
+        ...settings[key],
+        ...patch,
+      },
+    });
   };
 
   const deleteCommunicationLogs = async (
@@ -360,6 +446,42 @@ export default function AutomaticCommunicationsSettingsPage() {
               <Label>انتهاء الجدول في</Label>
               <Input type="date" value={settings.activeUntil || ""} onChange={(event) => updateSchedule({ activeUntil: event.target.value || undefined })} className="mt-1 rounded-xl" />
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-3">
+            <div>
+              <p className="font-bold">إعدادات مستقلة حسب نوع التنبيه</p>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                فعّل «تخصيص مستقل» لنوع واحد فقط إذا أردت تغيير تكراره أو إيقافه. الأنواع غير المخصصة تستمر وفق الإعداد المشترك أعلاه.
+              </p>
+            </div>
+            <ScheduleRuleCard
+              title="موعد دفعة الإيجار"
+              description="التذكير الذي يسبق تاريخ الاستحقاق."
+              rule={settings.paymentReminderSchedule}
+              thresholdLabel="قبل الاستحقاق بأيام"
+              thresholdKey="daysBeforeDue"
+              thresholdMax={30}
+              onChange={(patch) => updateRule("paymentReminderSchedule", patch)}
+            />
+            <ScheduleRuleCard
+              title="دفعة الإيجار المتأخرة"
+              description="التكرار بعد تجاوز تاريخ الاستحقاق."
+              rule={settings.overduePaymentSchedule}
+              thresholdLabel="استمرار المتأخرات لأيام"
+              thresholdKey="overdueTailDays"
+              thresholdMax={365}
+              onChange={(patch) => updateRule("overduePaymentSchedule", patch)}
+            />
+            <ScheduleRuleCard
+              title="قرب انتهاء العقد"
+              description="طلب الرد بالتجديد أو مغادرة الوحدة."
+              rule={settings.contractExpirySchedule}
+              thresholdLabel="قبل انتهاء العقد بأيام"
+              thresholdKey="contractReminderDays"
+              thresholdMax={365}
+              onChange={(patch) => updateRule("contractExpirySchedule", patch)}
+            />
           </div>
 
           <Button className="w-full rounded-xl" disabled={running} onClick={runNow}>

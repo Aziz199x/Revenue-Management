@@ -1007,3 +1007,111 @@ test("contract expiry is suppressed when another valid contract covers the same 
   const jobs = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T10:00:00"));
   assert.equal(jobs.filter((job) => job.templateKind === "contractExpiry").length, 0);
 });
+
+test("automatic communication respects payment and contract grace periods", () => {
+  const gracePayment = payment({
+    id: "p-grace",
+    contractId: "c-grace",
+    tenantId: "t1",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-08",
+    dueDateGregorian: "2026-08-08",
+    communicationGraceUntil: "2026-08-05",
+    communicationGraceReason: "Tenant requested time",
+  });
+  const graceContract = {
+    ...contract,
+    id: "c-grace",
+    tenantId: "t1",
+    endDate: "2026-08-20",
+    responseGraceUntil: "2026-08-05",
+    responseGraceReason: "Waiting for renewal decision",
+  };
+  const snapshot = storeData.normalizeData({
+    ...data([gracePayment], [graceContract]),
+    tenants: [{
+      id: "t1",
+      unitId: "u1",
+      name: "Tenant",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      ...data([]).settings,
+      contractReminderDays: 80,
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        sendMissedAsSoonAsPossible: true,
+      },
+    },
+  });
+
+  assert.deepEqual(
+    automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-03T10:00:00")),
+    [],
+  );
+  const resumed = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-06T10:00:00"));
+  assert.equal(resumed.some((job) => job.paymentId === "p-grace"), true, JSON.stringify(resumed));
+  assert.equal(resumed.some((job) => job.contractId === "c-grace"), true);
+});
+
+test("custom automatic communication rules can disable overdue reminders without changing shared defaults", () => {
+  const overdue = payment({
+    id: "p-overdue-disabled",
+    tenantId: "t1",
+    status: "overdue",
+    receivedAmount: 0,
+    paymentDate: "2026-07-31",
+    dueDateGregorian: "2026-07-31",
+  });
+  const upcoming = payment({
+    id: "p-upcoming-shared",
+    tenantId: "t1",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([overdue, upcoming]),
+    tenants: [{
+      id: "t1",
+      unitId: "u1",
+      name: "Tenant",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      ...data([]).settings,
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        sendMissedAsSoonAsPossible: true,
+        overduePaymentSchedule: {
+          useCustomSchedule: true,
+          enabled: false,
+          frequencyDays: 2,
+          sendTime: "10:00",
+          overdueTailDays: 60,
+        },
+      },
+    },
+  });
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(snapshot, new Date("2026-08-01T10:00:00"));
+  assert.equal(jobs.some((job) => job.paymentId === "p-overdue-disabled"), false);
+  assert.equal(jobs.some((job) => job.paymentId === "p-upcoming-shared"), true);
+});
