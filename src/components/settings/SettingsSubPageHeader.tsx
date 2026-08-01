@@ -16,7 +16,7 @@ export default function SettingsSubPageHeader({ title, subtitle }: SettingsSubPa
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0 rounded-full"
+          className="h-9 w-9 shrink-0 rounded-full min-[500px]:hidden"
           onClick={() => navigate("/settings")}
         >
           <ArrowRight className="h-5 w-5" />

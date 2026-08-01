@@ -335,15 +335,20 @@ export default function BuildingDetails() {
             </div>
           )}
         </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
-          <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1">
-            <TabsTrigger value="units" className="rounded-xl py-2 text-xs font-bold">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          dir="rtl"
+          className="min-[500px]:grid min-[500px]:grid-cols-[12rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-4 min-[500px]:[direction:ltr]"
+        >
+          <TabsList className="grid h-auto w-full grid-cols-4 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-4 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:flex-col min-[500px]:gap-1 min-[500px]:p-2 min-[500px]:[direction:rtl]">
+            <TabsTrigger value="units" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               الوحدات
             </TabsTrigger>
-            <TabsTrigger value="financial" className="rounded-xl py-2 text-xs font-bold">
+            <TabsTrigger value="financial" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               المالية
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-xs font-bold">
+            <TabsTrigger value="maintenance" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <span>صيانة المبنى</span>
               {buildingRepairs.length > 0 && (
                 <span className="mr-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
@@ -351,9 +356,12 @@ export default function BuildingDetails() {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="performance" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+              الأداء
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="financial" className="mt-4 space-y-4">
+          <TabsContent value="financial" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
         <details className="group rounded-3xl border border-border bg-card p-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold">
             <span>الملخص التراكمي للعقار</span>
@@ -531,7 +539,7 @@ export default function BuildingDetails() {
 
           </TabsContent>
 
-          <TabsContent value="performance" className="mt-4 space-y-4">
+          <TabsContent value="performance" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
             <div className="rounded-3xl border border-border bg-card p-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -550,7 +558,7 @@ export default function BuildingDetails() {
             <MonthlyExceptionsCard exceptions={bundle.exceptions} />
           </TabsContent>
 
-          <TabsContent value="maintenance" className="mt-4 space-y-3">
+          <TabsContent value="maintenance" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
             <div className="flex items-center justify-between gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4">
               <div>
                 <p className="font-bold text-amber-900">أعمال صيانة المبنى</p>
@@ -720,7 +728,7 @@ export default function BuildingDetails() {
             )}
           </TabsContent>
 
-          <TabsContent value="units" className="mt-4 space-y-4">
+          <TabsContent value="units" className="mt-4 space-y-4 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl border border-border bg-card p-3">
             <p className="text-lg font-bold">{stats.unitsCount}</p>

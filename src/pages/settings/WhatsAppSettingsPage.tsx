@@ -122,17 +122,21 @@ export default function WhatsAppSettingsPage() {
           </p>
         </section>
 
-        <Tabs defaultValue="whatsapp" dir="rtl">
-          <TabsList className="grid w-full grid-cols-2 rounded-2xl">
-            <TabsTrigger value="whatsapp" className="rounded-xl">
+        <Tabs
+          defaultValue="whatsapp"
+          dir="rtl"
+          className="min-[900px]:grid min-[900px]:grid-cols-[12rem_minmax(0,1fr)] min-[900px]:items-start min-[900px]:gap-4 min-[900px]:[direction:ltr]"
+        >
+          <TabsList className="grid w-full grid-cols-2 rounded-2xl min-[900px]:sticky min-[900px]:top-4 min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:flex min-[900px]:flex-col min-[900px]:gap-1 min-[900px]:p-2 min-[900px]:[direction:rtl]">
+            <TabsTrigger value="whatsapp" className="rounded-xl min-[900px]:w-full min-[900px]:justify-start">
               <MessageCircle className="ml-1 h-4 w-4" /> واتساب
             </TabsTrigger>
-            <TabsTrigger value="email" className="rounded-xl">
+            <TabsTrigger value="email" className="rounded-xl min-[900px]:w-full min-[900px]:justify-start">
               <AtSign className="ml-1 h-4 w-4" /> البريد
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="whatsapp" className="mt-4">
+          <TabsContent value="whatsapp" className="mt-4 min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:mt-0 min-[900px]:[direction:rtl]">
             <section className="space-y-4 rounded-3xl border border-emerald-200 bg-card p-4">
               <div>
                 <p className="font-bold">قوالب واتساب · {audience === "company" ? "شركة" : "فرد"}</p>
@@ -160,7 +164,7 @@ export default function WhatsAppSettingsPage() {
             </section>
           </TabsContent>
 
-          <TabsContent value="email" className="mt-4">
+          <TabsContent value="email" className="mt-4 min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:mt-0 min-[900px]:[direction:rtl]">
             <section className="space-y-4 rounded-3xl border border-sky-200 bg-card p-4">
               <div>
                 <p className="font-bold">قوالب البريد · {audience === "company" ? "شركة" : "فرد"}</p>

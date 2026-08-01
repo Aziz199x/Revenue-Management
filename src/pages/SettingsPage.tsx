@@ -1,47 +1,10 @@
 import { Link } from "react-router-dom";
 import {
-  Bell,
   ChevronLeft,
-  Cloud,
-  LayoutDashboard,
-  MessageCircle,
-  Send,
   ShieldCheck,
 } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
-
-const settingsItems = [
-  {
-    to: "/settings/notifications",
-    icon: Bell,
-    title: "الإشعارات والتنبيهات",
-    description: "إعداد تنبيهات العقود والدفعات والصيانة",
-  },
-  {
-    to: "/settings/home",
-    icon: LayoutDashboard,
-    title: "تخصيص الشاشة الرئيسية",
-    description: "التحكم في العقود والدفعات الظاهرة في لوحة التحكم",
-  },
-  {
-    to: "/settings/backup",
-    icon: Cloud,
-    title: "النسخ الاحتياطي والاستعادة",
-    description: "النسخ المحلي وGoogle Drive وإدارة البيانات",
-  },
-  {
-    to: "/settings/communications",
-    icon: Send,
-    title: "الإرسال التلقائي والبريد",
-    description: "جدولة تذكيرات الإيجار وربط Gmail أو Outlook وWhatsApp Business",
-  },
-  {
-    to: "/settings/whatsapp",
-    icon: MessageCircle,
-    title: "قوالب التبليغ",
-    description: "إدارة قوالب واتساب والبريد للأفراد والشركات",
-  },
-];
+import { settingsItems } from "@/components/settings/settingsNavigation";
 
 export default function SettingsPage() {
   return (
