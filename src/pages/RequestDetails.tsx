@@ -89,6 +89,7 @@ export default function RequestDetails() {
         title={req.title}
         subtitle={REQUEST_TYPE_LABELS[req.type]}
         back
+        backTo={unit ? `/units/${encodeURIComponent(unit.id)}?tab=requests` : "/requests"}
         action={
           <div className="flex gap-1">
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setEditOpen(true)}>

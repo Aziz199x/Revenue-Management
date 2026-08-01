@@ -12,7 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Building,
   TenantRequest,
+  Tenant,
+  Unit,
   RequestType,
   RequestStatus,
   RequestPriority,
@@ -52,6 +55,11 @@ interface Props {
   tenantName?: string;
   buildingName?: string;
   unitName?: string;
+  locationOptions?: {
+    buildings: Building[];
+    units: Unit[];
+    tenants: Tenant[];
+  };
   onSubmit: (values: TenantRequestFormValues) => void;
 }
 
@@ -60,8 +68,16 @@ export default function TenantRequestForm({
   unitId,
   buildingId,
   tenantId,
+  locationOptions,
   onSubmit,
 }: Props) {
+  const [selectedBuildingId, setSelectedBuildingId] = useState(
+    initial?.buildingId || buildingId || "",
+  );
+  const [selectedUnitId, setSelectedUnitId] = useState(
+    initial?.unitId || unitId || "",
+  );
+  const [locationError, setLocationError] = useState("");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [type, setType] = useState<RequestType>(initial?.type ?? "maintenance");
   const [customType, setCustomType] = useState(initial?.customType ?? "");
@@ -79,17 +95,29 @@ export default function TenantRequestForm({
   const [technicianName, setTechnicianName] = useState(initial?.technicianName ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [addedToRepairs, setAddedToRepairs] = useState(initial?.addedToRepairs ?? false);
+  const selectableUnits = locationOptions
+    ? locationOptions.units.filter((unit) => unit.buildingId === selectedBuildingId)
+    : [];
+  const selectedTenant = locationOptions
+    ? locationOptions.tenants
+        .filter((tenant) => tenant.unitId === selectedUnitId)
+        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))[0]
+    : undefined;
 
   return (
     <form
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (locationOptions && (!selectedBuildingId || !selectedUnitId)) {
+          setLocationError("اختر العقار والوحدة قبل حفظ الطلب");
+          return;
+        }
         if (!title.trim()) return;
         onSubmit({
-          unitId,
-          buildingId,
-          tenantId,
+          unitId: selectedUnitId || unitId,
+          buildingId: selectedBuildingId || buildingId,
+          tenantId: tenantId || selectedTenant?.id,
           title: title.trim(),
           type,
           customType: type === "other" ? customType.trim() || undefined : undefined,
@@ -106,6 +134,60 @@ export default function TenantRequestForm({
         });
       }}
     >
+      {locationOptions && (
+        <div className="rounded-2xl border border-primary/20 bg-secondary/50 p-3">
+          <p className="mb-3 text-sm font-bold">موقع الطلب *</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>العقار *</Label>
+              <Select
+                value={selectedBuildingId}
+                onValueChange={(value) => {
+                  setSelectedBuildingId(value);
+                  setSelectedUnitId("");
+                  setLocationError("");
+                }}
+              >
+                <SelectTrigger className="rounded-xl bg-card">
+                  <SelectValue placeholder="اختر العقار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locationOptions.buildings.map((building) => (
+                    <SelectItem key={building.id} value={building.id}>{building.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>الوحدة *</Label>
+              <Select
+                value={selectedUnitId}
+                onValueChange={(value) => {
+                  setSelectedUnitId(value);
+                  setLocationError("");
+                }}
+                disabled={!selectedBuildingId}
+              >
+                <SelectTrigger className="rounded-xl bg-card">
+                  <SelectValue placeholder={selectedBuildingId ? "اختر الوحدة" : "اختر العقار أولًا"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableUnits.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {selectedUnitId && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              المستأجر: {selectedTenant?.name || "لا يوجد مستأجر مسجل حاليًا في الوحدة"}
+            </p>
+          )}
+          {locationError && <p className="mt-2 text-xs font-semibold text-destructive">{locationError}</p>}
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label>عنوان الطلب *</Label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} required className="rounded-xl" />

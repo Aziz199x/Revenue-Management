@@ -203,6 +203,11 @@ export default function TenantRequests() {
         <TenantRequestForm
           unitId=""
           buildingId=""
+          locationOptions={{
+            buildings: data.buildings,
+            units: data.units,
+            tenants: data.tenants,
+          }}
           onSubmit={(values) => {
             const now = new Date().toISOString();
             const req: TenantRequest = {

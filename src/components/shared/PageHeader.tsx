@@ -6,10 +6,11 @@ interface Props {
   title: string;
   subtitle?: string;
   back?: boolean;
+  backTo?: string;
   action?: React.ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, back, action }: Props) {
+export default function PageHeader({ title, subtitle, back, backTo, action }: Props) {
   const navigate = useNavigate();
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/90 px-4 pb-3 pt-safe backdrop-blur">
@@ -19,7 +20,8 @@ export default function PageHeader({ title, subtitle, back, action }: Props) {
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-full"
-            onClick={() => navigate(-1)}
+            onClick={() => backTo ? navigate(backTo) : navigate(-1)}
+            aria-label="العودة إلى الصفحة السابقة"
           >
             <ArrowRight className="h-5 w-5" />
           </Button>

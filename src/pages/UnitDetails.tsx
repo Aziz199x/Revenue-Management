@@ -718,6 +718,7 @@ export default function UnitDetails() {
         title={unit.name}
         subtitle={building ? `${building.name} · ${unit.type}` : unit.type}
         back
+        backTo={building ? `/buildings/${encodeURIComponent(building.id)}` : "/buildings"}
         action={
           <div className="flex gap-1">
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => setEditUnitOpen(true)}>
@@ -782,7 +783,7 @@ export default function UnitDetails() {
           dir="rtl"
           className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
+          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-[calc(50vh-12rem)] min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:self-start min-[500px]:translate-y-0 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
             <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <User className="h-4 w-4" /> المستأجر
             </TabsTrigger>
