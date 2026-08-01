@@ -201,6 +201,8 @@ export default function TenantRequests() {
 
       <FormSheet open={requestOpen} onOpenChange={setRequestOpen} title="إضافة طلب مستأجر">
         <TenantRequestForm
+          unitId=""
+          buildingId=""
           onSubmit={(values) => {
             const now = new Date().toISOString();
             const req: TenantRequest = {
