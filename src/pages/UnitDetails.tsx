@@ -780,30 +780,31 @@ export default function UnitDetails() {
           value={activeTab}
           onValueChange={setActiveTab}
           dir="rtl"
+          className="min-[760px]:grid min-[760px]:grid-cols-[13rem_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-5 min-[760px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1">
-            <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1 min-[760px]:sticky min-[760px]:top-1/2 min-[760px]:col-start-1 min-[760px]:row-start-1 min-[760px]:flex min-[760px]:-translate-y-1/2 min-[760px]:flex-col min-[760px]:gap-2 min-[760px]:rounded-3xl min-[760px]:border min-[760px]:border-border min-[760px]:bg-card min-[760px]:p-3 min-[760px]:shadow-sm min-[760px]:[direction:rtl]">
+            <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <User className="h-4 w-4" /> المستأجر
             </TabsTrigger>
-            <TabsTrigger value="payments" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+            <TabsTrigger value="payments" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Wallet className="h-4 w-4" /> الدفعات
             </TabsTrigger>
-            <TabsTrigger value="contract" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+            <TabsTrigger value="contract" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <FileText className="h-4 w-4" /> العقد
             </TabsTrigger>
-            <TabsTrigger value="requests" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+            <TabsTrigger value="requests" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <ClipboardList className="h-4 w-4" /> الطلبات
             </TabsTrigger>
-            <TabsTrigger value="bills" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+            <TabsTrigger value="bills" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Zap className="h-4 w-4" /> الفواتير
             </TabsTrigger>
-            <TabsTrigger value="repairs" className="flex-col gap-1 rounded-xl py-2 text-[10px]">
+            <TabsTrigger value="repairs" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Wrench className="h-4 w-4" /> الصيانة
             </TabsTrigger>
           </TabsList>
 
           {/* Tenant */}
-          <TabsContent value="tenant" className="mt-4 space-y-3">
+          <TabsContent value="tenant" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             {tenant ? (
               <div className="rounded-3xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between">
@@ -984,7 +985,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Payments */}
-          <TabsContent value="payments" className="mt-4 space-y-3">
+          <TabsContent value="payments" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setPaymentOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> تسجيل دفعة إيجار
             </Button>
@@ -1264,7 +1265,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Contract */}
-          <TabsContent value="contract" className="mt-4 space-y-3">
+          <TabsContent value="contract" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <div className="flex gap-2">
               <Button className="flex-1 rounded-xl" onClick={() => setContractOpen(true)}>
                 <Plus className="ml-1 h-4 w-4" /> إضافة عقد
@@ -1464,7 +1465,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Requests */}
-          <TabsContent value="requests" className="mt-4 space-y-3">
+          <TabsContent value="requests" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setRequestOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة طلب مستأجر
             </Button>
@@ -1514,7 +1515,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Bills */}
-          <TabsContent value="bills" className="mt-4 space-y-3">
+          <TabsContent value="bills" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setBillOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة فاتورة
             </Button>
@@ -1563,7 +1564,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Repairs */}
-          <TabsContent value="repairs" className="mt-4 space-y-3">
+          <TabsContent value="repairs" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <div className="flex items-center justify-between rounded-2xl bg-secondary px-4 py-3">
               <span className="text-sm font-semibold text-secondary-foreground">إجمالي تكاليف الصيانة</span>
               <span className="font-bold text-primary">{formatMoney(maintenanceTotal)}</span>
