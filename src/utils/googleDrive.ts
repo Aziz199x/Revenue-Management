@@ -7,7 +7,6 @@ const SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/gmail.send",
 ];
 const FOLDER_NAME = "Revenue Management Backups";
 
@@ -16,6 +15,7 @@ const ACCOUNT_KEY = "google_account_email";
 
 interface StoredTokens {
   accessToken: string;
+  refreshToken?: string;
   email: string;
   expiresAt: number;
 }
@@ -38,6 +38,20 @@ function getTokens(): StoredTokens | null {
 function saveTokens(tokens: StoredTokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
   localStorage.setItem(ACCOUNT_KEY, tokens.email);
+}
+
+async function exchangeGoogleAuthCode(serverAuthCode: string) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code: serverAuthCode,
+      client_id: CLIENT_ID,
+      grant_type: "authorization_code",
+    }),
+  });
+  if (!response.ok) throw new Error(`Google token exchange failed (${response.status})`);
+  return response.json();
 }
 
 export function clearTokens() {
@@ -106,13 +120,26 @@ export async function signIn(options: { forceAccountSelection?: boolean } = {}):
     }
 
     const user = await GoogleAuth.signIn();
-    const accessToken = user.authentication.accessToken;
+    let accessToken = user.authentication.accessToken;
+    let refreshToken: string | undefined;
+    let expiresAt = Date.now() + 55 * 60 * 1000;
     const email = user.email;
+    if (user.serverAuthCode) {
+      try {
+        const token = await exchangeGoogleAuthCode(user.serverAuthCode);
+        accessToken = token.access_token || accessToken;
+        refreshToken = token.refresh_token || undefined;
+        expiresAt = Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000;
+      } catch (error) {
+        console.warn("[Google Drive] offline token exchange failed; using the current access token", error);
+      }
+    }
 
     const tokens: StoredTokens = {
       accessToken,
+      refreshToken,
       email,
-      expiresAt: Date.now() + 55 * 60 * 1000,
+      expiresAt,
     };
     saveTokens(tokens);
 
@@ -141,27 +168,34 @@ export async function signIn(options: { forceAccountSelection?: boolean } = {}):
 }
 
 async function refreshAccessToken(): Promise<string> {
-  try {
-    const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-
-    await GoogleAuth.initialize({
-      clientId: CLIENT_ID,
-      scopes: SCOPES,
+  const current = getTokens();
+  if (current?.refreshToken) {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID,
+        refresh_token: current.refreshToken,
+        grant_type: "refresh_token",
+      }),
     });
-
-    const auth = await GoogleAuth.refresh();
-    const current = getTokens();
-    const tokens: StoredTokens = {
-      accessToken: auth.accessToken,
-      email: current?.email || "",
-      expiresAt: Date.now() + 55 * 60 * 1000,
+    if (!response.ok) {
+      throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
+    }
+    const token = await response.json();
+    const refreshed: StoredTokens = {
+      ...current,
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token || current.refreshToken,
+      expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
     };
-    saveTokens(tokens);
-    return auth.accessToken;
-  } catch {
-    clearTokens();
-    throw new Error("انتهت صلاحية الجلسة، الرجاء تسجيل الدخول مرة أخرى");
+    saveTokens(refreshed);
+    return refreshed.accessToken;
   }
+  // Legacy sessions did not store a refresh token. Never refresh them through
+  // the plugin's global active account because it may currently be the Gmail
+  // sender rather than the Drive backup account.
+  throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
 }
 
 export async function signOut() {
@@ -210,8 +244,7 @@ export async function getValidGoogleAccessToken(): Promise<string> {
     try {
       return refreshAccessToken();
     } catch {
-      clearTokens();
-      return signIn();
+      throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
     }
   }
 
@@ -282,8 +315,9 @@ export async function getValidGoogleAccessToken(): Promise<string> {
         // Save the new Drive-scoped token
         saveTokens({
           accessToken: newToken,
+          refreshToken: exchangeData.refresh_token || tokens.refreshToken,
           email: email || '',
-          expiresAt: Date.now() + 55 * 60 * 1000,
+          expiresAt: Date.now() + Math.max(60, Number(exchangeData.expires_in) || 3300) * 1000,
         });
 
         console.log('[GoogleAuth] Drive-scoped token obtained successfully');

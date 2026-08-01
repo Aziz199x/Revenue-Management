@@ -111,7 +111,11 @@ export function getTenantPhoneNumbers(tenant?: Tenant): string[] {
     : tenant?.phone
     ? [tenant.phone.trim()]
     : [];
-  return Array.from(new Set(numbers.filter(Boolean)));
+  return Array.from(new Set(
+    numbers
+      .map((phone) => validatePhone(phone))
+      .filter((phone): phone is string => Boolean(phone)),
+  ));
 }
 
 export function getFormalTenantGreeting(tenant?: Tenant, fallbackName = ""): string {
@@ -492,7 +496,11 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       }
     }
   }
-  return jobs.slice(0, 100);
+  // A tenant number can be stored more than once using local and international
+  // formatting. Keep exactly one executable job for each logical message.
+  return Array.from(
+    new Map(jobs.map((job) => [job.dedupeKey, job])).values(),
+  ).slice(0, 100);
 }
 
 async function executeJob(job: AutomaticCommunicationJob): Promise<void> {
@@ -511,7 +519,9 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
   if (!isCommunicationOnline()) {
     throw new Error("لا يوجد اتصال بالإنترنت؛ تم تأجيل الرسائل وستتم المحاولة تلقائيًا عند عودة الاتصال");
   }
-  if (running) return running;
+  // Do not let multiple lifecycle listeners persist the same cycle result.
+  // The first caller owns the running cycle; later callers will retry normally.
+  if (running) return [];
   running = (async () => {
     const jobs = buildAutomaticCommunicationJobs(data, now, force);
     const logs: CommunicationLog[] = [];

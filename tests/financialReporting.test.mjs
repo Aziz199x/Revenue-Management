@@ -896,6 +896,51 @@ test("automatic SMS schedule creates native SMS jobs for enabled tenant phones",
   assert.equal(jobs[0].recipient, "966500000000");
 });
 
+test("automatic SMS schedule deduplicates the same phone stored in local and international formats", () => {
+  const record = payment({
+    tenantId: "t-sms-duplicate",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-sms-duplicate",
+      unitId: "u1",
+      name: "مستأجر الرسائل",
+      phone: "0500000000",
+      phoneNumbers: [
+        { id: "local", phone: "050 000 0000", enabled: true },
+        { id: "country", phone: "966500000000", enabled: true },
+        { id: "plus", phone: "+966 50 000 0000", enabled: true },
+      ],
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        sendMissedAsSoonAsPossible: true,
+        frequencyDays: 1,
+        sendTime: "09:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: null,
+      },
+    },
+  });
+  const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T08:00:00"),
+  );
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].dedupeKey, `${record.id}:sms:966500000000:paymentReminder`);
+});
+
 test("normalization gives every contract payment a stable chronological number", () => {
   const later = payment({
     id: "p-later",

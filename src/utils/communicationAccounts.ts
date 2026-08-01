@@ -1,13 +1,14 @@
 import { AppLauncher } from "@capacitor/app-launcher";
 import { Capacitor } from "@capacitor/core";
-import {
-  clearTokens as clearGoogleTokens,
-  getConnectedEmail,
-  getGoogleConnectionStatus,
-  getValidGoogleAccessToken,
-  signIn as signInGoogle,
-} from "@/utils/googleDrive";
 
+const GOOGLE_CLIENT_ID = "777494765857-lhndrn52q4ptemrekskbf0kgepei21mi.apps.googleusercontent.com";
+const GMAIL_KEY = "automatic_email_gmail_account";
+const GMAIL_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.send",
+];
 const OUTLOOK_KEY = "automatic_email_outlook_account";
 const WHATSAPP_KEY = "automatic_whatsapp_business_account";
 const OUTLOOK_REDIRECT_URI = "revenuemanagement://oauth/callback";
@@ -30,6 +31,13 @@ interface OutlookAccount {
   clientId: string;
   email: string;
   displayName?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+}
+
+interface GmailAccount {
+  email: string;
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
@@ -87,24 +95,113 @@ function writeJson(key: string, value: unknown): void {
 }
 
 export function getGmailAccountEmail(): string | null {
-  const status = getGoogleConnectionStatus();
+  const status = getGmailAccountStatus();
   return status.state === "connected" ? status.email : null;
 }
 
 export function getGmailAccountStatus() {
-  return getGoogleConnectionStatus();
+  const account = readJson<GmailAccount>(GMAIL_KEY);
+  if (!account?.email || !account.accessToken) {
+    return { email: account?.email || null, state: account?.email ? "expired" as const : "disconnected" as const };
+  }
+  return {
+    email: account.email,
+    state: Date.now() < account.expiresAt ? "connected" as const : "expired" as const,
+  };
 }
 
 export async function connectGmail(): Promise<string> {
-  await signInGoogle({ forceAccountSelection: true });
-  const email = getConnectedEmail();
-  if (!email) throw new Error("تعذر قراءة بريد حساب Google");
-  return email;
+  if (!Capacitor.isNativePlatform()) {
+    throw new Error("يتطلب ربط Gmail استخدام تطبيق Android");
+  }
+  const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+  await GoogleAuth.initialize({
+    clientId: GOOGLE_CLIENT_ID,
+    scopes: GMAIL_SCOPES,
+    grantOfflineAccess: true,
+  });
+  try {
+    await GoogleAuth.signOut();
+  } catch (error) {
+    console.warn("[Gmail] unable to clear the account picker session", error);
+  }
+  await GoogleAuth.initialize({
+    clientId: GOOGLE_CLIENT_ID,
+    scopes: GMAIL_SCOPES,
+    grantOfflineAccess: true,
+  });
+  const user = await GoogleAuth.signIn();
+  if (!user.email || !user.authentication?.accessToken) {
+    throw new Error("تعذر قراءة بيانات حساب Gmail");
+  }
+
+  let accessToken = user.authentication.accessToken;
+  let refreshToken: string | undefined;
+  let expiresAt = Date.now() + 55 * 60 * 1000;
+  if (user.serverAuthCode) {
+    try {
+      const response = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code: user.serverAuthCode,
+          client_id: GOOGLE_CLIENT_ID,
+          grant_type: "authorization_code",
+        }),
+      });
+      if (response.ok) {
+        const token = await response.json();
+        accessToken = token.access_token || accessToken;
+        refreshToken = token.refresh_token || undefined;
+        expiresAt = Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000;
+      }
+    } catch (error) {
+      console.warn("[Gmail] offline token exchange failed; using the current access token", error);
+    }
+  }
+  writeJson(GMAIL_KEY, { email: user.email, accessToken, refreshToken, expiresAt } satisfies GmailAccount);
+  return user.email;
+}
+
+export function disconnectGmail(): void {
+  localStorage.removeItem(GMAIL_KEY);
+}
+
+async function getValidGmailAccessToken(): Promise<string> {
+  const account = readJson<GmailAccount>(GMAIL_KEY);
+  if (!account?.accessToken || !account.email) {
+    throw new Error("اربط حساب Gmail من إعدادات الإرسال أولًا");
+  }
+  if (Date.now() < account.expiresAt) return account.accessToken;
+  if (!account.refreshToken) {
+    throw new Error("انتهت صلاحية حساب Gmail. أعد ربط حساب الإرسال من الإعدادات");
+  }
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      refresh_token: account.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("انتهت صلاحية حساب Gmail. أعد ربط حساب الإرسال من الإعدادات");
+  }
+  const token = await response.json();
+  const refreshed: GmailAccount = {
+    ...account,
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token || account.refreshToken,
+    expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
+  };
+  writeJson(GMAIL_KEY, refreshed);
+  return refreshed.accessToken;
 }
 
 export async function sendGmailEmail(to: string, subject: string, body: string): Promise<void> {
-  const accessToken = await getValidGoogleAccessToken();
-  const from = getConnectedEmail() || "";
+  const accessToken = await getValidGmailAccessToken();
+  const from = readJson<GmailAccount>(GMAIL_KEY)?.email || "";
   const mime = [
     `From: ${from}`,
     `To: ${to}`,
@@ -133,7 +230,10 @@ export async function sendGmailEmail(to: string, subject: string, body: string):
       );
     }
     if (response.status === 401 || response.status === 403) {
-      if (response.status === 401) clearGoogleTokens();
+      if (response.status === 401) {
+        const account = readJson<GmailAccount>(GMAIL_KEY);
+        if (account) writeJson(GMAIL_KEY, { ...account, expiresAt: 0 });
+      }
       throw new EmailProviderError(
         "حساب Gmail لا يملك صلاحية الإرسال. أعد ربط Gmail من إعدادات الإرسال ووافق على صلاحية إرسال البريد.",
         "gmail_permission",
