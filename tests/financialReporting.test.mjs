@@ -941,6 +941,55 @@ test("automatic SMS schedule deduplicates the same phone stored in local and int
   assert.equal(jobs[0].dedupeKey, `${record.id}:sms:966500000000:paymentReminder`);
 });
 
+test("reverted received payment waits for the 40-second safety window before messaging", () => {
+  const record = payment({
+    id: "p-reverted-with-hold",
+    tenantId: "t-hold",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-01",
+    dueDateGregorian: "2026-08-01",
+    automaticReminderHoldUntil: "2026-08-01T08:00:40.000Z",
+  });
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-hold",
+      unitId: "u1",
+      name: "مستأجر المهلة",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        sendMissedAsSoonAsPossible: true,
+        frequencyDays: 1,
+        sendTime: "00:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: null,
+      },
+    },
+  });
+  const duringHold = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T08:00:20.000Z"),
+    true,
+  );
+  const afterHold = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T08:00:41.000Z"),
+    true,
+  );
+  assert.equal(duringHold.length, 0);
+  assert.equal(afterHold.length, 1);
+  assert.equal(afterHold[0].paymentId, record.id);
+});
+
 test("normalization gives every contract payment a stable chronological number", () => {
   const later = payment({
     id: "p-later",

@@ -133,6 +133,8 @@ export interface Payment {
   communicationGraceUntil?: string;
   communicationGraceReason?: string;
   communicationGraceCreatedAt?: string;
+  /** Short safety delay before notifying after a received payment is reverted. */
+  automaticReminderHoldUntil?: string;
   rentalPeriod?: string;
   deletedAt?: string;
   grossAmount?: number;

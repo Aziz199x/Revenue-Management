@@ -38,6 +38,7 @@ export interface PaymentFormValues {
   ownerSettledByMaintenance?: boolean;
   maintenanceSettlementNote?: string;
   auditReason?: string;
+  automaticReminderHoldUntil?: string;
 }
 
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -137,6 +138,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
       ? initial?.maintenanceSettlementNote
       : undefined,
     auditReason: requiresAuditReason ? auditReason.trim() || undefined : undefined,
+    automaticReminderHoldUntil: status === "paid" ? undefined : initial?.automaticReminderHoldUntil,
   });
 
   const validate = (values: PaymentFormValues) => {
@@ -323,7 +325,7 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
         {initial ? "حفظ التعديلات" : "تسجيل الدفعة"}
       </Button>
       <AlertDialog open={!!pendingValues} onOpenChange={(open) => !open && setPendingValues(null)}>
-        <AlertDialogContent className="max-w-[90vw] rounded-3xl"><AlertDialogHeader><AlertDialogTitle className="text-right">إلغاء تسجيل الاستلام</AlertDialogTitle><AlertDialogDescription className="text-right">سيتم إلغاء تسجيل استلام هذه الدفعة ومسح بيانات الاستلام. هل تريد المتابعة؟</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel type="button">إلغاء</AlertDialogCancel><AlertDialogAction type="button" onClick={() => { if (pendingValues) onSubmit(pendingValues); setPendingValues(null); }}>تأكيد</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent className="max-w-[90vw] rounded-3xl"><AlertDialogHeader><AlertDialogTitle className="text-right">تحويل الدفعة إلى غير مدفوعة</AlertDialogTitle><AlertDialogDescription className="whitespace-pre-line text-right">سيتم إلغاء تسجيل الاستلام ومسح بياناته، وستصبح الدفعة مؤهلة لإرسال إشعار سداد تلقائي للمستأجر.{"\n\n"}سيمنحك النظام مهلة أمان لمدة 40 ثانية بعد الحفظ، وسيظهر عد تنازلي يمكنك خلاله إعادة الدفعة إلى «مدفوع» لإلغاء الإرسال.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel type="button">إلغاء</AlertDialogCancel><AlertDialogAction type="button" onClick={() => { if (pendingValues) onSubmit({ ...pendingValues, automaticReminderHoldUntil: new Date(Date.now() + 40_000).toISOString() }); setPendingValues(null); }}>حفظ وبدء المهلة</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
     </form>
   );

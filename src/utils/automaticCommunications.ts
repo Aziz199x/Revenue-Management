@@ -327,6 +327,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
 
   for (const payment of data.payments) {
     if (payment.deletedAt || isPaymentPaid(payment) || getRemainingPaymentAmount(payment) <= 0) continue;
+    if (payment.automaticReminderHoldUntil && now.getTime() < new Date(payment.automaticReminderHoldUntil).getTime()) continue;
     if (payment.communicationGraceUntil && today <= payment.communicationGraceUntil) continue;
     const dueDate = paymentDueDateValue(payment);
     const daysUntilDue = Math.ceil((dateValue(dueDate) - dateValue(today)) / DAY);

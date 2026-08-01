@@ -80,6 +80,57 @@ function AutomaticBackupManager() {
   return null;
 }
 
+function PaymentReminderCountdown() {
+  const { data } = useStore();
+  const pending = data.payments.filter((payment) => {
+    if (!payment.automaticReminderHoldUntil || payment.deletedAt || payment.status === "paid") return false;
+    return new Date(payment.automaticReminderHoldUntil).getTime() > Date.now();
+  });
+  const signature = pending
+    .map((payment) => `${payment.id}:${payment.automaticReminderHoldUntil}:${payment.status}`)
+    .sort()
+    .join("|");
+
+  useEffect(() => {
+    if (!signature) return;
+    const completed = new Set<string>();
+    const toastIds = pending.map((payment) => `payment-reminder-countdown-${payment.id}`);
+    const render = () => {
+      for (const payment of pending) {
+        const remaining = Math.max(
+          0,
+          Math.ceil((new Date(payment.automaticReminderHoldUntil!).getTime() - Date.now()) / 1000),
+        );
+        const toastId = `payment-reminder-countdown-${payment.id}`;
+        if (remaining <= 0) {
+          toast.dismiss(toastId);
+          if (!completed.has(payment.id)) {
+            completed.add(payment.id);
+            window.dispatchEvent(new CustomEvent("automatic-communication-ready"));
+          }
+          continue;
+        }
+        const unit = data.units.find((item) => item.id === payment.unitId);
+        toast.warning(`سيتم إشعار المستأجر خلال ${remaining} ثانية`, {
+          id: toastId,
+          duration: Infinity,
+          description: `${unit?.name || payment.unitName || "الوحدة"} — أعد حالة الدفعة إلى «مدفوع» لإلغاء الإرسال.`,
+        });
+      }
+    };
+    render();
+    const interval = window.setInterval(render, 1000);
+    return () => {
+      window.clearInterval(interval);
+      toastIds.forEach((id) => toast.dismiss(id));
+    };
+  // The signature intentionally changes only when a hold is added, removed, or paid.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
+  return null;
+}
+
 function AutomaticCommunicationManager() {
   const { data, update } = useStore();
   const latestData = useRef(data);
@@ -169,6 +220,7 @@ function AutomaticCommunicationManager() {
     };
     const onlineHandler = () => { void run(); };
     window.addEventListener("online", onlineHandler);
+    window.addEventListener("automatic-communication-ready", onlineHandler);
     const startup = window.setTimeout(() => { void run(); }, 1500);
     const interval = window.setInterval(() => { void run(); }, 5 * 60 * 1000);
     if (Capacitor.isNativePlatform()) {
@@ -183,6 +235,7 @@ function AutomaticCommunicationManager() {
       window.clearTimeout(startup);
       window.clearInterval(interval);
       window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("automatic-communication-ready", onlineHandler);
       void listener?.remove();
     };
   }, [data.settings.automaticCommunications, update]);
@@ -315,6 +368,7 @@ const App = () => {
       <StoreProvider>
         <NotificationChecker />
         <AutomaticBackupManager />
+        <PaymentReminderCountdown />
         <AutomaticCommunicationManager />
         <AppDialogProvider>
           <BrowserRouter>
