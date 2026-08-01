@@ -10,9 +10,9 @@ export default function AppLayout() {
     <div className="mx-auto min-h-screen w-full max-w-[1600px] bg-background">
       <main className="pb-safe">
         {isSettingsSubPage ? (
-          <div className="min-[500px]:grid min-[500px]:min-h-[calc(100dvh-4.75rem)] min-[500px]:grid-cols-[15rem_minmax(0,1fr)] min-[500px]:[direction:ltr]">
+          <div className="min-[760px]:grid min-[760px]:min-h-[calc(100dvh-4.75rem)] min-[760px]:grid-cols-[15rem_minmax(0,1fr)] min-[760px]:[direction:ltr]">
             <SettingsSectionNav />
-            <div className="min-w-0 min-[500px]:col-start-2 min-[500px]:[direction:rtl]">
+            <div className="min-w-0 min-[760px]:col-start-2 min-[760px]:[direction:rtl]">
               <Outlet />
             </div>
           </div>
