@@ -76,6 +76,27 @@ export function getTenantPhoneNumbers(tenant?: Tenant): string[] {
   return Array.from(new Set(numbers.filter(Boolean)));
 }
 
+export function getFormalTenantGreeting(tenant?: Tenant, fallbackName = ""): string {
+  const name = tenant?.name || fallbackName;
+  return tenant?.tenantType === "company"
+    ? `السادة/ ${name} المحترمون`
+    : `السيد/السيدة ${name} المحترم/ة`;
+}
+
+function fillTenantTemplate(
+  template: string,
+  vars: Record<string, string | undefined>,
+  tenant?: Tenant,
+): string {
+  const greeting = getFormalTenantGreeting(tenant, vars.tenantName || "");
+  const filled = fillTemplate(template, { ...vars, recipientGreeting: greeting });
+  if (tenant?.tenantType !== "company") return filled;
+  return filled.replace(
+    `السيد/السيدة ${vars.tenantName || ""} المحترم/ة`,
+    greeting,
+  );
+}
+
 function paymentPeriod(data: AppData, payment: Payment): { start: string; end: string } {
   const start = paymentDueDateValue(payment);
   const next = data.payments
@@ -111,17 +132,22 @@ function templateVars(data: AppData, payment: Payment, tenant: Tenant | undefine
   };
 }
 
-export function buildPaymentEmailContent(data: AppData, payment: Payment, tenant?: Tenant) {
+export function buildPaymentEmailContent(
+  data: AppData,
+  payment: Payment,
+  tenant?: Tenant,
+  forcedKind?: "paymentReminder" | "overduePayment",
+) {
   const dueDate = paymentDueDateValue(payment);
-  const kind = effectiveStatus(payment) === "overdue" || dueDate < localDate(new Date())
+  const kind = forcedKind || (effectiveStatus(payment) === "overdue" || dueDate < localDate(new Date())
     ? "overduePayment"
-    : "paymentReminder";
+    : "paymentReminder");
   const template = data.settings.emailTemplates[kind];
   const vars = templateVars(data, payment, tenant);
   return {
     kind,
-    subject: fillTemplate(template.subject, vars),
-    body: fillTemplate(template.body, vars),
+    subject: fillTenantTemplate(template.subject, vars, tenant),
+    body: fillTenantTemplate(template.body, vars, tenant),
   };
 }
 
@@ -141,8 +167,8 @@ export function buildContractCommunicationContent(data: AppData, contract: Contr
   };
   const emailTemplate = data.settings.emailTemplates.contractExpiry;
   return {
-    emailSubject: fillTemplate(emailTemplate.subject, vars),
-    emailBody: fillTemplate(emailTemplate.body, vars),
+    emailSubject: fillTenantTemplate(emailTemplate.subject, vars, tenant),
+    emailBody: fillTenantTemplate(emailTemplate.body, vars, tenant),
     whatsappBody: fillTemplate(data.settings.whatsappTemplates.contractExpiry, vars),
   };
 }
@@ -191,9 +217,9 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     );
     const kind = effectiveStatus(payment) === "overdue" || daysUntilDue < 0 ? "overduePayment" : "paymentReminder";
     const vars = templateVars(data, payment, tenant);
+    const emailContent = buildPaymentEmailContent(data, payment, tenant, kind);
 
     if (settings.emailEnabled && settings.emailProvider) {
-      const template = data.settings.emailTemplates[kind];
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
         if (wasRecentlyAttempted(data, dedupeKey, now, frequencyDays)) continue;
@@ -205,8 +231,8 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           contractId: payment.contractId,
           templateKind: kind,
           provider: settings.emailProvider,
-          subject: fillTemplate(template.subject, vars),
-          body: fillTemplate(template.body, vars),
+          subject: emailContent.subject,
+          body: emailContent.body,
           dedupeKey,
         });
       }

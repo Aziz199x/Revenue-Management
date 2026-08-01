@@ -140,7 +140,7 @@ export default function AutomaticCommunicationsSettingsPage() {
             </div>
             <div className="rounded-2xl bg-muted p-3">
               <div className="flex items-center justify-between">
-                <Label>واتساب التلقائي</Label>
+                <Label>واتساب التلقائي عبر Business API</Label>
                 <Switch checked={settings.whatsappEnabled} onCheckedChange={(whatsappEnabled) => updateSchedule({ whatsappEnabled })} />
               </div>
             </div>
@@ -286,6 +286,9 @@ export default function AutomaticCommunicationsSettingsPage() {
 
         <section className="space-y-3 rounded-3xl border border-emerald-200 bg-emerald-50/50 p-4">
           <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-emerald-700" /><p className="font-bold">WhatsApp Business Platform</p></div>
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-900">
+            واتساب العادي يتيح للتطبيق تجهيز الرسالة وفتحها فقط، ويجب على المستخدم الضغط على إرسال. الإرسال التلقائي الكامل متاح رسميًا من خلال WhatsApp Business API.
+          </p>
           <p className="text-xs leading-5 text-muted-foreground">يتطلب رقم WhatsApp Business API وقالبين معتمدين يحتوي كل منهما على متغير نصي واحد للرسالة.</p>
           <Input dir="ltr" value={waPhoneId} onChange={(event) => setWaPhoneId(event.target.value)} placeholder="Phone Number ID" className="rounded-xl text-left" />
           <Input type="password" dir="ltr" value={waToken} onChange={(event) => setWaToken(event.target.value)} placeholder={savedWhatsapp ? "اتركه فارغًا للاحتفاظ بالرمز الحالي" : "Permanent Access Token"} className="rounded-xl text-left" />

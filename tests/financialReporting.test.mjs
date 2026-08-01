@@ -640,6 +640,7 @@ test("restoring an older backup safely fills missing contracts and optional coll
     tenants: [{ id: "t1", unitId: "u1", name: "مستأجر", phone: "0500000000", createdAt: "2026-01-01" }],
   }).tenants[0];
   assert.deepEqual(legacyTenant.phoneNumbers.map((item) => item.phone), ["0500000000"]);
+  assert.equal(legacyTenant.tenantType, "individual");
 });
 
 test("automatic communication schedule sends formal email to every company address without duplicates", () => {
@@ -655,6 +656,7 @@ test("automatic communication schedule sends formal email to every company addre
       id: "t-company",
       unitId: "u1",
       name: "شركة المثال",
+      tenantType: "company",
       emailAddresses: [
         { id: "e1", email: "accounts@example.com", label: "الحسابات", enabled: true },
         { id: "e2", email: "manager@example.com", label: "المدير", enabled: true },
@@ -665,7 +667,7 @@ test("automatic communication schedule sends formal email to every company addre
     settings: {
       ...data([]).settings,
       emailTemplates: {
-        paymentReminder: { subject: "تذكير {tenantName}", body: "من {periodStart} إلى {periodEnd} بمبلغ {amount}" },
+        paymentReminder: { subject: "تذكير {tenantName}", body: "السيد/السيدة {tenantName} المحترم/ة، من {periodStart} إلى {periodEnd} بمبلغ {amount}" },
         overduePayment: { subject: "متأخر {tenantName}", body: "{dueDate}" },
         contractExpiry: { subject: "عقد {tenantName}", body: "{contractEndDate}" },
       },
@@ -689,6 +691,7 @@ test("automatic communication schedule sends formal email to every company addre
   assert.deepEqual(jobs.map((job) => job.recipient).sort(), ["accounts@example.com", "manager@example.com"]);
   assert.equal(jobs.every((job) => job.subject === "تذكير شركة المثال"), true);
   assert.equal(jobs.every((job) => job.body.includes("1,000")), true);
+  assert.equal(jobs.every((job) => job.body.includes("السادة/ شركة المثال المحترمون")), true);
 
   snapshot.communicationLogs = [{
     id: "sent-1",

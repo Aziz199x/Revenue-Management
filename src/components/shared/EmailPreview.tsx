@@ -82,7 +82,7 @@ export default function EmailPreview({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-[92vw] overflow-y-auto rounded-3xl sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-end gap-2 text-right">
+          <DialogTitle dir="rtl" className="flex w-full items-center justify-start gap-2 text-right">
             {title}
             <Mail className="h-5 w-5 text-primary" />
           </DialogTitle>

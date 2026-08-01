@@ -162,6 +162,7 @@ export function normalizeData(
     const contracts = migrateContracts(parsed.contracts || []);
     const tenants: Tenant[] = (parsed.tenants || []).map((tenant) => ({
       ...tenant,
+      tenantType: tenant.tenantType ?? "individual",
       phoneNumbers: tenant.phoneNumbers?.length
         ? tenant.phoneNumbers
         : tenant.phone

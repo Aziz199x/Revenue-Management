@@ -145,6 +145,7 @@ import {
   buildPaymentEmailContent,
   getTenantEmailAddresses,
   getTenantPhoneNumbers,
+  getFormalTenantGreeting,
 } from "@/utils/automaticCommunications";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
@@ -755,7 +756,12 @@ export default function UnitDetails() {
                     <div className="rounded-full bg-secondary p-3">
                       <User className="h-5 w-5 text-primary" />
                     </div>
-                    <p className="font-bold">{tenant.name}</p>
+                    <div>
+                      <p className="font-bold">{tenant.name}</p>
+                      <span className="text-[10px] text-muted-foreground">
+                        {tenant.tenantType === "company" ? "شركة / مؤسسة" : "فرد"}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setEditTenant(tenant)}>
@@ -835,7 +841,7 @@ export default function UnitDetails() {
                               : {
                                   kind: "paymentReminder" as const,
                                   subject: `تواصل بخصوص الوحدة ${unit.name}`,
-                                  body: `السيد/السيدة ${tenant.name} المحترم/ة،\n\nنود التواصل معكم بخصوص الوحدة ${unit.name} في عقار ${building?.name || ""}.\n\nوتفضلوا بقبول فائق الاحترام.`,
+                                  body: `${getFormalTenantGreeting(tenant)}،\n\nنود التواصل معكم بخصوص الوحدة ${unit.name} في عقار ${building?.name || ""}.\n\nوتفضلوا بقبول فائق الاحترام.`,
                                 };
                             setEmailPreview({
                               recipients: getTenantEmailAddresses(tenant),

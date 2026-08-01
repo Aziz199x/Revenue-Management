@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tenant, TenantEmailAddress, TenantPhoneNumber } from "@/data/types";
 import { showError } from "@/utils/toast";
 
 export interface TenantFormValues {
   name: string;
+  tenantType: "individual" | "company";
   phone?: string;
   phoneNumbers?: TenantPhoneNumber[];
   nationalId?: string;
@@ -29,6 +31,7 @@ interface Props {
 
 export default function TenantForm({ initial, onSubmit }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
+  const [tenantType, setTenantType] = useState<"individual" | "company">(initial?.tenantType ?? "individual");
   const [phoneNumbers, setPhoneNumbers] = useState<TenantPhoneNumber[]>(
     initial?.phoneNumbers?.length
       ? initial.phoneNumbers
@@ -78,6 +81,7 @@ export default function TenantForm({ initial, onSubmit }: Props) {
         }
         onSubmit({
           name: name.trim(),
+          tenantType,
           phone: normalizedPhones[0]?.phone,
           phoneNumbers: normalizedPhones,
           nationalId: nationalId.trim() || undefined,
@@ -95,6 +99,19 @@ export default function TenantForm({ initial, onSubmit }: Props) {
       <div className="space-y-1.5">
         <Label>اسم المستأجر *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} required className="rounded-xl" />
+      </div>
+      <div className="space-y-1.5">
+        <Label>صفة المستأجر</Label>
+        <Select value={tenantType} onValueChange={(value) => setTenantType(value as "individual" | "company")}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="individual">فرد</SelectItem>
+            <SelectItem value="company">شركة / مؤسسة</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-[10px] text-muted-foreground">
+          تستخدم رسائل الشركة صيغة «السادة/ اسم الشركة المحترمون» تلقائيًا.
+        </p>
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">

@@ -73,6 +73,7 @@ export interface Tenant {
   unitId: string;
   buildingId?: string;
   name: string;
+  tenantType?: "individual" | "company";
   phone?: string;
   phoneNumbers?: TenantPhoneNumber[];
   nationalId?: string;
@@ -644,17 +645,17 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
   paymentReminder: {
     subject: "تذكير بموعد سداد الإيجار – {unitName}",
     body:
-      "السيد/السيدة {tenantName} المحترم/ة،\n\nنود تذكيركم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، تستحق بتاريخ {dueDate} بمبلغ {amount}.\n\nنأمل التكرم بإتمام السداد في الموعد المحدد. إذا تم السداد، يرجى تجاهل هذه الرسالة.\n\nوتفضلوا بقبول فائق الاحترام.",
+      "{recipientGreeting}،\n\nنود تذكيركم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، تستحق بتاريخ {dueDate} بمبلغ {amount}.\n\nنأمل التكرم بإتمام السداد في الموعد المحدد. إذا تم السداد، يرجى تجاهل هذه الرسالة.\n\nوتفضلوا بقبول فائق الاحترام.",
   },
   overduePayment: {
     subject: "إشعار بتأخر دفعة الإيجار – {unitName}",
     body:
-      "السيد/السيدة {tenantName} المحترم/ة،\n\nنفيدكم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، والمستحقة بتاريخ {dueDate} بمبلغ {amount}، لم يتم تسجيل سدادها حتى تاريخه.\n\nنأمل التكرم بالسداد في أقرب وقت أو التواصل معنا عند وجود أي ملاحظة.\n\nوتفضلوا بقبول فائق الاحترام.",
+      "{recipientGreeting}،\n\nنفيدكم بأن دفعة الإيجار الخاصة بالوحدة {unitName} في عقار {buildingName}، عن الفترة من {periodStart} إلى {periodEnd}، والمستحقة بتاريخ {dueDate} بمبلغ {amount}، لم يتم تسجيل سدادها حتى تاريخه.\n\nنأمل التكرم بالسداد في أقرب وقت أو التواصل معنا عند وجود أي ملاحظة.\n\nوتفضلوا بقبول فائق الاحترام.",
   },
   contractExpiry: {
     subject: "تذكير بقرب انتهاء عقد الإيجار – {unitName}",
     body:
-      "السيد/السيدة {tenantName} المحترم/ة،\n\nنود إشعاركم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}.\n\nيرجى التواصل معنا لاستكمال إجراءات التجديد أو التسليم حسب الاتفاق.\n\nوتفضلوا بقبول فائق الاحترام.",
+      "{recipientGreeting}،\n\nنود إشعاركم بأن عقد إيجار الوحدة {unitName} في عقار {buildingName} سينتهي بتاريخ {contractEndDate}.\n\nيرجى التواصل معنا لاستكمال إجراءات التجديد أو التسليم حسب الاتفاق.\n\nوتفضلوا بقبول فائق الاحترام.",
   },
 };
 
