@@ -440,6 +440,24 @@ export interface Repair {
   createdAt: string;
   isDeductedFromOwnerTransfer?: boolean;
   deductedFromPaymentId?: string | null;
+  /** Distinguishes normal maintenance from a materialized recurring property bill. */
+  expenseKind?: "maintenance" | "recurring_bill";
+  recurringBillId?: string;
+  recurringYearMonth?: string;
+}
+
+export interface RecurringBuildingBill {
+  id: string;
+  buildingId: string;
+  name: string;
+  amount: number;
+  dueDay: number;
+  startYearMonth: string;
+  endYearMonth?: string;
+  pausedYearMonth?: string;
+  active: boolean;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface CollectionFeeSettlement {
@@ -631,6 +649,7 @@ export interface AppData {
   contracts: Contract[];
   bills: Bill[];
   repairs: Repair[];
+  recurringBuildingBills: RecurringBuildingBill[];
   tenantRequests: TenantRequest[];
   contractAttachments: ContractAttachment[];
   evidenceAttachments: EvidenceAttachment[];
@@ -747,6 +766,7 @@ export const EMPTY_DATA: AppData = {
   contracts: [],
   bills: [],
   repairs: [],
+  recurringBuildingBills: [],
   tenantRequests: [],
   contractAttachments: [],
   evidenceAttachments: [],

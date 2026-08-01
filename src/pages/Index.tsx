@@ -291,22 +291,22 @@ export default function Index() {
         <Tabs
           defaultValue="payments"
           dir="rtl"
-          className="animate-fade-up min-[500px]:grid min-[500px]:grid-cols-[12rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
+          className="animate-fade-up min-[760px]:grid min-[760px]:grid-cols-[12rem_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-5 min-[760px]:[direction:ltr]"
           style={{ animationDelay: "180ms" }}
         >
-          <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
-            <TabsTrigger value="contracts" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3">
+          <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl bg-muted p-1 min-[760px]:sticky min-[760px]:top-1/2 min-[760px]:col-start-1 min-[760px]:row-start-1 min-[760px]:flex min-[760px]:-translate-y-1/2 min-[760px]:flex-col min-[760px]:gap-2 min-[760px]:rounded-3xl min-[760px]:border min-[760px]:border-border min-[760px]:bg-card min-[760px]:p-3 min-[760px]:shadow-sm min-[760px]:[direction:rtl]">
+            <TabsTrigger value="contracts" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3">
               أقرب العقود
             </TabsTrigger>
-            <TabsTrigger value="payments" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3">
+            <TabsTrigger value="payments" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3">
               الدفعات القادمة
             </TabsTrigger>
-            <TabsTrigger value="general" className="rounded-xl py-2 text-[11px] font-bold min-[500px]:w-full min-[500px]:justify-start min-[500px]:px-3">
+            <TabsTrigger value="general" className="rounded-xl py-2 text-[11px] font-bold min-[760px]:w-full min-[760px]:justify-start min-[760px]:px-3">
               التذكيرات العامة
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="contracts" className="mt-3 space-y-2 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="contracts" className="mt-3 space-y-2 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             {nearestContracts.length === 0 ? (
               <EmptyState icon={CalendarClock} title="لا توجد عقود قريبة" description="ستظهر هنا أقرب العقود للانتهاء" />
             ) : (
@@ -328,7 +328,7 @@ export default function Index() {
             )}
           </TabsContent>
 
-          <TabsContent value="payments" className="mt-3 space-y-2 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="payments" className="mt-3 space-y-2 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             {[...overduePayments, ...upcomingPayments].length === 0 ? (
               <EmptyState icon={Wallet} title="لا توجد دفعات قريبة" description="ستظهر هنا الدفعات القادمة أو المتأخرة" />
             ) : (
@@ -356,7 +356,7 @@ export default function Index() {
             )}
           </TabsContent>
 
-          <TabsContent value="general" className="mt-3 space-y-2 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="general" className="mt-3 space-y-2 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             {generalReminders.length === 0 ? (
               <EmptyState icon={Bell} title="لا توجد تذكيرات عامة" description="ستظهر هنا الصيانة والفواتير والتحويلات المعلقة" />
             ) : (

@@ -6,7 +6,7 @@ import { settingsItems } from "./settingsNavigation";
 export default function SettingsSectionNav() {
   return (
     <aside
-      className="hidden min-[500px]:sticky min-[500px]:top-0 min-[500px]:flex min-[500px]:h-[calc(100dvh-4.75rem)] min-[500px]:flex-col min-[500px]:justify-center min-[500px]:overflow-y-auto min-[500px]:border-r min-[500px]:border-border min-[500px]:bg-card/70 min-[500px]:px-4 min-[500px]:pb-4 min-[500px]:pt-[max(1rem,env(safe-area-inset-top))] min-[500px]:[direction:rtl]"
+      className="hidden min-[760px]:sticky min-[760px]:top-0 min-[760px]:flex min-[760px]:h-[calc(100dvh-4.75rem)] min-[760px]:flex-col min-[760px]:justify-center min-[760px]:overflow-y-auto min-[760px]:border-r min-[760px]:border-border min-[760px]:bg-card/70 min-[760px]:px-4 min-[760px]:pb-4 min-[760px]:pt-[max(1rem,env(safe-area-inset-top))] min-[760px]:[direction:rtl]"
       aria-label="صفحات الإعدادات"
     >
       <div className="mb-4 rounded-3xl border border-primary/10 bg-secondary/70 p-3 shadow-sm">

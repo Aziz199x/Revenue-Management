@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,8 @@ import {
   REQUEST_TYPES,
 } from "@/data/labels";
 import { todayISO } from "@/data/helpers";
+import { useStore } from "@/data/store";
+import { showError } from "@/utils/toast";
 
 export interface TenantRequestFormValues {
   unitId: string;
@@ -46,8 +48,9 @@ export interface TenantRequestFormValues {
 
 interface Props {
   initial?: TenantRequest;
-  unitId: string;
-  buildingId: string;
+  /** Leave empty/undefined to let the user pick the property and unit (e.g. from the global requests page). */
+  unitId?: string;
+  buildingId?: string;
   tenantId?: string;
   tenantName?: string;
   buildingName?: string;
@@ -57,11 +60,27 @@ interface Props {
 
 export default function TenantRequestForm({
   initial,
-  unitId,
-  buildingId,
-  tenantId,
+  unitId: fixedUnitId,
+  buildingId: fixedBuildingId,
+  tenantId: fixedTenantId,
   onSubmit,
 }: Props) {
+  const { data } = useStore();
+  // If the unit is already known (opened from within a unit/tenant page), the
+  // property/unit pickers are hidden entirely — the request always belongs
+  // to that unit. Otherwise (opened from the global requests page) the user
+  // must choose which property and unit the request belongs to.
+  const needsUnitPicker = !fixedUnitId;
+  const [selectedBuildingId, setSelectedBuildingId] = useState(
+    initial ? (data.units.find((u) => u.id === initial.unitId)?.buildingId ?? "") : (fixedBuildingId || ""),
+  );
+  const [selectedUnitId, setSelectedUnitId] = useState(initial?.unitId ?? fixedUnitId ?? "");
+
+  const buildingUnits = useMemo(
+    () => data.units.filter((u) => u.buildingId === selectedBuildingId).sort((a, b) => a.name.localeCompare(b.name, "ar", { numeric: true })),
+    [data.units, selectedBuildingId],
+  );
+
   const [title, setTitle] = useState(initial?.title ?? "");
   const [type, setType] = useState<RequestType>(initial?.type ?? "maintenance");
   const [customType, setCustomType] = useState(initial?.customType ?? "");
@@ -86,6 +105,15 @@ export default function TenantRequestForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (!title.trim()) return;
+        if (needsUnitPicker && (!selectedBuildingId || !selectedUnitId)) {
+          showError("يرجى اختيار العقار والوحدة");
+          return;
+        }
+        const unitId = needsUnitPicker ? selectedUnitId : (fixedUnitId as string);
+        const buildingId = needsUnitPicker ? selectedBuildingId : (fixedBuildingId || "");
+        const tenantId = needsUnitPicker
+          ? data.tenants.find((t) => t.unitId === unitId)?.id
+          : fixedTenantId;
         onSubmit({
           unitId,
           buildingId,
@@ -106,6 +134,47 @@ export default function TenantRequestForm({
         });
       }}
     >
+      {needsUnitPicker && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>العقار *</Label>
+            <Select
+              value={selectedBuildingId}
+              onValueChange={(value) => {
+                setSelectedBuildingId(value);
+                setSelectedUnitId("");
+              }}
+            >
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder="اختر العقار" />
+              </SelectTrigger>
+              <SelectContent>
+                {data.buildings.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>الوحدة *</Label>
+            <Select
+              value={selectedUnitId}
+              onValueChange={setSelectedUnitId}
+              disabled={!selectedBuildingId}
+            >
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder={selectedBuildingId ? "اختر الوحدة" : "اختر العقار أولاً"} />
+              </SelectTrigger>
+              <SelectContent>
+                {buildingUnits.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label>عنوان الطلب *</Label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} required className="rounded-xl" />

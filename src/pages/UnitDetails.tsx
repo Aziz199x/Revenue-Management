@@ -148,6 +148,7 @@ import {
   getFormalTenantGreeting,
 } from "@/utils/automaticCommunications";
 import { useAppDialog } from "@/components/shared/AppDialogProvider";
+import { getOutstandingRecurringBillRepairs, isRecurringBillRepair } from "@/data/recurringBuildingBills";
 
 const UNIT_DETAIL_TABS = ["tenant", "payments", "contract", "requests", "bills", "repairs"];
 
@@ -208,6 +209,14 @@ function MarkAsReceivedDialog({
   const totalDeductions = ownerDeductibleFee + settlementTotal + maintenanceTotal + manualMaintenanceSettlement;
   const requiresMaintenanceItems = settleWithBuildingMaintenance
     && hasInvalidMaintenanceExpenseItems(maintenanceExpenseItems);
+  const recurringBillSuggestions = repairSuggestions.filter(({ repair }) => isRecurringBillRepair(repair));
+  const maintenanceRepairSuggestions = repairSuggestions.filter(({ repair }) => !isRecurringBillRepair(repair));
+  const selectedRecurringBillTotal = recurringBillSuggestions
+    .filter(({ repair }) => selectedRepairIds.includes(repair.id))
+    .reduce((sum, { repair }) => sum + repair.cost, 0);
+  const selectedMaintenanceRepairTotal = maintenanceRepairSuggestions
+    .filter(({ repair }) => selectedRepairIds.includes(repair.id))
+    .reduce((sum, { repair }) => sum + repair.cost, 0);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
@@ -280,14 +289,45 @@ function MarkAsReceivedDialog({
               {settlementTotal > 0 && <p className="font-bold text-amber-900">إجمالي التسوية: {formatMoney(settlementTotal)}</p>}
             </div>
           )}
-          {repairSuggestions.length > 0 && (
+          {recurringBillSuggestions.length > 0 && (
+            <div className="space-y-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs">
+              <div>
+                <p className="font-bold text-amber-950">مقترحات خصم الفواتير الشهرية</p>
+                <p className="mt-1 text-amber-800">اختر استحقاقات العقار المتكررة التي تريد خصمها من هذه الدفعة.</p>
+              </div>
+              <div className="max-h-44 space-y-2 overflow-y-auto pl-1">
+                {recurringBillSuggestions.map(({ repair }) => (
+                  <label key={repair.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedRepairIds.includes(repair.id)}
+                      onChange={(event) => setSelectedRepairIds((current) =>
+                        event.target.checked
+                          ? [...current, repair.id]
+                          : current.filter((id) => id !== repair.id),
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{repair.description}</span>
+                      <span className="block text-muted-foreground">الاستحقاق {formatDate(repair.repairDate)}</span>
+                    </span>
+                    <span className="shrink-0 font-bold text-amber-900">{formatMoney(repair.cost)}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedRecurringBillTotal > 0 && (
+                <p className="font-bold text-amber-950">إجمالي خصم الفواتير: {formatMoney(selectedRecurringBillTotal)}</p>
+              )}
+            </div>
+          )}
+          {maintenanceRepairSuggestions.length > 0 && (
             <div className="space-y-2 rounded-2xl border border-sky-300 bg-sky-50 p-3 text-xs">
               <div>
                 <p className="font-bold text-sky-900">اقتراح خصم تكاليف الصيانة</p>
                 <p className="mt-1 text-sky-800">توجد تكاليف صيانة لم تُخصم بعد داخل العقار. اختر ما تريد خصمه من هذه الدفعة.</p>
               </div>
               <div className="max-h-44 space-y-2 overflow-y-auto pl-1">
-                {repairSuggestions.map(({ repair, unitName }) => (
+                {maintenanceRepairSuggestions.map(({ repair, unitName }) => (
                   <label key={repair.id} className="flex items-start gap-2 rounded-xl bg-white/70 p-2">
                     <input
                       type="checkbox"
@@ -306,7 +346,7 @@ function MarkAsReceivedDialog({
                   </label>
                 ))}
               </div>
-              {maintenanceTotal > 0 && <p className="font-bold text-sky-900">إجمالي خصم الصيانة: {formatMoney(maintenanceTotal)}</p>}
+              {selectedMaintenanceRepairTotal > 0 && <p className="font-bold text-sky-900">إجمالي خصم الصيانة: {formatMoney(selectedMaintenanceRepairTotal)}</p>}
             </div>
           )}
           <div className="space-y-2 rounded-2xl border border-violet-300 bg-violet-50 p-3 text-xs">
@@ -495,7 +535,10 @@ export default function UnitDetails() {
       monthLabel: formatYearMonthLabel(getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)),
       dueDateLabel: formatDate(payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate),
     })) : [];
-  const maintenanceSuggestions = markReceived ? data.repairs
+  const maintenanceSuggestions = markReceived ? [
+    ...data.repairs,
+    ...getOutstandingRecurringBillRepairs(data, unit.buildingId),
+  ]
     .filter((repair) =>
       !repair.isDeductedFromOwnerTransfer
       && repair.status !== "cancelled"
@@ -737,31 +780,31 @@ export default function UnitDetails() {
           value={activeTab}
           onValueChange={setActiveTab}
           dir="rtl"
-          className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
+          className="min-[760px]:grid min-[760px]:grid-cols-[13rem_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-5 min-[760px]:[direction:ltr]"
         >
-          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-1/2 min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:-translate-y-1/2 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
-            <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+          <TabsList className="grid h-auto w-full grid-cols-6 rounded-2xl bg-muted p-1 min-[760px]:sticky min-[760px]:top-1/2 min-[760px]:col-start-1 min-[760px]:row-start-1 min-[760px]:flex min-[760px]:-translate-y-1/2 min-[760px]:flex-col min-[760px]:gap-2 min-[760px]:rounded-3xl min-[760px]:border min-[760px]:border-border min-[760px]:bg-card min-[760px]:p-3 min-[760px]:shadow-sm min-[760px]:[direction:rtl]">
+            <TabsTrigger value="tenant" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <User className="h-4 w-4" /> المستأجر
             </TabsTrigger>
-            <TabsTrigger value="payments" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="payments" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Wallet className="h-4 w-4" /> الدفعات
             </TabsTrigger>
-            <TabsTrigger value="contract" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="contract" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <FileText className="h-4 w-4" /> العقد
             </TabsTrigger>
-            <TabsTrigger value="requests" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="requests" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <ClipboardList className="h-4 w-4" /> الطلبات
             </TabsTrigger>
-            <TabsTrigger value="bills" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="bills" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Zap className="h-4 w-4" /> الفواتير
             </TabsTrigger>
-            <TabsTrigger value="repairs" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="repairs" className="flex-col gap-1 rounded-xl py-2 text-[10px] min-[760px]:w-full min-[760px]:flex-row min-[760px]:justify-start min-[760px]:px-3 min-[760px]:text-xs">
               <Wrench className="h-4 w-4" /> الصيانة
             </TabsTrigger>
           </TabsList>
 
           {/* Tenant */}
-          <TabsContent value="tenant" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="tenant" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             {tenant ? (
               <div className="rounded-3xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between">
@@ -942,7 +985,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Payments */}
-          <TabsContent value="payments" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="payments" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setPaymentOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> تسجيل دفعة إيجار
             </Button>
@@ -1222,7 +1265,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Contract */}
-          <TabsContent value="contract" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="contract" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <div className="flex gap-2">
               <Button className="flex-1 rounded-xl" onClick={() => setContractOpen(true)}>
                 <Plus className="ml-1 h-4 w-4" /> إضافة عقد
@@ -1422,7 +1465,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Requests */}
-          <TabsContent value="requests" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="requests" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setRequestOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة طلب مستأجر
             </Button>
@@ -1472,7 +1515,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Bills */}
-          <TabsContent value="bills" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="bills" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <Button className="w-full rounded-xl" onClick={() => setBillOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة فاتورة
             </Button>
@@ -1521,7 +1564,7 @@ export default function UnitDetails() {
           </TabsContent>
 
           {/* Repairs */}
-          <TabsContent value="repairs" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
+          <TabsContent value="repairs" className="mt-4 space-y-3 min-[760px]:col-start-2 min-[760px]:row-start-1 min-[760px]:mt-0 min-[760px]:[direction:rtl]">
             <div className="flex items-center justify-between rounded-2xl bg-secondary px-4 py-3">
               <span className="text-sm font-semibold text-secondary-foreground">إجمالي تكاليف الصيانة</span>
               <span className="font-bold text-primary">{formatMoney(maintenanceTotal)}</span>
@@ -2109,7 +2152,9 @@ export default function UnitDetails() {
             const collectionFeeAmount = Math.round(grossAmount * feePercent) / 100;
             const netAmountAfterCollectionFee = Math.round((grossAmount - collectionFeeAmount) * 100) / 100;
             const settlementTotal = settlements.reduce((sum, item) => sum + item.amount, 0);
-            const selectedRepairs = data.repairs.filter((repair) => repairIds.includes(repair.id) && !repair.isDeductedFromOwnerTransfer);
+            const selectedRepairs = maintenanceSuggestions
+              .map((item) => item.repair)
+              .filter((repair) => repairIds.includes(repair.id) && !repair.isDeductedFromOwnerTransfer);
             const linkedMaintenanceAmount = selectedRepairs.reduce((sum, repair) => sum + repair.cost, 0);
             const ownerDeductibleFee = method === "ejar_platform" ? 0 : collectionFeeAmount;
             const manualMaintenanceAmount = maintenanceExpenseItems
@@ -2122,7 +2167,7 @@ export default function UnitDetails() {
               ? `تم خصم صيانة بقيمة ${formatMoney(maintenanceDeductionAmount)}: ${[
                   ...selectedRepairs.map((repair) => {
                     const repairUnit = data.units.find((item) => item.id === repair.unitId);
-                    return `${repair.description} (${repairUnit?.name || "صيانة عامة للعقار"} - ${formatMoney(repair.cost)})`;
+                    return `${repair.description} (${repairUnit?.name || (isRecurringBillRepair(repair) ? "فاتورة شهرية للعقار" : "صيانة عامة للعقار")} - ${formatMoney(repair.cost)})`;
                   }),
                   maintenanceExpenseSummary,
                 ].filter(Boolean).join("، ")}.`
@@ -2130,10 +2175,8 @@ export default function UnitDetails() {
             const remainingForOwner = Math.max(0, Math.round((
               grossAmount - ownerDeductibleFee - settlementTotal - maintenanceDeductionAmount
             ) * 100) / 100);
-            const fullySettledByMaintenance = settleWithBuildingMaintenance
-              && manualMaintenanceAmount > 0
-              && remainingForOwner <= 0;
-            const autoOwnerTransfer = !settleWithBuildingMaintenance
+            const fullySettledByMaintenance = maintenanceDeductionAmount > 0 && remainingForOwner <= 0;
+            const autoOwnerTransfer = maintenanceDeductionAmount <= 0
               && shouldAutoTransferEjarPayment(data, markReceived, method);
             update((prev) => ({
               ...prev,
@@ -2160,9 +2203,9 @@ export default function UnitDetails() {
                       ownerTransferDate: autoOwnerTransfer ? receivedDate : null,
                       ownerTransferMethod: autoOwnerTransfer ? "ejar_platform" : null,
                       ownerTransferNotes: fullySettledByMaintenance
-                        ? `تمت تسوية صافي الدفعة بالكامل مقابل بنود صيانة المبنى بتاريخ ${receivedDate}.`
-                        : settleWithBuildingMaintenance
-                          ? `تم خصم بنود صيانة المبنى ويتبقى ${formatMoney(remainingForOwner)} للتحويل للمالك.`
+                        ? `تمت تسوية صافي الدفعة بالكامل مقابل مصروفات العقار بتاريخ ${receivedDate}.`
+                        : maintenanceDeductionAmount > 0
+                          ? `تم خصم مصروفات العقار والصيانة ويتبقى ${formatMoney(remainingForOwner)} للتحويل للمالك.`
                         : autoOwnerTransfer ? "تحويل تلقائي عبر منصة إيجار" : "",
                       ownerSettledByMaintenance: fullySettledByMaintenance,
                       maintenanceSettlementNote: maintenanceExpenseSummary || undefined,
@@ -2188,6 +2231,15 @@ export default function UnitDetails() {
                 ...prev.repairs.map((repair) => repairIds.includes(repair.id)
                   ? { ...repair, isDeductedFromOwnerTransfer: true, deductedFromPaymentId: markReceived.id }
                   : repair),
+                ...selectedRepairs
+                  .filter((repair) => !prev.repairs.some((item) => item.id === repair.id))
+                  .map((repair) => ({
+                    ...repair,
+                    status: "completed" as const,
+                    isDeductedFromOwnerTransfer: true,
+                    deductedFromPaymentId: markReceived.id,
+                    notes: `${repair.notes || ""}\nتم خصم الفاتورة من دفعة ${unit.name} بتاريخ ${receivedDate}.`.trim(),
+                  })),
                 ...maintenanceExpenseItems.map((item) => ({
                   id: genId(),
                   buildingId: unit.buildingId,
