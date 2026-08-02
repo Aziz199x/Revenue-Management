@@ -88,7 +88,7 @@ export default function EvidenceAttachments({
       // always open it.
       if (attachment.fileType === "application/pdf" && Capacitor.isNativePlatform()) {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
-        const { Share } = await import("@capacitor/share");
+        const { FileOpener } = await import("@capacitor-community/file-opener");
         const base64 = url.split(",")[1] ?? "";
         const safeName = attachment.fileName.replace(/[\\/:*?"<>|]/g, "-");
         const result = await Filesystem.writeFile({
@@ -97,7 +97,14 @@ export default function EvidenceAttachments({
           directory: Directory.Cache,
           recursive: true,
         });
-        await Share.share({ title: attachment.fileName, url: result.uri, dialogTitle: "فتح المستند" });
+        // Open directly in the device's PDF viewer (ACTION_VIEW), not the
+        // generic share sheet (ACTION_SEND) — Share.share() only lets the
+        // user send the file elsewhere, it doesn't display it.
+        await FileOpener.open({
+          filePath: result.uri,
+          contentType: attachment.fileType,
+          openWithDefault: true,
+        });
         return;
       }
       setViewer({ attachment, url });
