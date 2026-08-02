@@ -209,9 +209,9 @@ function AutomaticCommunicationManager() {
           sentAt: updatedAt,
           statusFinalizesAt: undefined,
           error: undefined,
-          deliveryNote: event.assumed
-            ? "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح."
-            : "أكد نظام Android نجاح إرسال الرسالة من شريحة الهاتف.",
+          // Keep carrier verification internal. A successful card should stay
+          // concise and must not expose implementation details to the user.
+          deliveryNote: undefined,
         };
       });
       await update((previous) => ({

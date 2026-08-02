@@ -35,7 +35,7 @@ function normalizeLegacySmsResult(log: CommunicationLog): CommunicationLog {
     status: "sent",
     sentAt: log.sentAt || log.createdAt,
     error: undefined,
-    deliveryNote: "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح.",
+    deliveryNote: undefined,
   };
 }
 
@@ -54,7 +54,7 @@ function finalizeExpiredSmsCheck(log: CommunicationLog): CommunicationLog {
     sentAt: log.sentAt || new Date(deadline).toISOString(),
     statusFinalizesAt: undefined,
     error: undefined,
-    deliveryNote: "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح.",
+    deliveryNote: undefined,
   };
 }
 

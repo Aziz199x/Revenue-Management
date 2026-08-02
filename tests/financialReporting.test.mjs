@@ -1093,7 +1093,7 @@ test("queued SMS becomes sent after its ten-minute verification deadline", () =>
 
   assert.equal(normalized.communicationLogs[0].status, "sent");
   assert.equal(normalized.communicationLogs[0].statusFinalizesAt, undefined);
-  assert.match(normalized.communicationLogs[0].deliveryNote, /10 دقائق/);
+  assert.equal(normalized.communicationLogs[0].deliveryNote, undefined);
 });
 
 test("reverted received payment waits for the 40-second safety window before messaging", () => {

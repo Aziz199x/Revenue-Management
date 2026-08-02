@@ -822,7 +822,9 @@ export default function AutomaticCommunicationsSettingsPage() {
                 )}
                 {dueDate && <p className="mt-1 text-muted-foreground">موعد الاستحقاق: {formatLogDate(dueDate)}</p>}
                 <p className="mt-1 text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-SA-u-nu-latn")}</p>
-                {log.deliveryNote && <p className="mt-1 rounded-lg bg-amber-100 p-2 text-amber-900">{log.deliveryNote}</p>}
+                {log.deliveryNote && log.status === "queued" && (
+                  <p className="mt-1 rounded-lg bg-amber-100 p-2 text-amber-900">{log.deliveryNote}</p>
+                )}
                 {log.error && <p className="mt-1 text-red-700">{log.error}</p>}
               </div>
             );

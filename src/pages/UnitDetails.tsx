@@ -788,23 +788,23 @@ export default function UnitDetails() {
           dir="rtl"
           className="min-[500px]:grid min-[500px]:grid-cols-[13rem_minmax(0,1fr)] min-[500px]:items-start min-[500px]:gap-5 min-[500px]:[direction:ltr]"
         >
-          <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-2xl bg-muted p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-[500px]:sticky min-[500px]:top-[calc(50vh-12rem)] min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:self-start min-[500px]:translate-y-0 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:overflow-visible min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
-            <TabsTrigger value="tenant" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+          <TabsList className="grid h-auto w-full grid-cols-6 gap-0.5 overflow-hidden rounded-2xl bg-muted p-1 min-[500px]:sticky min-[500px]:top-[calc(50vh-12rem)] min-[500px]:col-start-1 min-[500px]:row-start-1 min-[500px]:flex min-[500px]:self-start min-[500px]:translate-y-0 min-[500px]:flex-col min-[500px]:gap-2 min-[500px]:overflow-visible min-[500px]:rounded-3xl min-[500px]:border min-[500px]:border-border min-[500px]:bg-card min-[500px]:p-3 min-[500px]:shadow-sm min-[500px]:[direction:rtl]">
+            <TabsTrigger value="tenant" title="المستأجر" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <User className="h-4 w-4" /> المستأجر
             </TabsTrigger>
-            <TabsTrigger value="payments" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="payments" title="الدفعات" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <Wallet className="h-4 w-4" /> الدفعات
             </TabsTrigger>
-            <TabsTrigger value="contract" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="contract" title="العقد" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <FileText className="h-4 w-4" /> العقد
             </TabsTrigger>
-            <TabsTrigger value="requests" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="requests" title="الطلبات" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <ClipboardList className="h-4 w-4" /> الطلبات
             </TabsTrigger>
-            <TabsTrigger value="bills" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="bills" title="الفواتير" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <Zap className="h-4 w-4" /> الفواتير
             </TabsTrigger>
-            <TabsTrigger value="repairs" className="min-w-[76px] shrink-0 flex-col gap-1 rounded-xl px-3 py-2 text-[10px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
+            <TabsTrigger value="repairs" title="الصيانة" className="min-w-0 flex-col gap-1 rounded-xl px-0.5 py-2 text-[9px] min-[500px]:w-full min-[500px]:flex-row min-[500px]:justify-start min-[500px]:px-3 min-[500px]:text-xs">
               <Wrench className="h-4 w-4" /> الصيانة
             </TabsTrigger>
           </TabsList>
