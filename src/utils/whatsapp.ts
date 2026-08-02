@@ -12,6 +12,10 @@ function normalizeSaudiPhone(phone: string): string | null {
 
   if (cleaned.startsWith('96605')) {
     cleaned = '966' + cleaned.substring(4);
+  } else if (cleaned.startsWith('09665')) {
+    // Common data-entry mistake: a local leading zero kept in front of the
+    // full country code, e.g. "0966565640722".
+    cleaned = cleaned.substring(1);
   } else if (cleaned.startsWith('05')) {
     cleaned = '966' + cleaned.substring(1);
   } else if (cleaned.startsWith('5')) {

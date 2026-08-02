@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { openWhatsApp } from "@/utils/whatsapp";
+import { openWhatsApp, validatePhone } from "@/utils/whatsapp";
 import { toast } from "sonner";
 
 interface Props {
@@ -31,7 +31,21 @@ export default function WhatsappPreview({
 }: Props) {
   const [editedMessage, setEditedMessage] = useState(message);
   const [sending, setSending] = useState(false);
-  const availablePhones = Array.from(new Set([...(phones || []), ...(phone ? [phone] : [])].filter(Boolean)));
+  // Different raw formats of the same number (e.g. "+966 56 564 0722" and
+  // "966565640722") must collapse to a single entry — dedupe by the
+  // normalized WhatsApp identity, not the raw string.
+  const availablePhones = (() => {
+    const raw = [...(phones || []), ...(phone ? [phone] : [])].filter(Boolean);
+    const seenNormalized = new Set<string>();
+    const result: string[] = [];
+    for (const candidate of raw) {
+      const key = validatePhone(candidate) ?? candidate.trim();
+      if (seenNormalized.has(key)) continue;
+      seenNormalized.add(key);
+      result.push(candidate);
+    }
+    return result;
+  })();
   const [selectedPhones, setSelectedPhones] = useState<string[]>(availablePhones);
   const [currentIndex, setCurrentIndex] = useState(0);
 

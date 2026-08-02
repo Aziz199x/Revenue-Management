@@ -574,6 +574,7 @@ export interface AutomaticCommunicationSettings {
   emailEnabled: boolean;
   whatsappEnabled: boolean;
   smsEnabled: boolean;
+  /** Catch up an anchored occurrence only after it has been missed. */
   sendMissedAsSoonAsPossible: boolean;
   /** Exact cooldown between successful/queued sends. */
   frequencyHours?: number;
@@ -614,6 +615,8 @@ export interface CommunicationLog {
   id: string;
   createdAt: string;
   sentAt?: string;
+  /** The anchored schedule occurrence this attempt belongs to. */
+  scheduledFor?: string;
   /** Deadline after which an SMS with no failure callback is considered sent. */
   statusFinalizesAt?: string;
   channel: CommunicationChannel;
@@ -784,7 +787,7 @@ export const DEFAULT_SETTINGS: Settings = {
     emailEnabled: false,
     whatsappEnabled: false,
     smsEnabled: false,
-    sendMissedAsSoonAsPossible: true,
+    sendMissedAsSoonAsPossible: false,
     frequencyHours: 24,
     frequencyDays: 1,
     sendTime: "09:00",

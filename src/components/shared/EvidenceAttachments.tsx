@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Eye, FilePlus2, Loader2, Paperclip, Trash2 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -81,6 +82,24 @@ export default function EvidenceAttachments({
   const view = async (attachment: EvidenceAttachment) => {
     try {
       const url = await readEvidenceAttachment(attachment);
+      // Android's embedded WebView has no built-in PDF renderer, so an
+      // <iframe> for a PDF data URL just shows a blank page. Hand the file
+      // to the system's own PDF viewer / share sheet instead, which can
+      // always open it.
+      if (attachment.fileType === "application/pdf" && Capacitor.isNativePlatform()) {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+        const base64 = url.split(",")[1] ?? "";
+        const safeName = attachment.fileName.replace(/[\\/:*?"<>|]/g, "-");
+        const result = await Filesystem.writeFile({
+          path: `evidence-view/${attachment.id}-${safeName}`,
+          data: base64,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+        await Share.share({ title: attachment.fileName, url: result.uri, dialogTitle: "فتح المستند" });
+        return;
+      }
       setViewer({ attachment, url });
     } catch (error) {
       showError(error instanceof Error ? error.message : "تعذر عرض الإثبات");
@@ -97,7 +116,7 @@ export default function EvidenceAttachments({
   };
 
   return (
-    <div className={compact ? "space-y-1.5" : "space-y-2 rounded-2xl border border-border bg-muted/30 p-3"}>
+    <div className={`min-w-0 ${compact ? "space-y-1.5" : "space-y-2 rounded-2xl border border-border bg-muted/30 p-3"}`}>
       <input
         ref={inputRef}
         type="file"
@@ -118,13 +137,13 @@ export default function EvidenceAttachments({
         {kindLabels[kind]}{attachments.length ? ` (${attachments.length})` : ""}
       </Button>
       {attachments.map((attachment) => (
-        <div key={attachment.id} className="flex items-center gap-1 rounded-xl bg-card px-2 py-1.5 text-[10px]">
+        <div key={attachment.id} className="flex min-w-0 items-center gap-1 rounded-xl bg-card px-2 py-1.5 text-[10px]">
           <Paperclip className="h-3 w-3 shrink-0 text-primary" />
-          <span className="min-w-0 flex-1 truncate">{attachment.fileName}</span>
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => void view(attachment)} aria-label="عرض الإثبات">
+          <span className="min-w-0 flex-1 truncate" title={attachment.fileName}>{attachment.fileName}</span>
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => void view(attachment)} aria-label="عرض الإثبات">
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => void remove(attachment)} aria-label="حذف الإثبات">
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => void remove(attachment)} aria-label="حذف الإثبات">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>

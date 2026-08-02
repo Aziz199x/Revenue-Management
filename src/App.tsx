@@ -132,10 +132,10 @@ function PaymentReminderCountdown() {
           continue;
         }
         const unit = data.units.find((item) => item.id === payment.unitId);
-        toast.warning(`سيتم إشعار المستأجر خلال ${remaining} ثانية`, {
+        toast.warning(`ستعود الدفعة إلى جدول الإرسال خلال ${remaining} ثانية`, {
           id: toastId,
           duration: Infinity,
-          description: `${unit?.name || payment.unitName || "الوحدة"} — أعد حالة الدفعة إلى «مدفوع» لإلغاء الإرسال.`,
+          description: `${unit?.name || payment.unitName || "الوحدة"} — بعد المهلة سيُحترم وقت الجدول وخيار تعويض الموعد الفائت. أعد الدفعة إلى «مدفوع» لإلغاء الإشعار.`,
         });
       }
     };
@@ -315,8 +315,8 @@ function AutomaticCommunicationManager() {
         smsStatusListener = handle;
       });
       void import("@capacitor/app").then(async ({ App }) => {
-        appStateListener = await App.addListener("appStateChange", () => {
-          void run();
+        appStateListener = await App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) void run();
         });
       });
     }

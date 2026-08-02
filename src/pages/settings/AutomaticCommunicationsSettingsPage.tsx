@@ -366,7 +366,9 @@ export default function AutomaticCommunicationsSettingsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-bold">تفعيل جدول الإرسال</p>
-              <p className="mt-1 text-xs text-muted-foreground">يفحص الدفعات عند فتح التطبيق واستئنافه، ثم يرسل الرسائل المستحقة دون تكرار.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                المفتاح الرئيسي للإرسال التلقائي. يلتزم بالوقت والتكرار المحددين، ولا يعوض موعدًا فائتًا إلا إذا كان الخيار الأصفر مفعّلًا.
+              </p>
             </div>
             <Switch checked={settings.enabled} onCheckedChange={(enabled) => updateSchedule({ enabled })} />
           </div>
@@ -411,17 +413,25 @@ export default function AutomaticCommunicationsSettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3">
+          <div className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-3 ${
+            settings.enabled
+              ? "border-amber-300 bg-amber-50"
+              : "border-border bg-muted/40"
+          }`}>
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <Clock3 className="h-4 w-4 text-amber-700" />
+                <Clock3 className={`h-4 w-4 ${settings.enabled ? "text-amber-700" : "text-muted-foreground"}`} />
                 <Label>الإرسال في أقرب وقت عند فوات الموعد</Label>
-                <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-bold text-amber-900">
-                  خيار إضافي مستقل
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                  settings.enabled
+                    ? "bg-amber-200 text-amber-900"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {settings.enabled ? "تعويض الموعد الفائت" : "غير فعّال حتى تشغيل الجدول"}
                 </span>
               </div>
-              <p className="mt-1 text-[10px] leading-4 text-amber-900">
-                عند تشغيله تُرسل الرسائل المعلقة فور فتح التطبيق أو عودة الإنترنت، مع الالتزام بمدة التكرار.
+              <p className={`mt-1 text-[10px] leading-4 ${settings.enabled ? "text-amber-900" : "text-muted-foreground"}`}>
+                لا يفعّل الجدول ولا يقدّم رسالة قبل موعدها الأصلي. عند تشغيله تُعوض الخانة التي فاتت عند أول فتح للتطبيق أو عودة الإنترنت؛ وقد يحدث ذلك قبل موعد اليوم التالي. عند إيقافه تنتظر الرسالة خانتها المجدولة التالية.
               </p>
             </div>
             <Switch
@@ -519,8 +529,8 @@ export default function AutomaticCommunicationsSettingsPage() {
             <Play className="ml-1 h-4 w-4" /> {running ? "جاري فحص وإرسال الرسائل..." : "فحص المستحق وإرساله الآن"}
           </Button>
           <p className="text-[10px] leading-5 text-muted-foreground">
-            الإرسال التلقائي يعمل عندما يكون التطبيق يعمل في الخلفية ويوجد اتصال بالإنترنت.
-            عند إغلاق الهاتف أو التطبيق بالكامل، تُرسل الرسائل المعلقة عند أول تشغيل وفق إعداد «الإرسال في أقرب وقت».
+            يفحص التطبيق الرسائل دوريًا، لكن الفحص وحده لا يرسل خارج نافذة الموعد البالغة 10 دقائق.
+            عند إغلاق التطبيق أو انقطاع الإنترنت، يحدد خيار «الإرسال في أقرب وقت» هل تُعوض الرسالة الفائتة عند العودة أم تنتظر الموعد التالي.
           </p>
         </section>
 

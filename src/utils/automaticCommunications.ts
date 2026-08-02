@@ -38,10 +38,14 @@ export interface AutomaticCommunicationJob {
   subject?: string;
   body: string;
   dedupeKey: string;
+  scheduledFor: string;
 }
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
+// The manager checks every five minutes. Keep one extra polling interval so a
+// small timer delay does not turn an on-time run into a missed occurrence.
+const SCHEDULE_WINDOW_MS = 10 * 60_000;
 let running: Promise<CommunicationLog[]> | null = null;
 
 export function isCommunicationOnline(): boolean {
@@ -266,6 +270,7 @@ export function buildContractCommunicationContent(data: AppData, contract: Contr
 function wasRecentlyAttempted(
   data: AppData,
   dedupeKey: string,
+  scheduledFor: string,
   now: Date,
   frequencyHours: number,
   retryFailedNow = false,
@@ -273,16 +278,31 @@ function wasRecentlyAttempted(
   const matching = [...(data.communicationLogs || [])]
     .filter((log) => log.dedupeKey === dedupeKey)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const latest = matching[0];
-  if (!latest) return false;
+  if (matching.length === 0) return false;
   const cooldown = Math.max(1, frequencyHours) * HOUR;
-  const protectedAttempt = matching.some((log) => {
-    if (log.status !== "sent" && log.status !== "queued") return false;
-    return now.getTime() - new Date(log.createdAt).getTime() < cooldown;
-  });
-  if (protectedAttempt) return true;
-  if (retryFailedNow && latest.status === "failed") return false;
-  const elapsed = now.getTime() - new Date(latest.createdAt).getTime();
+  const scheduledAt = new Date(scheduledFor).getTime();
+  const sameOccurrence = matching.filter((log) => log.scheduledFor === scheduledFor);
+  if (sameOccurrence.some((log) => log.status === "sent" || log.status === "queued")) {
+    return true;
+  }
+
+  // Keep fixed schedule anchors without sending two reminders too close
+  // together. A normal delay inside the run window does not shift the next
+  // occurrence, while a very late catch-up can intentionally skip a nearby
+  // occurrence and resume at the following anchored slot.
+  const latestDelivered = matching.find((log) => log.status === "sent" || log.status === "queued");
+  if (latestDelivered) {
+    const nextAllowedSlot = new Date(latestDelivered.createdAt).getTime()
+      + cooldown
+      - (retryFailedNow ? 0 : SCHEDULE_WINDOW_MS);
+    if (scheduledAt < nextAllowedSlot) return true;
+  }
+
+  const latestFailure = sameOccurrence.find((log) => log.status === "failed")
+    || matching.find((log) => log.status === "failed" && !log.scheduledFor);
+  if (!latestFailure) return false;
+  if (retryFailedNow) return false;
+  const elapsed = now.getTime() - new Date(latestFailure.createdAt).getTime();
   const retryWindow = Math.min(cooldown, HOUR);
   return elapsed < retryWindow;
 }
@@ -326,12 +346,53 @@ function resolvedSchedule(data: AppData, kind: ScheduleKind) {
   };
 }
 
-function ruleIsReady(data: AppData, kind: ScheduleKind, now: Date, force: boolean): boolean {
+function scheduledTime(date: string, time: string): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new Date(
+    year,
+    Math.max(0, (month || 1) - 1),
+    day || 1,
+    hour || 0,
+    minute || 0,
+    0,
+    0,
+  );
+}
+
+function scheduledOccurrenceFor(
+  data: AppData,
+  kind: ScheduleKind,
+  firstEligibleDate: string,
+  now: Date,
+  force: boolean,
+): Date | null {
   const rule = resolvedSchedule(data, kind);
-  if (!rule.enabled) return false;
-  if (force || data.settings.automaticCommunications.sendMissedAsSoonAsPossible) return true;
-  const [hour, minute] = rule.sendTime.split(":").map(Number);
-  return now.getHours() * 60 + now.getMinutes() >= (hour || 0) * 60 + (minute || 0);
+  if (!rule.enabled) return null;
+  if (force) return now;
+
+  const activeFrom = data.settings.automaticCommunications.activeFrom;
+  const scheduleStartDate = activeFrom && activeFrom > firstEligibleDate
+    ? activeFrom
+    : firstEligibleDate;
+  const firstOccurrence = scheduledTime(scheduleStartDate, rule.sendTime);
+  const elapsed = now.getTime() - firstOccurrence.getTime();
+  if (elapsed < 0) return null;
+
+  const frequencyMs = Math.max(1, rule.frequencyHours) * HOUR;
+  const latestOccurrence = new Date(
+    firstOccurrence.getTime() + Math.floor(elapsed / frequencyMs) * frequencyMs,
+  );
+  const delay = now.getTime() - latestOccurrence.getTime();
+
+  // Normal scheduling is allowed only around an actual occurrence. Catch-up
+  // widens the window after a missed occurrence; it never sends before one.
+  return (
+    delay < SCHEDULE_WINDOW_MS
+    || data.settings.automaticCommunications.sendMissedAsSoonAsPossible
+  )
+    ? latestOccurrence
+    : null;
 }
 
 export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(), force = false): AutomaticCommunicationJob[] {
@@ -349,9 +410,14 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     const tenant = findTenantForPayment(data, payment);
     const kind = effectiveStatus(payment) === "overdue" || daysUntilDue < 0 ? "overduePayment" : "paymentReminder";
     const rule = resolvedSchedule(data, kind);
-    if (!ruleIsReady(data, kind, now, force)) continue;
     if (kind === "paymentReminder" && daysUntilDue > rule.daysBeforeDue) continue;
     if (kind === "overduePayment" && daysUntilDue < -rule.overdueTailDays) continue;
+    const firstEligibleDate = kind === "paymentReminder"
+      ? addDays(dueDate, -rule.daysBeforeDue)
+      : addDays(dueDate, 1);
+    const scheduledOccurrence = scheduledOccurrenceFor(data, kind, firstEligibleDate, now, force);
+    if (!scheduledOccurrence) continue;
+    const scheduledFor = scheduledOccurrence.toISOString();
     const vars = templateVars(data, payment, tenant);
     const period = paymentPeriod(data, payment);
     const emailContent = buildPaymentEmailContent(data, payment, tenant, kind);
@@ -359,7 +425,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -376,6 +442,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           subject: emailContent.subject,
           body: emailContent.body,
           dedupeKey,
+          scheduledFor,
         });
       }
     }
@@ -385,7 +452,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:whatsapp:${recipient}:${kind}`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -401,6 +468,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           provider: "whatsapp_business",
           body: fillTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars),
           dedupeKey,
+          scheduledFor,
         });
       }
       }
@@ -411,7 +479,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:sms:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,
@@ -427,6 +495,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           provider: "device_sms",
           body: fillTemplate(getWhatsAppTemplatesForTenant(data, tenant)[kind], vars),
           dedupeKey,
+          scheduledFor,
         });
       }
     }
@@ -436,9 +505,18 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (hasContinuingContractForUnit(contract, data.contracts)) continue;
     if (contract.responseGraceUntil && today <= contract.responseGraceUntil) continue;
     const rule = resolvedSchedule(data, "contractExpiry");
-    if (!ruleIsReady(data, "contractExpiry", now, force)) continue;
     const daysUntilEnd = Math.ceil((dateValue(contract.endDate) - dateValue(today)) / DAY);
     if (daysUntilEnd < 0 || daysUntilEnd > rule.contractReminderDays) continue;
+    const firstEligibleDate = addDays(contract.endDate, -rule.contractReminderDays);
+    const scheduledOccurrence = scheduledOccurrenceFor(
+      data,
+      "contractExpiry",
+      firstEligibleDate,
+      now,
+      force,
+    );
+    if (!scheduledOccurrence) continue;
+    const scheduledFor = scheduledOccurrence.toISOString();
     const tenant = data.tenants.find((item) =>
       item.id === contract.tenantId
       || (!contract.tenantId && item.unitId === contract.unitId)
@@ -448,7 +526,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -463,6 +541,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           subject: content.emailSubject,
           body: content.emailBody,
           dedupeKey,
+          scheduledFor,
         });
       }
     }
@@ -471,7 +550,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       const recipient = validatePhone(phone);
       if (!recipient) continue;
       const dedupeKey = `${contract.id}:whatsapp:${recipient}:contractExpiry`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -485,6 +564,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           provider: "whatsapp_business",
           body: content.whatsappBody,
           dedupeKey,
+          scheduledFor,
         });
       }
       }
@@ -494,7 +574,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${contract.id}:sms:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, scheduledFor, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,
@@ -508,6 +588,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
           provider: "device_sms",
           body: content.whatsappBody,
           dedupeKey,
+          scheduledFor,
         });
       }
     }
@@ -559,6 +640,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
         logs.push({
           id,
           createdAt,
+          scheduledFor: job.scheduledFor,
           sentAt: execution.status === "queued" ? undefined : new Date().toISOString(),
           statusFinalizesAt: execution.statusFinalizesAt,
           channel: job.channel,
@@ -582,6 +664,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
         logs.push({
           id,
           createdAt,
+          scheduledFor: job.scheduledFor,
           channel: job.channel,
           status: "failed",
           recipient: job.recipient,

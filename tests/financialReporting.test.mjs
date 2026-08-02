@@ -746,6 +746,7 @@ test("automatic communication schedule sends formal email to every company addre
         enabled: true,
         emailEnabled: true,
         whatsappEnabled: false,
+        sendMissedAsSoonAsPossible: true,
         frequencyDays: 2,
         sendTime: "09:00",
         daysBeforeDue: 3,
@@ -889,6 +890,367 @@ test("automatic WhatsApp schedule supports every enabled tenant phone without du
   assert.deepEqual(jobs.map((job) => job.recipient).sort(), ["966500000000", "966511111111"]);
 });
 
+function automaticSmsTimingSnapshot({
+  enabled = true,
+  sendMissedAsSoonAsPossible = false,
+  sendTime = "09:00",
+  frequencyHours = 24,
+  dueDate = "2026-08-02",
+  daysBeforeDue = 3,
+  paymentReminderSchedule,
+} = {}) {
+  const record = payment({
+    id: "p-sms-timing",
+    tenantId: "t-sms-timing",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: dueDate,
+    dueDateGregorian: dueDate,
+  });
+  return storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-sms-timing",
+      unitId: "u1",
+      name: "مستأجر اختبار الوقت",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    settings: {
+      automaticCommunications: {
+        enabled,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        sendMissedAsSoonAsPossible,
+        frequencyHours,
+        frequencyDays: Math.max(1, Math.ceil(frequencyHours / 24)),
+        sendTime,
+        daysBeforeDue,
+        overdueTailDays: 30,
+        activeFrom: "2026-08-01",
+        emailProvider: null,
+        ...(paymentReminderSchedule ? { paymentReminderSchedule } : {}),
+      },
+    },
+  });
+}
+
+function communicationLogForJob(job, overrides = {}) {
+  return {
+    id: "communication-slot-log",
+    createdAt: new Date("2026-08-01T09:05:00").toISOString(),
+    sentAt: new Date("2026-08-01T09:05:01").toISOString(),
+    scheduledFor: job.scheduledFor,
+    channel: job.channel,
+    status: "sent",
+    recipient: job.recipient,
+    tenantId: job.tenantId,
+    paymentId: job.paymentId,
+    contractId: job.contractId,
+    templateKind: job.templateKind,
+    provider: job.provider,
+    dedupeKey: job.dedupeKey,
+    ...overrides,
+  };
+}
+
+test("automatic communication master switch blocks scheduled and forced sends", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    enabled: false,
+    sendMissedAsSoonAsPossible: true,
+  });
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T09:05:00"),
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T12:00:00"),
+      true,
+    ).length,
+    0,
+  );
+});
+
+test("automatic communication without catch-up only sends inside the ten-minute schedule window", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: false,
+    sendTime: "09:00",
+  });
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T08:59:59"),
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T09:05:00"),
+    ).length,
+    1,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T09:10:01"),
+    ).length,
+    0,
+  );
+});
+
+test("automatic communication catch-up waits for the first schedule and releases missed work afterwards", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: true,
+    sendTime: "09:00",
+  });
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T08:00:00"),
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T09:15:00"),
+    ).length,
+    1,
+  );
+});
+
+test("forced automatic communication bypasses the clock but still requires the master schedule", () => {
+  const enabled = automaticSmsTimingSnapshot({
+    enabled: true,
+    sendMissedAsSoonAsPossible: false,
+  });
+  const disabled = automaticSmsTimingSnapshot({
+    enabled: false,
+    sendMissedAsSoonAsPossible: false,
+  });
+  const beforeFirstSchedule = new Date("2026-08-01T08:00:00");
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      enabled,
+      beforeFirstSchedule,
+      true,
+    ).length,
+    1,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      disabled,
+      beforeFirstSchedule,
+      true,
+    ).length,
+    0,
+  );
+});
+
+test("a custom automatic communication rule uses its own send-time window", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: false,
+    sendTime: "09:00",
+    paymentReminderSchedule: {
+      useCustomSchedule: true,
+      enabled: true,
+      frequencyHours: 24,
+      frequencyDays: 1,
+      sendTime: "14:00",
+      daysBeforeDue: 3,
+    },
+  });
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T09:05:00"),
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T14:05:00"),
+    ).length,
+    1,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T14:10:01"),
+    ).length,
+    0,
+  );
+});
+
+test("scheduledFor keeps 12-hour slots at 09:00 and 21:00 and preserves 24/48-hour anchors", () => {
+  const scheduledFor = (frequencyHours, now) => {
+    const snapshot = automaticSmsTimingSnapshot({
+      sendMissedAsSoonAsPossible: true,
+      frequencyHours,
+      dueDate: "2026-08-10",
+      daysBeforeDue: 30,
+    });
+    const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date(now),
+    );
+    assert.equal(jobs.length, 1);
+    return jobs[0].scheduledFor;
+  };
+
+  assert.equal(
+    scheduledFor(12, "2026-08-01T09:05:00"),
+    new Date("2026-08-01T09:00:00").toISOString(),
+  );
+  assert.equal(
+    scheduledFor(12, "2026-08-01T21:05:00"),
+    new Date("2026-08-01T21:00:00").toISOString(),
+  );
+  assert.equal(
+    scheduledFor(12, "2026-08-02T09:05:00"),
+    new Date("2026-08-02T09:00:00").toISOString(),
+  );
+  assert.equal(
+    scheduledFor(24, "2026-08-02T18:00:00"),
+    new Date("2026-08-02T09:00:00").toISOString(),
+  );
+  assert.equal(
+    scheduledFor(48, "2026-08-02T18:00:00"),
+    new Date("2026-08-01T09:00:00").toISOString(),
+  );
+  assert.equal(
+    scheduledFor(48, "2026-08-03T09:05:00"),
+    new Date("2026-08-03T09:00:00").toISOString(),
+  );
+});
+
+test("a late catch-up keeps the original anchor and suppresses only the nearby slot", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: true,
+    frequencyHours: 24,
+    dueDate: "2026-08-10",
+    daysBeforeDue: 30,
+  });
+  const missedJobs = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-02T08:00:00"),
+  );
+  assert.equal(missedJobs.length, 1);
+  assert.equal(
+    missedJobs[0].scheduledFor,
+    new Date("2026-08-01T09:00:00").toISOString(),
+  );
+
+  const afterCatchUp = {
+    ...snapshot,
+    communicationLogs: [communicationLogForJob(missedJobs[0], {
+      id: "late-catch-up",
+      createdAt: new Date("2026-08-02T08:00:00").toISOString(),
+      sentAt: new Date("2026-08-02T08:00:01").toISOString(),
+    })],
+  };
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      afterCatchUp,
+      new Date("2026-08-02T09:05:00"),
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      afterCatchUp,
+      new Date("2026-08-03T08:00:00"),
+    ).length,
+    0,
+  );
+
+  const resumed = automaticCommunications.buildAutomaticCommunicationJobs(
+    afterCatchUp,
+    new Date("2026-08-03T09:05:00"),
+  );
+  assert.equal(resumed.length, 1);
+  assert.equal(
+    resumed[0].scheduledFor,
+    new Date("2026-08-03T09:00:00").toISOString(),
+  );
+});
+
+test("a sent log for scheduledFor prevents a duplicate in the same slot", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: true,
+    dueDate: "2026-08-10",
+    daysBeforeDue: 30,
+  });
+  const first = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T09:05:00"),
+  );
+  assert.equal(first.length, 1);
+
+  const withSentSlot = {
+    ...snapshot,
+    communicationLogs: [communicationLogForJob(first[0])],
+  };
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      withSentSlot,
+      new Date("2026-08-01T09:09:00"),
+    ).length,
+    0,
+  );
+});
+
+test("a failed scheduledFor retries the same anchored slot after its retry window during catch-up", () => {
+  const snapshot = automaticSmsTimingSnapshot({
+    sendMissedAsSoonAsPossible: true,
+    dueDate: "2026-08-10",
+    daysBeforeDue: 30,
+  });
+  const first = automaticCommunications.buildAutomaticCommunicationJobs(
+    snapshot,
+    new Date("2026-08-01T09:05:00"),
+  );
+  assert.equal(first.length, 1);
+  const scheduledFor = first[0].scheduledFor;
+  const withFailure = {
+    ...snapshot,
+    communicationLogs: [communicationLogForJob(first[0], {
+      id: "failed-slot",
+      createdAt: new Date("2026-08-01T09:01:00").toISOString(),
+      sentAt: undefined,
+      status: "failed",
+      error: "تعذر الإرسال مؤقتًا",
+    })],
+  };
+
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      withFailure,
+      new Date("2026-08-01T09:30:00"),
+    ).length,
+    0,
+  );
+  const retry = automaticCommunications.buildAutomaticCommunicationJobs(
+    withFailure,
+    new Date("2026-08-01T10:01:01"),
+  );
+  assert.equal(retry.length, 1);
+  assert.equal(retry[0].scheduledFor, scheduledFor);
+});
+
 test("automatic SMS schedule creates native SMS jobs for enabled tenant phones", () => {
   const record = payment({
     tenantId: "t-sms",
@@ -923,7 +1285,7 @@ test("automatic SMS schedule creates native SMS jobs for enabled tenant phones",
   });
   const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
     snapshot,
-    new Date("2026-08-01T08:00:00"),
+    new Date("2026-08-01T09:05:00"),
   );
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].channel, "sms");
@@ -970,7 +1332,7 @@ test("automatic SMS schedule deduplicates the same phone stored in local and int
   });
   const jobs = automaticCommunications.buildAutomaticCommunicationJobs(
     snapshot,
-    new Date("2026-08-01T08:00:00"),
+    new Date("2026-08-01T09:05:00"),
   );
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].dedupeKey, `${record.id}:sms:966500000000:paymentReminder`);
