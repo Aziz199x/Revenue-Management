@@ -347,9 +347,9 @@ export default function AutomaticCommunicationsSettingsPage() {
         }));
       }
       if (failed > 0) {
-        showError(`اكتملت الدورة: ${sent} ناجحة، ${queued} قيد تأكيد الشبكة، ${failed} فاشلة. يمكنك إعادة المحاولة بعد معالجة سبب الفشل.`);
+        showError(`اكتملت الدورة: ${sent} ناجحة، ${queued} جاري التحقق منها، ${failed} فاشلة. يمكنك إعادة المحاولة بعد معالجة سبب الفشل.`);
       } else {
-        showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة، ${queued} قيد تأكيد الشبكة` : "لا توجد رسائل مستحقة للإرسال الآن");
+        showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة، ${queued} جاري التحقق منها` : "لا توجد رسائل مستحقة للإرسال الآن");
       }
     } catch (error) {
       showError(error instanceof Error ? error.message : "تعذر تشغيل دورة الإرسال");
@@ -776,7 +776,7 @@ export default function AutomaticCommunicationsSettingsPage() {
                       {log.status === "sent"
                         ? "تم الإرسال"
                         : log.status === "queued"
-                          ? "قيد تأكيد الشبكة"
+                          ? "جاري التحقق (حتى 10 دقائق)"
                           : "فشل"}
                     </span>
                     {(log.status === "sent" || log.status === "queued") && (

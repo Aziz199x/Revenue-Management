@@ -17,6 +17,7 @@ import {
   isCommunicationOnline,
   runAutomaticCommunicationCycle,
 } from "@/utils/automaticCommunications";
+import { addAutomaticSmsStatusListener, type SmsStatusUpdate } from "@/utils/sms";
 import AppLayout from "@/components/layout/AppLayout";
 import { AppDialogProvider } from "@/components/shared/AppDialogProvider";
 import Index from "./pages/Index";
@@ -155,11 +156,13 @@ function AutomaticCommunicationManager() {
   const { data, update } = useStore();
   const latestData = useRef(data);
   const offlineNoticeShown = useRef(false);
+  const pendingSmsUpdates = useRef(new Map<string, SmsStatusUpdate>());
   latestData.current = data;
 
   useEffect(() => {
     let active = true;
-    let listener: { remove: () => Promise<void> } | undefined;
+    let appStateListener: { remove: () => Promise<void> } | undefined;
+    let smsStatusListener: { remove: () => Promise<void> } | undefined;
     const notify = async (title: string, body: string, kind: "success" | "warning" = "success") => {
       if (kind === "warning") toast.warning(title, { description: body });
       else toast.success(title, { description: body });
@@ -178,6 +181,56 @@ function AutomaticCommunicationManager() {
         });
       } catch (error) {
         console.warn("[Automatic Communications] unable to show status notification", error);
+      }
+    };
+    const applySmsStatus = async (event: SmsStatusUpdate) => {
+      if (!active) return;
+      const exists = (latestData.current.communicationLogs || []).some((log) => log.id === event.requestId);
+      if (!exists) {
+        pendingSmsUpdates.current.set(event.requestId, event);
+        return;
+      }
+      const updatedAt = new Date(event.updatedAt || Date.now()).toISOString();
+      const transform = (logs: typeof latestData.current.communicationLogs) => logs.map((log) => {
+        if (log.id !== event.requestId) return log;
+        if (event.status === "failed") {
+          return {
+            ...log,
+            status: "failed" as const,
+            sentAt: undefined,
+            statusFinalizesAt: undefined,
+            deliveryNote: undefined,
+            error: event.error || "فشل إرسال SMS من شريحة الهاتف",
+          };
+        }
+        return {
+          ...log,
+          status: "sent" as const,
+          sentAt: updatedAt,
+          statusFinalizesAt: undefined,
+          error: undefined,
+          deliveryNote: event.assumed
+            ? "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح."
+            : "أكد نظام Android نجاح إرسال الرسالة من شريحة الهاتف.",
+        };
+      });
+      await update((previous) => ({
+        ...previous,
+        communicationLogs: transform(previous.communicationLogs || []),
+      }));
+      latestData.current = {
+        ...latestData.current,
+        communicationLogs: transform(latestData.current.communicationLogs || []),
+      };
+      pendingSmsUpdates.current.delete(event.requestId);
+      if (event.status === "failed") {
+        await notify("فشل إرسال SMS", event.error || "تحقق من الشريحة والتغطية والرصيد.", "warning");
+      } else {
+        const log = latestData.current.communicationLogs.find((item) => item.id === event.requestId);
+        await notify(
+          `تم إشعار ${log?.tenantName || "المستأجر"}`,
+          `تم إرسال SMS للوحدة ${log?.unitName || "غير محددة"}.`,
+        );
       }
     };
     const run = async () => {
@@ -222,6 +275,11 @@ function AutomaticCommunicationManager() {
               },
             },
           };
+          for (const event of pendingSmsUpdates.current.values()) {
+            if (logs.some((log) => log.id === event.requestId)) {
+              await applySmsStatus(event);
+            }
+          }
         }
         for (const log of logs.filter((item) => item.status === "sent")) {
           const channel = log.channel === "email" ? "البريد" : log.channel === "whatsapp" ? "واتساب" : "SMS";
@@ -232,8 +290,8 @@ function AutomaticCommunicationManager() {
         }
         for (const log of logs.filter((item) => item.status === "queued")) {
           await notify(
-            `SMS قيد تأكيد الشبكة: ${log.tenantName || "المستأجر"}`,
-            `تم تسليم الطلب لشريحة الهاتف للوحدة ${log.unitName || "غير محددة"}، ولن يعاد إرساله قبل انتهاء الفترة المحددة.`,
+            `جاري التحقق من SMS: ${log.tenantName || "المستأجر"}`,
+            `لن تتكرر رسالة الوحدة ${log.unitName || "غير محددة"} خلال مهلة التحقق أو قبل انتهاء الفترة المحددة.`,
             "warning",
           );
         }
@@ -251,8 +309,13 @@ function AutomaticCommunicationManager() {
     const startup = window.setTimeout(() => { void run(); }, 1500);
     const interval = window.setInterval(() => { void run(); }, 5 * 60 * 1000);
     if (Capacitor.isNativePlatform()) {
+      void addAutomaticSmsStatusListener((event) => {
+        void applySmsStatus(event);
+      }).then((handle) => {
+        smsStatusListener = handle;
+      });
       void import("@capacitor/app").then(async ({ App }) => {
-        listener = await App.addListener("appStateChange", () => {
+        appStateListener = await App.addListener("appStateChange", () => {
           void run();
         });
       });
@@ -263,7 +326,8 @@ function AutomaticCommunicationManager() {
       window.clearInterval(interval);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("automatic-communication-ready", onlineHandler);
-      void listener?.remove();
+      void appStateListener?.remove();
+      void smsStatusListener?.remove();
     };
   }, [data.settings.automaticCommunications, update]);
   return null;

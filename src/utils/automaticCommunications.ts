@@ -519,22 +519,22 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
   ).slice(0, 100);
 }
 
-async function executeJob(job: AutomaticCommunicationJob): Promise<{
+async function executeJob(job: AutomaticCommunicationJob, requestId: string): Promise<{
   status?: CommunicationLog["status"];
   deliveryNote?: string;
+  statusFinalizesAt?: string;
 }> {
   if (job.provider === "gmail") {
     await sendGmailEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "outlook") {
     await sendOutlookEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "device_sms") {
-    const result = await sendAutomaticSms(job.recipient, job.body);
-    if (result.confirmationTimedOut) {
-      return {
-        status: "queued",
-        deliveryNote: "تم تسليم طلب الرسالة لشريحة الهاتف، لكن شركة الاتصالات لم ترسل تأكيدًا نهائيًا؛ لن يعاد إرسالها تلقائيًا.",
-      };
-    }
+    await sendAutomaticSms(job.recipient, job.body, requestId);
+    return {
+      status: "queued",
+      deliveryNote: "جاري التحقق من نتيجة إرسال SMS لمدة تصل إلى 10 دقائق. لن تتكرر الرسالة خلال هذه المهلة.",
+      statusFinalizesAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    };
   } else {
     await sendWhatsAppTemplate(job.recipient, job.templateKind, job.body);
   }
@@ -553,12 +553,14 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
     const logs: CommunicationLog[] = [];
     for (const job of jobs) {
       const createdAt = new Date().toISOString();
+      const id = `message-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       try {
-        const execution = await executeJob(job);
+        const execution = await executeJob(job, id);
         logs.push({
-          id: `message-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          id,
           createdAt,
-          sentAt: new Date().toISOString(),
+          sentAt: execution.status === "queued" ? undefined : new Date().toISOString(),
+          statusFinalizesAt: execution.statusFinalizesAt,
           channel: job.channel,
           status: execution.status || "sent",
           recipient: job.recipient,
@@ -578,7 +580,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
         });
       } catch (error) {
         logs.push({
-          id: `message-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          id,
           createdAt,
           channel: job.channel,
           status: "failed",

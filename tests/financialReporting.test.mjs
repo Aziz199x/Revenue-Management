@@ -1056,7 +1056,7 @@ test("queued SMS is protected for the selected 12-hour interval and can run afte
   );
 });
 
-test("legacy SMS confirmation timeouts migrate to queued instead of failed", () => {
+test("legacy SMS confirmation timeouts migrate to sent after the verification window", () => {
   const normalized = storeData.normalizeData({
     ...data([]),
     communicationLogs: [{
@@ -1071,8 +1071,29 @@ test("legacy SMS confirmation timeouts migrate to queued instead of failed", () 
       dedupeKey: "legacy:sms",
     }],
   });
-  assert.equal(normalized.communicationLogs[0].status, "queued");
+  assert.equal(normalized.communicationLogs[0].status, "sent");
   assert.equal(normalized.communicationLogs[0].error, undefined);
+});
+
+test("queued SMS becomes sent after its ten-minute verification deadline", () => {
+  const normalized = storeData.normalizeData({
+    ...data([]),
+    communicationLogs: [{
+      id: "sms-check-expired",
+      createdAt: "2026-08-01T08:00:00.000Z",
+      statusFinalizesAt: "2026-08-01T08:10:00.000Z",
+      channel: "sms",
+      status: "queued",
+      recipient: "966500000000",
+      templateKind: "overduePayment",
+      provider: "device_sms",
+      dedupeKey: "sms-check-expired",
+    }],
+  });
+
+  assert.equal(normalized.communicationLogs[0].status, "sent");
+  assert.equal(normalized.communicationLogs[0].statusFinalizesAt, undefined);
+  assert.match(normalized.communicationLogs[0].deliveryNote, /10 دقائق/);
 });
 
 test("reverted received payment waits for the 40-second safety window before messaging", () => {

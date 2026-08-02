@@ -32,9 +32,29 @@ function normalizeLegacySmsResult(log: CommunicationLog): CommunicationLog {
   if (!wasUnconfirmedSms) return log;
   return {
     ...log,
-    status: "queued",
+    status: "sent",
+    sentAt: log.sentAt || log.createdAt,
     error: undefined,
-    deliveryNote: "تم تسليم طلب الرسالة لشريحة الهاتف دون تأكيد نهائي من شركة الاتصالات؛ لن يعاد إرسالها قبل انتهاء الفترة المحددة.",
+    deliveryNote: "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح.",
+  };
+}
+
+function finalizeExpiredSmsCheck(log: CommunicationLog): CommunicationLog {
+  if (log.provider !== "device_sms" || log.status !== "queued") return log;
+  const explicitDeadline = log.statusFinalizesAt
+    ? new Date(log.statusFinalizesAt).getTime()
+    : Number.NaN;
+  const isLegacyCheckingLog = /تم تسليم طلب الرسالة|شركة الاتصالات/.test(log.deliveryNote || "");
+  const legacyDeadline = isLegacyCheckingLog ? eventTime(log) + 10 * 60_000 : Number.NaN;
+  const deadline = Number.isFinite(explicitDeadline) ? explicitDeadline : legacyDeadline;
+  if (!Number.isFinite(deadline) || Date.now() < deadline) return log;
+  return {
+    ...log,
+    status: "sent",
+    sentAt: log.sentAt || new Date(deadline).toISOString(),
+    statusFinalizesAt: undefined,
+    error: undefined,
+    deliveryNote: "لم يصل إشعار فشل خلال 10 دقائق؛ اعتُبرت الرسالة مرسلة بنجاح.",
   };
 }
 
@@ -68,7 +88,7 @@ function shouldReplace(existing: CommunicationLog, candidate: CommunicationLog):
 export function deduplicateCommunicationLogs(logs: CommunicationLog[]): CommunicationLog[] {
   const result: CommunicationLog[] = [];
   for (const rawLog of logs) {
-    const log = normalizeLegacySmsResult(rawLog);
+    const log = finalizeExpiredSmsCheck(normalizeLegacySmsResult(rawLog));
     const duplicateIndex = result.findIndex((item) => areDuplicateCommunicationLogs(item, log));
     if (duplicateIndex < 0) {
       result.push(log);

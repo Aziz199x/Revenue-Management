@@ -65,10 +65,15 @@ public class SmsSenderPlugin extends Plugin {
         }
         String phone = call.getString("phone");
         String message = call.getString("message");
+        String requestId = call.getString("requestId");
         if (phone == null || phone.trim().isEmpty() || message == null || message.trim().isEmpty()) {
             call.reject("رقم الجوال ونص الرسالة مطلوبان");
             return;
         }
+        if (requestId == null || requestId.trim().isEmpty()) {
+            requestId = "sms-" + System.nanoTime();
+        }
+        final String finalRequestId = requestId;
         try {
             SmsManager manager = SmsManager.getDefault();
             ArrayList<String> parts = manager.divideMessage(message);
@@ -89,14 +94,7 @@ public class SmsSenderPlugin extends Plugin {
             Runnable timeout = () -> {
                 if (finished.compareAndSet(false, true)) {
                     cleanup.run();
-                    // Some Android vendors deliver the SMS to the SIM but suppress or delay
-                    // the sent broadcast while the app is backgrounded. SmsManager accepted
-                    // the request, so do not record a false failure that resends the message.
-                    JSObject result = new JSObject();
-                    result.put("queued", true);
-                    result.put("carrierAccepted", false);
-                    result.put("confirmationTimedOut", true);
-                    call.resolve(result);
+                    notifySmsStatus(finalRequestId, "sent", null, true);
                 }
             };
 
@@ -108,17 +106,14 @@ public class SmsSenderPlugin extends Plugin {
                         if (finished.compareAndSet(false, true)) {
                             handler.removeCallbacks(timeout);
                             cleanup.run();
-                            call.reject(smsFailureMessage(resultCode));
+                            notifySmsStatus(finalRequestId, "failed", smsFailureMessage(resultCode), false);
                         }
                         return;
                     }
                     if (remainingParts.decrementAndGet() == 0 && finished.compareAndSet(false, true)) {
                         handler.removeCallbacks(timeout);
                         cleanup.run();
-                        JSObject result = new JSObject();
-                        result.put("queued", true);
-                        result.put("carrierAccepted", true);
-                        call.resolve(result);
+                        notifySmsStatus(finalRequestId, "sent", null, false);
                     }
                 }
             };
@@ -141,13 +136,17 @@ public class SmsSenderPlugin extends Plugin {
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
                 ));
             }
-            handler.postDelayed(timeout, 60_000);
+            handler.postDelayed(timeout, 10 * 60_000L);
             try {
                 if (parts.size() > 1) {
                     manager.sendMultipartTextMessage(phone, null, parts, sentIntents, null);
                 } else {
                     manager.sendTextMessage(phone, null, message, sentIntents.get(0), null);
                 }
+                JSObject result = new JSObject();
+                result.put("queued", true);
+                result.put("requestId", finalRequestId);
+                call.resolve(result);
             } catch (Exception error) {
                 handler.removeCallbacks(timeout);
                 if (finished.compareAndSet(false, true)) {
@@ -158,6 +157,16 @@ public class SmsSenderPlugin extends Plugin {
         } catch (Exception error) {
             call.reject("تعذر إرسال SMS عبر شريحة الهاتف", error);
         }
+    }
+
+    private void notifySmsStatus(String requestId, String status, String error, boolean assumed) {
+        JSObject event = new JSObject();
+        event.put("requestId", requestId);
+        event.put("status", status);
+        event.put("assumed", assumed);
+        event.put("updatedAt", System.currentTimeMillis());
+        if (error != null && !error.isEmpty()) event.put("error", error);
+        notifyListeners("smsStatusChanged", event, true);
     }
 
     private String smsFailureMessage(int resultCode) {

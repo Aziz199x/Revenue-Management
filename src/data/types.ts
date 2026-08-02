@@ -614,6 +614,8 @@ export interface CommunicationLog {
   id: string;
   createdAt: string;
   sentAt?: string;
+  /** Deadline after which an SMS with no failure callback is considered sent. */
+  statusFinalizesAt?: string;
   channel: CommunicationChannel;
   status: CommunicationStatus;
   recipient: string;
