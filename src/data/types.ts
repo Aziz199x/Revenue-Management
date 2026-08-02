@@ -575,6 +575,9 @@ export interface AutomaticCommunicationSettings {
   whatsappEnabled: boolean;
   smsEnabled: boolean;
   sendMissedAsSoonAsPossible: boolean;
+  /** Exact cooldown between successful/queued sends. */
+  frequencyHours?: number;
+  /** Legacy value retained for older backups. */
   frequencyDays: number;
   sendTime: string;
   daysBeforeDue: number;
@@ -593,6 +596,7 @@ export interface AutomaticCommunicationRuleSettings {
   useCustomSchedule: boolean;
   /** Only applies when useCustomSchedule is true. */
   enabled: boolean;
+  frequencyHours?: number;
   frequencyDays: number;
   sendTime: string;
   /** Payment reminders: how many days before due. */
@@ -604,7 +608,7 @@ export interface AutomaticCommunicationRuleSettings {
 }
 
 export type CommunicationChannel = "email" | "whatsapp" | "sms";
-export type CommunicationStatus = "sent" | "failed" | "skipped";
+export type CommunicationStatus = "sent" | "queued" | "failed" | "skipped";
 
 export interface CommunicationLog {
   id: string;
@@ -779,6 +783,7 @@ export const DEFAULT_SETTINGS: Settings = {
     whatsappEnabled: false,
     smsEnabled: false,
     sendMissedAsSoonAsPossible: true,
+    frequencyHours: 24,
     frequencyDays: 1,
     sendTime: "09:00",
     daysBeforeDue: 3,
@@ -787,6 +792,7 @@ export const DEFAULT_SETTINGS: Settings = {
     paymentReminderSchedule: {
       useCustomSchedule: false,
       enabled: true,
+      frequencyHours: 24,
       frequencyDays: 1,
       sendTime: "09:00",
       daysBeforeDue: 3,
@@ -794,6 +800,7 @@ export const DEFAULT_SETTINGS: Settings = {
     overduePaymentSchedule: {
       useCustomSchedule: false,
       enabled: true,
+      frequencyHours: 24,
       frequencyDays: 1,
       sendTime: "09:00",
       overdueTailDays: 30,
@@ -801,6 +808,7 @@ export const DEFAULT_SETTINGS: Settings = {
     contractExpirySchedule: {
       useCustomSchedule: false,
       enabled: true,
+      frequencyHours: 24,
       frequencyDays: 1,
       sendTime: "09:00",
       contractReminderDays: 80,

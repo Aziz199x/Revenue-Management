@@ -128,13 +128,20 @@ function ScheduleRuleCard({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <Label>التكرار</Label>
-              <Select value={String(rule.frequencyDays)} onValueChange={(value) => onChange({ frequencyDays: Number(value) })}>
+              <Select
+                value={String(rule.frequencyHours ?? rule.frequencyDays * 24)}
+                onValueChange={(value) => {
+                  const frequencyHours = Number(value);
+                  onChange({ frequencyHours, frequencyDays: Math.max(1, Math.ceil(frequencyHours / 24)) });
+                }}
+              >
                 <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">كل يوم</SelectItem>
-                  <SelectItem value="2">كل يومين</SelectItem>
-                  <SelectItem value="3">كل 3 أيام</SelectItem>
-                  <SelectItem value="7">أسبوعيًا</SelectItem>
+                  <SelectItem value="12">كل 12 ساعة</SelectItem>
+                  <SelectItem value="24">كل يوم</SelectItem>
+                  <SelectItem value="48">كل يومين</SelectItem>
+                  <SelectItem value="72">كل 3 أيام</SelectItem>
+                  <SelectItem value="168">أسبوعيًا</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -234,10 +241,14 @@ export default function AutomaticCommunicationsSettingsPage() {
       data.communicationLogs || [],
       selectedLogs,
     );
-    const repeatProtectionMs = Math.max(1, Number(settings.frequencyDays) || 1) * 86_400_000;
+    const repeatProtectionMs = Math.max(
+      1,
+      Number(settings.frequencyHours) || Math.max(1, Number(settings.frequencyDays) || 1) * 24,
+    ) * 3_600_000;
     const now = Date.now();
     const deletable = expandedSelection.filter((log) =>
-      log.status !== "sent" || now - new Date(log.createdAt).getTime() >= repeatProtectionMs
+      (log.status !== "sent" && log.status !== "queued")
+      || now - new Date(log.createdAt).getTime() >= repeatProtectionMs
     );
     const protectedCount = expandedSelection.length - deletable.length;
     if (deletable.length === 0) {
@@ -245,7 +256,7 @@ export default function AutomaticCommunicationsSettingsPage() {
       return;
     }
     const protectionNote = protectedCount
-      ? `\nسيتم الاحتفاظ بـ ${protectedCount} سجل ناجح حديث مؤقتًا لمنع إرسال الرسالة مرتين.`
+      ? `\nسيتم الاحتفاظ بـ ${protectedCount} سجل إرسال ناجح أو قيد التأكيد مؤقتًا لمنع إرسال الرسالة مرتين.`
       : "";
     const confirmed = await appDialog.confirm({
       title: "حذف سجلات الإرسال؟",
@@ -319,6 +330,7 @@ export default function AutomaticCommunicationsSettingsPage() {
         }));
       }
       const sent = logs.filter((log) => log.status === "sent").length;
+      const queued = logs.filter((log) => log.status === "queued").length;
       const failed = logs.filter((log) => log.status === "failed").length;
       const latestGmailStatus = getGmailAccountStatus();
       setGmailStatus(latestGmailStatus);
@@ -335,9 +347,9 @@ export default function AutomaticCommunicationsSettingsPage() {
         }));
       }
       if (failed > 0) {
-        showError(`اكتملت الدورة: ${sent} ناجحة، ${failed} فاشلة. يمكنك إعادة المحاولة فورًا بعد معالجة سبب الفشل.`);
+        showError(`اكتملت الدورة: ${sent} ناجحة، ${queued} قيد تأكيد الشبكة، ${failed} فاشلة. يمكنك إعادة المحاولة بعد معالجة سبب الفشل.`);
       } else {
-        showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة` : "لا توجد رسائل مستحقة للإرسال الآن");
+        showSuccess(logs.length ? `اكتملت الدورة: ${sent} ناجحة، ${queued} قيد تأكيد الشبكة` : "لا توجد رسائل مستحقة للإرسال الآن");
       }
     } catch (error) {
       showError(error instanceof Error ? error.message : "تعذر تشغيل دورة الإرسال");
@@ -428,13 +440,20 @@ export default function AutomaticCommunicationsSettingsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>التكرار</Label>
-              <Select value={String(settings.frequencyDays)} onValueChange={(value) => updateSchedule({ frequencyDays: Number(value) })}>
+              <Select
+                value={String(settings.frequencyHours ?? settings.frequencyDays * 24)}
+                onValueChange={(value) => {
+                  const frequencyHours = Number(value);
+                  updateSchedule({ frequencyHours, frequencyDays: Math.max(1, Math.ceil(frequencyHours / 24)) });
+                }}
+              >
                 <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">كل يوم</SelectItem>
-                  <SelectItem value="2">كل يومين</SelectItem>
-                  <SelectItem value="3">كل 3 أيام</SelectItem>
-                  <SelectItem value="7">أسبوعيًا</SelectItem>
+                  <SelectItem value="12">كل 12 ساعة</SelectItem>
+                  <SelectItem value="24">كل يوم</SelectItem>
+                  <SelectItem value="48">كل يومين</SelectItem>
+                  <SelectItem value="72">كل 3 أيام</SelectItem>
+                  <SelectItem value="168">أسبوعيًا</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -738,14 +757,29 @@ export default function AutomaticCommunicationsSettingsPage() {
               ? getPaymentReportMonth(payment, data.settings.reportMonthCutoffDay)
               : undefined;
             return (
-              <div key={log.id} className={`rounded-2xl border p-3 text-xs ${log.status === "sent" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+              <div
+                key={log.id}
+                className={`rounded-2xl border p-3 text-xs ${
+                  log.status === "sent"
+                    ? "border-emerald-200 bg-emerald-50"
+                    : log.status === "queued"
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-red-200 bg-red-50"
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold">
                     {log.channel === "email" ? "بريد" : log.channel === "whatsapp" ? "واتساب" : "SMS"} · {tenantName}
                   </p>
                   <div className="flex items-center gap-1">
-                    <span>{log.status === "sent" ? "تم الإرسال" : "فشل"}</span>
-                    {log.status === "sent" && (
+                    <span>
+                      {log.status === "sent"
+                        ? "تم الإرسال"
+                        : log.status === "queued"
+                          ? "قيد تأكيد الشبكة"
+                          : "فشل"}
+                    </span>
+                    {(log.status === "sent" || log.status === "queued") && (
                       <Button
                         type="button"
                         variant="ghost"

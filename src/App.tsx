@@ -230,6 +230,13 @@ function AutomaticCommunicationManager() {
             `تم الإرسال عبر ${channel} للوحدة ${log.unitName || "غير محددة"}.`,
           );
         }
+        for (const log of logs.filter((item) => item.status === "queued")) {
+          await notify(
+            `SMS قيد تأكيد الشبكة: ${log.tenantName || "المستأجر"}`,
+            `تم تسليم الطلب لشريحة الهاتف للوحدة ${log.unitName || "غير محددة"}، ولن يعاد إرساله قبل انتهاء الفترة المحددة.`,
+            "warning",
+          );
+        }
         const failures = logs.filter((item) => item.status === "failed");
         if (failures.length > 0) {
           toast.error(`تعذر إرسال ${failures.length} رسالة؛ ستتم إعادة المحاولة تلقائيًا`);

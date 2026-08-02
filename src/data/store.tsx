@@ -279,17 +279,29 @@ export function normalizeData(
         automaticCommunications: {
           ...DEFAULT_SETTINGS.automaticCommunications,
           ...(parsedSettings.automaticCommunications || {}),
+          frequencyHours:
+            parsedSettings.automaticCommunications?.frequencyHours
+            ?? Math.max(1, Number(parsedSettings.automaticCommunications?.frequencyDays) || 1) * 24,
           paymentReminderSchedule: {
             ...DEFAULT_SETTINGS.automaticCommunications.paymentReminderSchedule,
             ...(parsedSettings.automaticCommunications?.paymentReminderSchedule || {}),
+            frequencyHours:
+              parsedSettings.automaticCommunications?.paymentReminderSchedule?.frequencyHours
+              ?? Math.max(1, Number(parsedSettings.automaticCommunications?.paymentReminderSchedule?.frequencyDays) || 1) * 24,
           },
           overduePaymentSchedule: {
             ...DEFAULT_SETTINGS.automaticCommunications.overduePaymentSchedule,
             ...(parsedSettings.automaticCommunications?.overduePaymentSchedule || {}),
+            frequencyHours:
+              parsedSettings.automaticCommunications?.overduePaymentSchedule?.frequencyHours
+              ?? Math.max(1, Number(parsedSettings.automaticCommunications?.overduePaymentSchedule?.frequencyDays) || 1) * 24,
           },
           contractExpirySchedule: {
             ...DEFAULT_SETTINGS.automaticCommunications.contractExpirySchedule,
             ...(parsedSettings.automaticCommunications?.contractExpirySchedule || {}),
+            frequencyHours:
+              parsedSettings.automaticCommunications?.contractExpirySchedule?.frequencyHours
+              ?? Math.max(1, Number(parsedSettings.automaticCommunications?.contractExpirySchedule?.frequencyDays) || 1) * 24,
           },
         },
         defaultContractExpiryReminderDays:

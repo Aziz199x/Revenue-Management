@@ -976,6 +976,105 @@ test("automatic SMS schedule deduplicates the same phone stored in local and int
   assert.equal(jobs[0].dedupeKey, `${record.id}:sms:966500000000:paymentReminder`);
 });
 
+test("queued SMS is protected for the selected 12-hour interval and can run afterwards", () => {
+  const record = payment({
+    id: "p-sms-cooldown",
+    tenantId: "t-sms-cooldown",
+    status: "unpaid",
+    receivedAmount: 0,
+    paymentDate: "2026-08-02",
+    dueDateGregorian: "2026-08-02",
+  });
+  const dedupeKey = `${record.id}:sms:966500000000:paymentReminder`;
+  const snapshot = storeData.normalizeData({
+    ...data([record]),
+    tenants: [{
+      id: "t-sms-cooldown",
+      unitId: "u1",
+      name: "مستأجر الرسائل",
+      phone: "0500000000",
+      createdAt: "2026-01-01",
+    }],
+    communicationLogs: [
+      {
+        id: "sms-queued",
+        createdAt: "2026-08-01T06:00:00.000Z",
+        channel: "sms",
+        status: "queued",
+        recipient: "966500000000",
+        tenantId: "t-sms-cooldown",
+        paymentId: record.id,
+        templateKind: "paymentReminder",
+        provider: "device_sms",
+        dedupeKey,
+      },
+      {
+        id: "sms-later-failure",
+        createdAt: "2026-08-01T16:00:00.000Z",
+        channel: "sms",
+        status: "failed",
+        recipient: "966500000000",
+        tenantId: "t-sms-cooldown",
+        paymentId: record.id,
+        templateKind: "paymentReminder",
+        provider: "device_sms",
+        error: "رفض فعلي من شبكة الجوال",
+        dedupeKey,
+      },
+    ],
+    settings: {
+      automaticCommunications: {
+        enabled: true,
+        emailEnabled: false,
+        whatsappEnabled: false,
+        smsEnabled: true,
+        sendMissedAsSoonAsPossible: true,
+        frequencyHours: 12,
+        frequencyDays: 1,
+        sendTime: "00:00",
+        daysBeforeDue: 3,
+        overdueTailDays: 30,
+        emailProvider: null,
+      },
+    },
+  });
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T17:59:59.000Z"),
+      true,
+    ).length,
+    0,
+  );
+  assert.equal(
+    automaticCommunications.buildAutomaticCommunicationJobs(
+      snapshot,
+      new Date("2026-08-01T18:00:01.000Z"),
+      true,
+    ).length,
+    1,
+  );
+});
+
+test("legacy SMS confirmation timeouts migrate to queued instead of failed", () => {
+  const normalized = storeData.normalizeData({
+    ...data([]),
+    communicationLogs: [{
+      id: "legacy-timeout",
+      createdAt: "2026-08-01T16:13:31.000Z",
+      channel: "sms",
+      status: "failed",
+      recipient: "966500000000",
+      templateKind: "overduePayment",
+      provider: "device_sms",
+      error: "لم يصل تأكيد الإرسال من شريحة الهاتف؛ تحقق من الشبكة والرصيد ثم أعد المحاولة",
+      dedupeKey: "legacy:sms",
+    }],
+  });
+  assert.equal(normalized.communicationLogs[0].status, "queued");
+  assert.equal(normalized.communicationLogs[0].error, undefined);
+});
+
 test("reverted received payment waits for the 40-second safety window before messaging", () => {
   const record = payment({
     id: "p-reverted-with-hold",

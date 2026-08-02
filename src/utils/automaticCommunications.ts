@@ -41,6 +41,7 @@ export interface AutomaticCommunicationJob {
 }
 
 const DAY = 86_400_000;
+const HOUR = 3_600_000;
 let running: Promise<CommunicationLog[]> | null = null;
 
 export function isCommunicationOnline(): boolean {
@@ -266,16 +267,23 @@ function wasRecentlyAttempted(
   data: AppData,
   dedupeKey: string,
   now: Date,
-  frequencyDays: number,
+  frequencyHours: number,
   retryFailedNow = false,
 ): boolean {
-  const latest = [...(data.communicationLogs || [])]
+  const matching = [...(data.communicationLogs || [])]
     .filter((log) => log.dedupeKey === dedupeKey)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const latest = matching[0];
   if (!latest) return false;
+  const cooldown = Math.max(1, frequencyHours) * HOUR;
+  const protectedAttempt = matching.some((log) => {
+    if (log.status !== "sent" && log.status !== "queued") return false;
+    return now.getTime() - new Date(log.createdAt).getTime() < cooldown;
+  });
+  if (protectedAttempt) return true;
   if (retryFailedNow && latest.status === "failed") return false;
   const elapsed = now.getTime() - new Date(latest.createdAt).getTime();
-  const retryWindow = latest.status === "sent" ? frequencyDays * DAY : 5 * 60 * 1000;
+  const retryWindow = Math.min(cooldown, HOUR);
   return elapsed < retryWindow;
 }
 
@@ -298,9 +306,16 @@ function resolvedSchedule(data: AppData, kind: ScheduleKind) {
       ? settings.overduePaymentSchedule
       : settings.contractExpirySchedule;
   const useCustom = !!custom?.useCustomSchedule;
+  const legacyFrequencyDays = Math.max(
+    1,
+    Number(useCustom ? custom.frequencyDays : settings.frequencyDays) || 1,
+  );
   return {
     enabled: !useCustom || custom.enabled,
-    frequencyDays: Math.max(1, Number(useCustom ? custom.frequencyDays : settings.frequencyDays) || 1),
+    frequencyHours: Math.max(
+      1,
+      Number(useCustom ? custom.frequencyHours : settings.frequencyHours) || legacyFrequencyDays * 24,
+    ),
     sendTime: (useCustom ? custom.sendTime : settings.sendTime) || "09:00",
     daysBeforeDue: Math.max(0, Number(useCustom ? custom.daysBeforeDue : settings.daysBeforeDue) || 0),
     overdueTailDays: Math.max(0, Number(useCustom ? custom.overdueTailDays : settings.overdueTailDays) || 0),
@@ -344,7 +359,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${payment.id}:email:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -370,7 +385,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:whatsapp:${recipient}:${kind}`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -396,7 +411,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${payment.id}:sms:${recipient}:${kind}`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,
@@ -433,7 +448,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
     if (settings.emailEnabled && settings.emailProvider) {
       for (const recipient of getTenantEmailAddresses(tenant)) {
         const dedupeKey = `${contract.id}:email:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "email",
           recipient,
@@ -456,7 +471,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
       const recipient = validatePhone(phone);
       if (!recipient) continue;
       const dedupeKey = `${contract.id}:whatsapp:${recipient}:contractExpiry`;
-      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) {
+      if (!wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) {
         jobs.push({
           channel: "whatsapp",
           recipient,
@@ -479,7 +494,7 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
         const recipient = validatePhone(phone);
         if (!recipient) continue;
         const dedupeKey = `${contract.id}:sms:${recipient}:contractExpiry`;
-        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyDays, force)) continue;
+        if (wasRecentlyAttempted(data, dedupeKey, now, rule.frequencyHours, force)) continue;
         jobs.push({
           channel: "sms",
           recipient,
@@ -504,7 +519,10 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
   ).slice(0, 100);
 }
 
-async function executeJob(job: AutomaticCommunicationJob): Promise<{ deliveryNote?: string }> {
+async function executeJob(job: AutomaticCommunicationJob): Promise<{
+  status?: CommunicationLog["status"];
+  deliveryNote?: string;
+}> {
   if (job.provider === "gmail") {
     await sendGmailEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "outlook") {
@@ -513,6 +531,7 @@ async function executeJob(job: AutomaticCommunicationJob): Promise<{ deliveryNot
     const result = await sendAutomaticSms(job.recipient, job.body);
     if (result.confirmationTimedOut) {
       return {
+        status: "queued",
         deliveryNote: "تم تسليم طلب الرسالة لشريحة الهاتف، لكن شركة الاتصالات لم ترسل تأكيدًا نهائيًا؛ لن يعاد إرسالها تلقائيًا.",
       };
     }
@@ -541,7 +560,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
           createdAt,
           sentAt: new Date().toISOString(),
           channel: job.channel,
-          status: "sent",
+          status: execution.status || "sent",
           recipient: job.recipient,
           tenantId: job.tenantId,
           tenantName: job.tenantName,

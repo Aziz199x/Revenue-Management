@@ -25,6 +25,19 @@ function eventTime(log: CommunicationLog): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function normalizeLegacySmsResult(log: CommunicationLog): CommunicationLog {
+  const wasUnconfirmedSms = log.provider === "device_sms"
+    && log.status === "failed"
+    && /لم يصل تأكيد الإرسال من شريحة الهاتف/.test(log.error || "");
+  if (!wasUnconfirmedSms) return log;
+  return {
+    ...log,
+    status: "queued",
+    error: undefined,
+    deliveryNote: "تم تسليم طلب الرسالة لشريحة الهاتف دون تأكيد نهائي من شركة الاتصالات؛ لن يعاد إرسالها قبل انتهاء الفترة المحددة.",
+  };
+}
+
 export function areDuplicateCommunicationLogs(a: CommunicationLog, b: CommunicationLog): boolean {
   return communicationLogEventKey(a) === communicationLogEventKey(b)
     && Math.abs(eventTime(a) - eventTime(b)) <= DUPLICATE_WINDOW_MS;
@@ -34,6 +47,15 @@ function shouldReplace(existing: CommunicationLog, candidate: CommunicationLog):
   const existingWasEdited = /المستخدم|user/i.test(existing.error || "");
   const candidateWasEdited = /المستخدم|user/i.test(candidate.error || "");
   if (candidateWasEdited !== existingWasEdited) return candidateWasEdited;
+  const statusPriority: Record<CommunicationLog["status"], number> = {
+    skipped: 0,
+    failed: 1,
+    queued: 2,
+    sent: 3,
+  };
+  if (statusPriority[candidate.status] !== statusPriority[existing.status]) {
+    return statusPriority[candidate.status] > statusPriority[existing.status];
+  }
   if (candidate.error && !existing.error) return true;
   return eventTime(candidate) >= eventTime(existing);
 }
@@ -45,7 +67,8 @@ function shouldReplace(existing: CommunicationLog, candidate: CommunicationLog):
  */
 export function deduplicateCommunicationLogs(logs: CommunicationLog[]): CommunicationLog[] {
   const result: CommunicationLog[] = [];
-  for (const log of logs) {
+  for (const rawLog of logs) {
+    const log = normalizeLegacySmsResult(rawLog);
     const duplicateIndex = result.findIndex((item) => areDuplicateCommunicationLogs(item, log));
     if (duplicateIndex < 0) {
       result.push(log);
