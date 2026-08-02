@@ -399,14 +399,21 @@ export default function AutomaticCommunicationsSettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3">
             <div>
-              <Label>الإرسال في أقرب وقت عند فوات الموعد</Label>
+              <div className="mb-1 flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-amber-700" />
+                <Label>الإرسال في أقرب وقت عند فوات الموعد</Label>
+                <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-bold text-amber-900">
+                  خيار إضافي مستقل
+                </span>
+              </div>
               <p className="mt-1 text-[10px] leading-4 text-amber-900">
                 عند تشغيله تُرسل الرسائل المعلقة فور فتح التطبيق أو عودة الإنترنت، مع الالتزام بمدة التكرار.
               </p>
             </div>
             <Switch
+              className="data-[state=checked]:bg-amber-500"
               checked={settings.sendMissedAsSoonAsPossible}
               onCheckedChange={(sendMissedAsSoonAsPossible) => updateSchedule({ sendMissedAsSoonAsPossible })}
             />
@@ -781,6 +788,7 @@ export default function AutomaticCommunicationsSettingsPage() {
                 )}
                 {dueDate && <p className="mt-1 text-muted-foreground">موعد الاستحقاق: {formatLogDate(dueDate)}</p>}
                 <p className="mt-1 text-muted-foreground">{new Date(log.createdAt).toLocaleString("ar-SA-u-nu-latn")}</p>
+                {log.deliveryNote && <p className="mt-1 rounded-lg bg-amber-100 p-2 text-amber-900">{log.deliveryNote}</p>}
                 {log.error && <p className="mt-1 text-red-700">{log.error}</p>}
               </div>
             );

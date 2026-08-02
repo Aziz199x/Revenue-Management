@@ -416,7 +416,8 @@ public final class ReminderEngine {
     }
 
     private static String formatArabicNumber(double value) {
-        NumberFormat fmt = NumberFormat.getInstance(new Locale("ar", "SA"));
+        NumberFormat fmt = NumberFormat.getInstance(Locale.US);
+        fmt.setMaximumFractionDigits(2);
         return fmt.format(value);
     }
 

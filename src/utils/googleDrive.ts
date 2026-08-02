@@ -488,6 +488,10 @@ export async function listBackups(): Promise<BackupFileInfo[]> {
   return data.files || [];
 }
 
+export async function deleteBackup(fileId: string): Promise<void> {
+  await driveFetch(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+}
+
 export async function downloadBackup(fileId: string): Promise<string> {
   const token = await getValidToken();
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;

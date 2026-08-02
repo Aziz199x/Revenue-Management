@@ -1,8 +1,12 @@
 import { Capacitor } from "@capacitor/core";
 import { AppData } from "@/data/types";
-import { isSignedIn, uploadBackup } from "@/utils/googleDrive";
+import { deleteBackup, isSignedIn, listBackups, uploadBackup } from "@/utils/googleDrive";
 
 const LAST_AUTO_BACKUP_KEY = "automatic_backup_last_run";
+const LAST_AUTO_DRIVE_BACKUP_KEY = "automatic_drive_backup_last_run";
+const LAST_AUTO_BACKUP_FINGERPRINT_KEY = "automatic_backup_last_fingerprint";
+const LAST_AUTO_DRIVE_FINGERPRINT_KEY = "automatic_drive_backup_last_fingerprint";
+const GOOGLE_DRIVE_LAST_BACKUP_KEY = "google_drive_last_backup";
 const WEB_BACKUPS_KEY = "automatic_backup_versions";
 
 export interface AutomaticBackupVersion {
@@ -17,10 +21,19 @@ function intervalMs(frequency: AppData["settings"]["automaticBackupFrequency"]):
   return 24 * 60 * 60 * 1000;
 }
 
-function due(data: AppData): boolean {
-  if (!data.settings.automaticBackupEnabled) return false;
-  const last = Number(localStorage.getItem(LAST_AUTO_BACKUP_KEY) || 0);
+function dueAt(lastRunKey: string, data: AppData): boolean {
+  const last = Number(localStorage.getItem(lastRunKey) || 0);
   return !last || Date.now() - last >= intervalMs(data.settings.automaticBackupFrequency);
+}
+
+export function automaticBackupFingerprint(data: AppData): string {
+  const value = JSON.stringify(data);
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${value.length}-${(hash >>> 0).toString(36)}`;
 }
 
 function fileStamp(): string {
@@ -74,18 +87,57 @@ async function saveLocalVersion(data: AppData): Promise<void> {
 
 let running: Promise<void> | null = null;
 
-export async function runAutomaticBackupIfDue(data: AppData): Promise<void> {
-  if (!due(data) || running) return running || Promise.resolve();
+async function pruneGoogleDriveVersions(retention: number): Promise<void> {
+  const backups = await listBackups();
+  for (const backup of backups.slice(retention)) {
+    await deleteBackup(backup.id);
+  }
+}
+
+export async function runAutomaticBackupIfDue(
+  data: AppData,
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (!data.settings.automaticBackupEnabled || running) return running || Promise.resolve();
+  const force = options.force === true;
+  const fingerprint = automaticBackupFingerprint(data);
+  const localDue = force || dueAt(LAST_AUTO_BACKUP_KEY, data);
+  const driveEnabled = data.settings.automaticGoogleDriveBackup && isSignedIn();
+  const driveDue = driveEnabled && (force || dueAt(LAST_AUTO_DRIVE_BACKUP_KEY, data));
+  if (!localDue && !driveDue) return;
+
   running = (async () => {
-    await saveLocalVersion(data);
-    if (data.settings.automaticGoogleDriveBackup && isSignedIn()) {
+    const now = Date.now();
+    if (localDue) {
+      const lastFingerprint = localStorage.getItem(LAST_AUTO_BACKUP_FINGERPRINT_KEY);
+      if (force || fingerprint !== lastFingerprint) {
+        await saveLocalVersion(data);
+        localStorage.setItem(LAST_AUTO_BACKUP_FINGERPRINT_KEY, fingerprint);
+      }
+      localStorage.setItem(LAST_AUTO_BACKUP_KEY, String(now));
+    }
+
+    if (driveDue) {
+      const lastDriveFingerprint = localStorage.getItem(LAST_AUTO_DRIVE_FINGERPRINT_KEY);
       try {
-        await uploadBackup(data);
+        if (force || fingerprint !== lastDriveFingerprint) {
+          await uploadBackup(data);
+          localStorage.setItem(LAST_AUTO_DRIVE_FINGERPRINT_KEY, fingerprint);
+          localStorage.setItem(GOOGLE_DRIVE_LAST_BACKUP_KEY, new Date(now).toISOString());
+          const retention = Math.max(3, Math.min(60, Number(data.settings.backupRetentionCount) || 14));
+          try {
+            await pruneGoogleDriveVersions(retention);
+          } catch (error) {
+            console.warn("[Backup] Google Drive retention cleanup postponed", error);
+          }
+        }
+        localStorage.setItem(LAST_AUTO_DRIVE_BACKUP_KEY, String(now));
       } catch (error) {
+        // Keep the Drive timestamp unchanged so the periodic manager retries
+        // automatically when connectivity or account access returns.
         console.warn("[Backup] automatic Google Drive upload postponed", error);
       }
     }
-    localStorage.setItem(LAST_AUTO_BACKUP_KEY, String(Date.now()));
   })().finally(() => {
     running = null;
   });

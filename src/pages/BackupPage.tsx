@@ -375,8 +375,7 @@ export default function BackupPage() {
                 className="w-full rounded-xl text-xs"
                 onClick={async () => {
                   try {
-                    localStorage.removeItem("automatic_backup_last_run");
-                    await runAutomaticBackupIfDue(data);
+                    await runAutomaticBackupIfDue(data, { force: true });
                     showSuccess("تم إنشاء نسخة تلقائية الآن");
                   } catch {
                     showError("تعذر إنشاء النسخة التلقائية");

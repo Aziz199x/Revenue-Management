@@ -625,6 +625,7 @@ export interface CommunicationLog {
   provider: "gmail" | "outlook" | "whatsapp_business" | "device_sms";
   subject?: string;
   error?: string;
+  deliveryNote?: string;
   dedupeKey: string;
 }
 

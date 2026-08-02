@@ -89,7 +89,14 @@ public class SmsSenderPlugin extends Plugin {
             Runnable timeout = () -> {
                 if (finished.compareAndSet(false, true)) {
                     cleanup.run();
-                    call.reject("لم يصل تأكيد الإرسال من شريحة الهاتف؛ تحقق من الشبكة والرصيد ثم أعد المحاولة");
+                    // Some Android vendors deliver the SMS to the SIM but suppress or delay
+                    // the sent broadcast while the app is backgrounded. SmsManager accepted
+                    // the request, so do not record a false failure that resends the message.
+                    JSObject result = new JSObject();
+                    result.put("queued", true);
+                    result.put("carrierAccepted", false);
+                    result.put("confirmationTimedOut", true);
+                    call.resolve(result);
                 }
             };
 

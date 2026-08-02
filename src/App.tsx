@@ -78,6 +78,25 @@ function AutomaticBackupManager() {
     return () => window.clearTimeout(timer);
   }, [data]);
 
+  useEffect(() => {
+    let listener: { remove: () => Promise<void> } | undefined;
+    const run = () => { void runAutomaticBackupIfDue(latestData.current); };
+    const interval = window.setInterval(run, 15 * 60 * 1000);
+    window.addEventListener("online", run);
+    if (Capacitor.isNativePlatform()) {
+      void import("@capacitor/app").then(async ({ App }) => {
+        listener = await App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) run();
+        });
+      });
+    }
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", run);
+      void listener?.remove();
+    };
+  }, []);
+
   return null;
 }
 

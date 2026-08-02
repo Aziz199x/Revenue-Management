@@ -26,7 +26,7 @@ const NATIVE_ENGINE_MIGRATED_KEY = "rental-manager-native-engine-migrated-v1";
 const WEB_NOTIFIED_KEY = "rental-manager-notified-v3";
 const LAST_SYNC_FINGERPRINT_KEY = "rental-manager-notification-fingerprint-v1";
 const LAST_SYNC_RESULT_KEY = "rental-manager-last-sync-result-v1";
-const NOTIFICATION_ENGINE_VERSION = "2026-07-30-targeted-reminder-navigation";
+const NOTIFICATION_ENGINE_VERSION = "2026-08-02-frequency-fingerprint-latin-digits";
 const MAX_NATIVE_SCHEDULED_NOTIFICATIONS = 64;
 const MAX_SCHEDULES_PER_REMINDER = 4;
 
@@ -840,7 +840,7 @@ export async function getNativeReminderEngineStatus(): Promise<NativeRemindersSt
 // Fingerprint
 // ---------------------------------------------------------------------------
 
-function buildNotificationFingerprint(data: AppData): string {
+export function buildNotificationFingerprint(data: AppData): string {
   const relevantContracts = data.contracts.map((c) => ({
     id: c.id,
     unitId: c.unitId,
@@ -900,6 +900,10 @@ function buildNotificationFingerprint(data: AppData): string {
       contractReminderDays: data.settings.contractReminderDays,
       rentReminderDays: data.settings.rentReminderDays,
       reminderFrequencyHours: data.settings.reminderFrequencyHours,
+      upcomingPaymentFrequencyHours: data.settings.upcomingPaymentFrequencyHours,
+      overduePaymentFrequencyHours: data.settings.overduePaymentFrequencyHours,
+      contractFrequencyHours: data.settings.contractFrequencyHours,
+      overdueRentTailDays: data.settings.overdueRentTailDays,
       notificationAllDay: data.settings.notificationAllDay,
       notificationWindowStart: data.settings.notificationWindowStart,
       notificationWindowEnd: data.settings.notificationWindowEnd,

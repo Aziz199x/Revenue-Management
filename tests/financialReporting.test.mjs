@@ -15,6 +15,8 @@ let storeData;
 let automaticCommunications;
 let recurringBuildingBills;
 let communicationLogs;
+let automaticBackup;
+let notifications;
 
 test.before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
@@ -30,6 +32,8 @@ test.before(async () => {
   automaticCommunications = await server.ssrLoadModule("/src/utils/automaticCommunications.ts");
   recurringBuildingBills = await server.ssrLoadModule("/src/data/recurringBuildingBills.ts");
   communicationLogs = await server.ssrLoadModule("/src/data/communicationLogs.ts");
+  automaticBackup = await server.ssrLoadModule("/src/utils/automaticBackup.ts");
+  notifications = await server.ssrLoadModule("/src/utils/notifications.ts");
 });
 
 test.after(async () => {
@@ -679,6 +683,35 @@ test("restoring an older backup safely fills missing contracts and optional coll
   }).tenants[0];
   assert.deepEqual(legacyTenant.phoneNumbers.map((item) => item.phone), ["0500000000"]);
   assert.equal(legacyTenant.tenantType, "individual");
+});
+
+test("automatic backup fingerprints only change when application data changes", () => {
+  const snapshot = storeData.normalizeData(data([]));
+  assert.equal(
+    automaticBackup.automaticBackupFingerprint(snapshot),
+    automaticBackup.automaticBackupFingerprint(structuredClone(snapshot)),
+  );
+  const changed = structuredClone(snapshot);
+  changed.buildings.push({
+    id: "new-building",
+    name: "عقار جديد",
+    collectionFeePercent: 5,
+    createdAt: "2026-08-02",
+  });
+  assert.notEqual(
+    automaticBackup.automaticBackupFingerprint(snapshot),
+    automaticBackup.automaticBackupFingerprint(changed),
+  );
+});
+
+test("changing a per-category notification interval refreshes the native plan fingerprint", () => {
+  const snapshot = storeData.normalizeData(data([]));
+  const changed = structuredClone(snapshot);
+  changed.settings.overduePaymentFrequencyHours = 8;
+  assert.notEqual(
+    notifications.buildNotificationFingerprint(snapshot),
+    notifications.buildNotificationFingerprint(changed),
+  );
 });
 
 test("automatic communication schedule sends formal email to every company address without duplicates", () => {

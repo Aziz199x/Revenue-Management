@@ -504,16 +504,22 @@ export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(),
   ).slice(0, 100);
 }
 
-async function executeJob(job: AutomaticCommunicationJob): Promise<void> {
+async function executeJob(job: AutomaticCommunicationJob): Promise<{ deliveryNote?: string }> {
   if (job.provider === "gmail") {
     await sendGmailEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "outlook") {
     await sendOutlookEmail(job.recipient, job.subject || "تذكير", job.body);
   } else if (job.provider === "device_sms") {
-    await sendAutomaticSms(job.recipient, job.body);
+    const result = await sendAutomaticSms(job.recipient, job.body);
+    if (result.confirmationTimedOut) {
+      return {
+        deliveryNote: "تم تسليم طلب الرسالة لشريحة الهاتف، لكن شركة الاتصالات لم ترسل تأكيدًا نهائيًا؛ لن يعاد إرسالها تلقائيًا.",
+      };
+    }
   } else {
     await sendWhatsAppTemplate(job.recipient, job.templateKind, job.body);
   }
+  return {};
 }
 
 export async function runAutomaticCommunicationCycle(data: AppData, now = new Date(), force = false): Promise<CommunicationLog[]> {
@@ -529,7 +535,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
     for (const job of jobs) {
       const createdAt = new Date().toISOString();
       try {
-        await executeJob(job);
+        const execution = await executeJob(job);
         logs.push({
           id: `message-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           createdAt,
@@ -548,6 +554,7 @@ export async function runAutomaticCommunicationCycle(data: AppData, now = new Da
           templateKind: job.templateKind,
           provider: job.provider,
           subject: job.subject,
+          deliveryNote: execution.deliveryNote,
           dedupeKey: job.dedupeKey,
         });
       } catch (error) {
