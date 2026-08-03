@@ -852,6 +852,15 @@ export default function BuildingDetails() {
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
+                      <div className="mt-3 border-t border-border pt-3">
+                        <EvidenceAttachments
+                          entityType="repair"
+                          entityId={repair.id}
+                          kind="maintenance_invoice"
+                          buildingId={building.id}
+                          compact
+                        />
+                      </div>
                     </div>
                   );
                 })}
