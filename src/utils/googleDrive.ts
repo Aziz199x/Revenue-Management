@@ -12,6 +12,7 @@ const FOLDER_NAME = "Revenue Management Backups";
 
 const TOKEN_KEY = "google_drive_token";
 const ACCOUNT_KEY = "google_account_email";
+const NEEDS_RECONNECT_KEY = "google_drive_needs_reconnect";
 
 interface StoredTokens {
   accessToken: string;
@@ -38,6 +39,32 @@ function getTokens(): StoredTokens | null {
 function saveTokens(tokens: StoredTokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
   localStorage.setItem(ACCOUNT_KEY, tokens.email);
+  // A successful sign-in or refresh proves the credentials work again.
+  localStorage.removeItem(NEEDS_RECONNECT_KEY);
+}
+
+/**
+ * Marks the stored Google session as known-broken (refresh token missing or
+ * rejected by Google). This is the single source of truth the "connected"
+ * badge and the automatic backup scheduler both rely on — unlike a raw
+ * expiresAt comparison, it is only set after an actual failed refresh
+ * attempt, so it doesn't flap every time the short-lived access token
+ * naturally expires (which normally just silently refreshes).
+ */
+function markNeedsReconnect() {
+  try {
+    localStorage.setItem(NEEDS_RECONNECT_KEY, "1");
+  } catch (error) {
+    console.warn("[Google Drive] unable to persist reconnect flag:", error);
+  }
+}
+
+export function needsGoogleReconnect(): boolean {
+  try {
+    return localStorage.getItem(NEEDS_RECONNECT_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 async function exchangeGoogleAuthCode(serverAuthCode: string) {
@@ -58,6 +85,7 @@ export function clearTokens() {
   try {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ACCOUNT_KEY);
+    localStorage.removeItem(NEEDS_RECONNECT_KEY);
   } catch (error) {
     console.warn("[Google Logout] unable to clear one or more local token keys:", error);
   }
@@ -71,20 +99,25 @@ export function getConnectedEmail(): string | null {
   }
 }
 
-export function getGoogleConnectionStatus(now = Date.now()): GoogleConnectionStatus {
+export function getGoogleConnectionStatus(_now = Date.now()): GoogleConnectionStatus {
   const tokens = getTokens();
   const email = tokens?.email || getConnectedEmail();
   if (!email || !tokens?.accessToken) {
     return { email, state: email ? "expired" : "disconnected" };
   }
+  // Do not use a raw expiresAt comparison here: the short-lived access token
+  // expires roughly hourly by design and silently refreshes in the
+  // background, so that alone is not a sign the session is actually broken.
+  // needsGoogleReconnect() only becomes true after a refresh attempt has
+  // actually failed against Google.
   return {
     email,
-    state: now < Number(tokens.expiresAt || 0) ? "connected" : "expired",
+    state: needsGoogleReconnect() ? "expired" : "connected",
   };
 }
 
 export function isSignedIn(): boolean {
-  return !!getConnectedEmail();
+  return !!getConnectedEmail() && !needsGoogleReconnect();
 }
 
 export async function signIn(options: { forceAccountSelection?: boolean } = {}): Promise<string> {
@@ -180,6 +213,12 @@ async function refreshAccessToken(): Promise<string> {
       }),
     });
     if (!response.ok) {
+      // The refresh token itself was rejected (revoked, password changed,
+      // app access revoked, etc.) — this is a real, persistent problem, not
+      // a normal hourly expiry. Flag it so the "connected" badge and the
+      // automatic backup scheduler both stop treating this session as usable
+      // until the user reconnects.
+      markNeedsReconnect();
       throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
     }
     const token = await response.json();
@@ -195,6 +234,7 @@ async function refreshAccessToken(): Promise<string> {
   // Legacy sessions did not store a refresh token. Never refresh them through
   // the plugin's global active account because it may currently be the Gmail
   // sender rather than the Drive backup account.
+  markNeedsReconnect();
   throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
 }
 

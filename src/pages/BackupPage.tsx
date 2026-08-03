@@ -185,6 +185,7 @@ export default function BackupPage() {
       showSuccess("تم رفع النسخة الاحتياطية إلى Google Drive بنجاح");
     } catch (e) {
       showError(e instanceof Error ? e.message : "تعذر رفع النسخة الاحتياطية");
+      setSignedIn(isSignedIn());
     } finally {
       setUploading(false);
     }
@@ -199,6 +200,7 @@ export default function BackupPage() {
     } catch (e) {
       setBackups([]);
       showError(e instanceof Error ? e.message : "تعذر تحميل قائمة النسخ الاحتياطية");
+      setSignedIn(isSignedIn());
     } finally {
       setListingBackups(false);
     }
@@ -234,6 +236,7 @@ export default function BackupPage() {
       } else {
         showError(errorMessage);
       }
+      setSignedIn(isSignedIn());
     } finally {
       setRestoring(false);
       setSelectedBackup(null);

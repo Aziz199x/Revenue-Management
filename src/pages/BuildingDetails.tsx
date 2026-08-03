@@ -779,7 +779,9 @@ export default function BuildingDetails() {
                           onClick={async () => {
                             const reason = await appDialog.prompt({
                               title: "حذف الصيانة",
-                              description: "اكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.",
+                              description: linkedPayment
+                                ? `هذا البند مخصوم من دفعة ${linkedUnit?.name || linkedPayment.unitName || "غير محددة"}. سيُحدَّث مبلغ الصيانة المخصوم في تلك الدفعة تلقائيًا بعد الحذف.\n\nاكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.`
+                                : "اكتب سبب الحذف ليُحفظ في سجل التدقيق المالي.",
                               inputLabel: "سبب الحذف",
                               confirmLabel: "حذف الصيانة",
                               tone: "destructive",
@@ -789,10 +791,53 @@ export default function BuildingDetails() {
                               return;
                             }
                             update(
-                              (prev) => ({ ...prev, repairs: prev.repairs.filter((item) => item.id !== repair.id) }),
+                              (prev) => {
+                                const remainingRepairs = prev.repairs.filter((item) => item.id !== repair.id);
+                                if (!repair.deductedFromPaymentId) {
+                                  return { ...prev, repairs: remainingRepairs };
+                                }
+                                return {
+                                  ...prev,
+                                  repairs: remainingRepairs,
+                                  payments: prev.payments.map((payment) => {
+                                    if (payment.id !== repair.deductedFromPaymentId) return payment;
+                                    // Subtract this repair's cost directly rather than re-deriving the
+                                    // total from remaining linked repairs: getPaymentMaintenanceDeductionAmount
+                                    // falls back to the stored maintenanceDeductionAmount when no repairs
+                                    // are linked, which would incorrectly return the stale pre-deletion
+                                    // total once this was the last linked item.
+                                    const newMaintenanceDeductionAmount = Math.max(
+                                      0,
+                                      Math.round(((payment.maintenanceDeductionAmount || 0) - repair.cost) * 100) / 100,
+                                    );
+                                    // ownerSettledByMaintenance means deductions exactly covered the
+                                    // remaining amount, so the owner transfer was skipped. Removing a
+                                    // deducted item here can only ever create a positive remainder
+                                    // equal to the drop in the deduction total — reopen the transfer.
+                                    const wasFullySettledByMaintenance = payment.ownerSettledByMaintenance === true;
+                                    return normalizePaymentFinancials({
+                                      ...payment,
+                                      maintenanceDeductionAmount: newMaintenanceDeductionAmount,
+                                      notes: [
+                                        payment.notes,
+                                        `تم حذف بند صيانة بقيمة ${formatMoney(repair.cost)} (${repair.description}) وتحديث مبلغ الصيانة المخصوم إلى ${formatMoney(newMaintenanceDeductionAmount)}.`,
+                                      ].filter(Boolean).join("\n"),
+                                      ...(wasFullySettledByMaintenance
+                                        ? {
+                                            ownerTransferred: false,
+                                            ownerSettledByMaintenance: false,
+                                            ownerTransferDate: null,
+                                            ownerTransferMethod: null,
+                                            ownerTransferNotes: `أُعيدت الدفعة إلى بانتظار التحويل للمالك بعد حذف بند صيانة كان يغطيها بالكامل.`,
+                                          }
+                                        : {}),
+                                    });
+                                  }),
+                                };
+                              },
                               { reason: reason.trim() },
                             );
-                            showSuccess("تم حذف بند الصيانة");
+                            showSuccess(linkedPayment ? "تم حذف بند الصيانة وتحديث الدفعة المرتبطة" : "تم حذف بند الصيانة");
                           }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { AppData } from "@/data/types";
-import { deleteBackup, isSignedIn, listBackups, uploadBackup } from "@/utils/googleDrive";
+import { deleteBackup, isSignedIn, listBackups, needsGoogleReconnect, uploadBackup } from "@/utils/googleDrive";
 
 const LAST_AUTO_BACKUP_KEY = "automatic_backup_last_run";
 const LAST_AUTO_DRIVE_BACKUP_KEY = "automatic_drive_backup_last_run";
@@ -85,7 +85,7 @@ async function saveLocalVersion(data: AppData): Promise<void> {
   localStorage.setItem(WEB_BACKUPS_KEY, JSON.stringify(versions.slice(0, retention)));
 }
 
-let running: Promise<void> | null = null;
+let running: Promise<AutomaticBackupRunResult> | null = null;
 
 async function pruneGoogleDriveVersions(retention: number): Promise<void> {
   const backups = await listBackups();
@@ -94,20 +94,30 @@ async function pruneGoogleDriveVersions(retention: number): Promise<void> {
   }
 }
 
+export interface AutomaticBackupRunResult {
+  /** True only the moment a Drive upload attempt just discovered the stored
+   * Google session is broken (not on every retry — isSignedIn() turns false
+   * once this happens, so later runs skip the Drive branch entirely). Lets
+   * the caller surface a single, actionable notification instead of the
+   * failure being swallowed silently. */
+  driveReconnectNeeded?: boolean;
+}
+
 export async function runAutomaticBackupIfDue(
   data: AppData,
   options: { force?: boolean } = {},
-): Promise<void> {
-  if (!data.settings.automaticBackupEnabled || running) return running || Promise.resolve();
+): Promise<AutomaticBackupRunResult | undefined> {
+  if (!data.settings.automaticBackupEnabled || running) return running || undefined;
   const force = options.force === true;
   const fingerprint = automaticBackupFingerprint(data);
   const localDue = force || dueAt(LAST_AUTO_BACKUP_KEY, data);
   const driveEnabled = data.settings.automaticGoogleDriveBackup && isSignedIn();
   const driveDue = driveEnabled && (force || dueAt(LAST_AUTO_DRIVE_BACKUP_KEY, data));
-  if (!localDue && !driveDue) return;
+  if (!localDue && !driveDue) return undefined;
 
-  running = (async () => {
+  running = (async (): Promise<AutomaticBackupRunResult> => {
     const now = Date.now();
+    const result: AutomaticBackupRunResult = {};
     if (localDue) {
       const lastFingerprint = localStorage.getItem(LAST_AUTO_BACKUP_FINGERPRINT_KEY);
       if (force || fingerprint !== lastFingerprint) {
@@ -119,6 +129,7 @@ export async function runAutomaticBackupIfDue(
 
     if (driveDue) {
       const lastDriveFingerprint = localStorage.getItem(LAST_AUTO_DRIVE_FINGERPRINT_KEY);
+      const wasReconnectNeededBefore = needsGoogleReconnect();
       try {
         if (force || fingerprint !== lastDriveFingerprint) {
           await uploadBackup(data);
@@ -136,8 +147,12 @@ export async function runAutomaticBackupIfDue(
         // Keep the Drive timestamp unchanged so the periodic manager retries
         // automatically when connectivity or account access returns.
         console.warn("[Backup] automatic Google Drive upload postponed", error);
+        if (!wasReconnectNeededBefore && needsGoogleReconnect()) {
+          result.driveReconnectNeeded = true;
+        }
       }
     }
+    return result;
   })().finally(() => {
     running = null;
   });

@@ -17,6 +17,7 @@ import { useStore } from "@/data/store";
 import { showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAppDialog } from "@/components/shared/AppDialogProvider";
+import { buildAutomaticCommunicationJobs } from "@/utils/automaticCommunications";
 
 export interface PaymentFormValues {
   amount: number;
@@ -324,9 +325,53 @@ export default function PaymentForm({ initial, defaultAmount, unitId, lessorCapa
       <Button type="submit" className="w-full rounded-xl">
         {initial ? "حفظ التعديلات" : "تسجيل الدفعة"}
       </Button>
-      <AlertDialog open={!!pendingValues} onOpenChange={(open) => !open && setPendingValues(null)}>
-        <AlertDialogContent className="max-w-[90vw] rounded-3xl"><AlertDialogHeader><AlertDialogTitle className="text-right">تحويل الدفعة إلى غير مدفوعة</AlertDialogTitle><AlertDialogDescription className="whitespace-pre-line text-right">سيتم إلغاء تسجيل الاستلام ومسح بياناته، وستصبح الدفعة مؤهلة لجدول إشعارات السداد التلقائي.{"\n\n"}سيمنحك النظام مهلة أمان لمدة 40 ثانية بعد الحفظ، ثم يطبق وقت الإرسال وخيار تعويض الموعد الفائت. يمكنك خلال العد التنازلي إعادة الدفعة إلى «مدفوع» لإلغاء الإشعار.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel type="button">إلغاء</AlertDialogCancel><AlertDialogAction type="button" onClick={() => { if (pendingValues) onSubmit({ ...pendingValues, automaticReminderHoldUntil: new Date(Date.now() + 40_000).toISOString() }); setPendingValues(null); }}>حفظ وبدء المهلة</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-      </AlertDialog>
+      {(() => {
+        if (!pendingValues || !initial) return null;
+        // Check against the real automatic-communication eligibility rules
+        // (days-before-due / overdue-tail window, channels enabled, tenant
+        // contact info present, etc.) instead of re-deriving that logic here,
+        // so the warning only claims an imminent send when one can actually
+        // happen. A far-future due date won't generate any job yet, so the
+        // generic 40s countdown warning is misleading for it.
+        const candidatePayment = { ...initial, ...pendingValues } as Payment;
+        const candidateData = {
+          ...data,
+          payments: data.payments.map((payment) => payment.id === candidatePayment.id ? candidatePayment : payment),
+        };
+        const hasImminentJob = buildAutomaticCommunicationJobs(candidateData, new Date())
+          .some((job) => job.paymentId === candidatePayment.id);
+        return (
+          <AlertDialog open onOpenChange={(open) => !open && setPendingValues(null)}>
+            <AlertDialogContent className="max-w-[90vw] rounded-3xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-right">تحويل الدفعة إلى غير مدفوعة</AlertDialogTitle>
+                <AlertDialogDescription className="whitespace-pre-line text-right">
+                  سيتم إلغاء تسجيل الاستلام ومسح بياناته.
+                  {"\n\n"}
+                  {hasImminentJob
+                    ? "ستصبح الدفعة مؤهلة لجدول إشعارات السداد التلقائي. سيمنحك النظام مهلة أمان لمدة 40 ثانية بعد الحفظ، ثم يطبق وقت الإرسال وخيار تعويض الموعد الفائت. يمكنك خلال العد التنازلي إعادة الدفعة إلى «مدفوع» لإلغاء الإشعار."
+                    : "موعد استحقاقها بعيد حاليًا عن نطاق التذكير التلقائي، فلن يُرسل لها أي إشعار قريب. ستدخل جدول الإرسال التلقائي تلقائيًا كلما اقترب موعد الاستحقاق أو إذا تأخر سدادها."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="gap-2">
+                <AlertDialogCancel type="button">إلغاء</AlertDialogCancel>
+                <AlertDialogAction
+                  type="button"
+                  onClick={() => {
+                    onSubmit({
+                      ...pendingValues,
+                      automaticReminderHoldUntil: hasImminentJob ? new Date(Date.now() + 40_000).toISOString() : undefined,
+                    });
+                    setPendingValues(null);
+                  }}
+                >
+                  {hasImminentJob ? "حفظ وبدء المهلة" : "حفظ"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        );
+      })()}
     </form>
   );
 }

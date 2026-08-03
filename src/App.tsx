@@ -70,7 +70,22 @@ function NotificationChecker() {
 function AutomaticBackupManager() {
   const { data } = useStore();
   const latestData = useRef(data);
+  const reconnectNoticeShown = useRef(false);
   latestData.current = data;
+
+  const runBackup = async () => {
+    const result = await runAutomaticBackupIfDue(latestData.current);
+    // Previously a failed Drive upload was only logged to the console, so an
+    // expired/revoked Google session left "automatic" backups silently
+    // stopped with no visible sign anything was wrong. Surface it once.
+    if (result?.driveReconnectNeeded && !reconnectNoticeShown.current) {
+      reconnectNoticeShown.current = true;
+      toast.warning("تعذر رفع النسخة الاحتياطية التلقائية إلى Google Drive", {
+        description: "انتهت صلاحية ربط حساب Google. أعد الربط من صفحة النسخ الاحتياطي والاستعادة لاستئناف الرفع التلقائي.",
+        duration: 15000,
+      });
+    }
+  };
 
   useEffect(() => {
     // Depending on `data` here restarted this timer on every single store
@@ -79,15 +94,13 @@ function AutomaticBackupManager() {
     // the timer kept getting cancelled and rescheduled and effectively never
     // fired. Run once on mount and read the latest data via the ref instead,
     // matching the stable interval effect below.
-    const timer = window.setTimeout(() => {
-      void runAutomaticBackupIfDue(latestData.current);
-    }, 2500);
+    const timer = window.setTimeout(() => { void runBackup(); }, 2500);
     return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
     let listener: { remove: () => Promise<void> } | undefined;
-    const run = () => { void runAutomaticBackupIfDue(latestData.current); };
+    const run = () => { void runBackup(); };
     const interval = window.setInterval(run, 15 * 60 * 1000);
     window.addEventListener("online", run);
     if (Capacitor.isNativePlatform()) {
