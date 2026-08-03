@@ -42,6 +42,7 @@ import BuildingForm from "@/components/forms/BuildingForm";
 import UnitForm from "@/components/forms/UnitForm";
 import RepairForm from "@/components/forms/RepairForm";
 import RecurringBuildingBillForm from "@/components/forms/RecurringBuildingBillForm";
+import EvidenceAttachments from "@/components/shared/EvidenceAttachments";
 import { useStore, genId } from "@/data/store";
 import { buildingStats, formatMoney, formatDate, todayISO, normalizePaymentFinancials, parseLocalDate, effectiveStatus, getPaymentReceiveMethod, isCollectionFeeCollected, getPaymentReportMonth, getPaymentReportYearMonth, calculateInstallmentAmount, generatePaymentDueDates, getContractEndDate, getRemainingPaymentAmount, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getCollectedRentAmount, isPaymentOverdue } from "@/data/helpers";
 import { UNIT_STATUS_LABELS, RENT_PERIOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS, COLLECTION_FEE_STATUS_LABELS, UNIT_MONTH_STATUS_LABELS, REPAIR_STATUS_LABELS } from "@/data/labels";
@@ -224,9 +225,9 @@ export default function BuildingDetails() {
     (maintenanceMonthFilter === "all" || isoYearMonth(repair.repairDate) === maintenanceMonthFilter)
     && (maintenanceDayFilter === "all" || repair.repairDate === maintenanceDayFilter)
   );
-  const unifiedMaintenanceTotal = filteredMaintenanceTotal
-    + filteredOutstandingRecurringBills.reduce((sum, repair) => sum + repair.cost, 0)
+  const filteredRecurringBillsTotal = filteredOutstandingRecurringBills.reduce((sum, repair) => sum + repair.cost, 0)
     + filteredDeductedRecurringBills.reduce((sum, repair) => sum + repair.cost, 0);
+  const unifiedMaintenanceTotal = filteredMaintenanceTotal + filteredRecurringBillsTotal;
   const overdueUnitSummaries = units
     .map((unit) => {
       const overduePayments = data.payments
@@ -616,8 +617,16 @@ export default function BuildingDetails() {
                 <p className="mt-1 text-xs text-amber-800">
                   صيانة عامة على العقار وغير مرتبطة بوحدة محددة
                 </p>
-                <p className="mt-1 text-sm font-bold text-amber-900">
-                  {maintenanceMonthFilter === "all" ? "الإجمالي" : `إجمالي ${formatYearMonthLabel(maintenanceMonthFilter)}`}: {formatMoney(unifiedMaintenanceTotal)}
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold">
+                  <span className="rounded-full bg-amber-200/70 px-2 py-1 text-amber-900">
+                    غير متكررة: {formatMoney(filteredMaintenanceTotal)}
+                  </span>
+                  <span className="rounded-full bg-sky-200/70 px-2 py-1 text-sky-900">
+                    شهرية{maintenanceMonthFilter === "all" ? "" : ` (${formatYearMonthLabel(maintenanceMonthFilter)})`}: {formatMoney(filteredRecurringBillsTotal)}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm font-bold text-amber-900">
+                  {maintenanceMonthFilter === "all" ? "الإجمالي" : `الإجمالي خلال ${formatYearMonthLabel(maintenanceMonthFilter)}`}: {formatMoney(unifiedMaintenanceTotal)}
                 </p>
               </div>
               <Button
@@ -940,6 +949,15 @@ export default function BuildingDetails() {
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
+                      </div>
+                      <div className="mt-3 border-t border-border pt-3">
+                        <EvidenceAttachments
+                          entityType="recurring_bill"
+                          entityId={bill.id}
+                          kind="maintenance_invoice"
+                          buildingId={building.id}
+                          compact
+                        />
                       </div>
                     </div>
                   );

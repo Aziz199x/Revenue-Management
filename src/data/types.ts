@@ -285,7 +285,7 @@ export type EvidenceAttachmentKind =
   | "contract"
   | "clearance";
 
-export type EvidenceEntityType = "payment" | "repair" | "contract";
+export type EvidenceEntityType = "payment" | "repair" | "contract" | "recurring_bill";
 
 export interface EvidenceAttachment {
   id: string;
