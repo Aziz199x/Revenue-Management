@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@capacitor-community/file-opener':
+        specifier: ^7.0.1
+        version: 7.0.1(@capacitor/core@7.4.4)
       '@capacitor-community/sqlite':
         specifier: 7.0.1
         version: 7.0.1(@capacitor/core@7.4.4)
@@ -285,6 +288,12 @@ packages:
   '@babel/types@7.27.6':
     resolution: {integrity: sha512-ETyHEk2VHHvl9b9jZP5IHPavHYk57EhanlRRuae9XCpb/j5bDCbPPMOBfCWhnl/7EDJz0jEMCi/RhccCE8r1+Q==}
     engines: {node: '>=6.9.0'}
+
+  '@capacitor-community/file-opener@7.0.1':
+    resolution: {integrity: sha512-Jg/S7p93vI7Lk7rBCeqesgN9wvvZwBcvKkLMaTj7xruIGzU+iXizR5dVntBV6ooDArp25/B5iF6J3BvA6YVppA==}
+    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor-community/sqlite@7.0.1':
     resolution: {integrity: sha512-Ypl8rTzgugBiPlqkeHM3mtt30py3AM5Ax4zZML+5XZjrNYUXHuiKUFgvSNW4a8glzP3/bjpYGiYkMHfclV1pTQ==}
@@ -3159,6 +3168,10 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
+
+  '@capacitor-community/file-opener@7.0.1(@capacitor/core@7.4.4)':
+    dependencies:
+      '@capacitor/core': 7.4.4
 
   '@capacitor-community/sqlite@7.0.1(@capacitor/core@7.4.4)':
     dependencies:

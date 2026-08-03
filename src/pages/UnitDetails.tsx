@@ -161,6 +161,7 @@ function MarkAsReceivedDialog({
   repairSuggestions,
   earlierOutstandingPayments,
   lessorCapacity,
+  buildingUnits,
   onConfirm,
   onCancel,
 }: {
@@ -170,6 +171,7 @@ function MarkAsReceivedDialog({
   feeSuggestions: Array<{ payment: Payment; unitName: string; tenantName: string; remaining: number; monthLabel: string; dueDateLabel: string }>;
   repairSuggestions: Array<{ repair: Repair; unitName: string }>;
   earlierOutstandingPayments: Payment[];
+  buildingUnits: Array<{ id: string; name: string }>;
   onConfirm: (
     receivedDate: string,
     method: PaymentReceiveMethod,
@@ -359,18 +361,19 @@ function MarkAsReceivedDialog({
                 onChange={(event) => {
                   setSettleWithBuildingMaintenance(event.target.checked);
                   if (event.target.checked) setSelectedSettlements({});
-                  setMaintenanceExpenseItems(event.target.checked ? [createMaintenanceExpenseItemDraft()] : []);
+                  setMaintenanceExpenseItems(event.target.checked ? [createMaintenanceExpenseItemDraft(payment.unitId)] : []);
                 }}
               />
               <span>
                 <span className="block font-bold text-violet-900">خصم بنود صيانة يدوية من الدفعة</span>
-                <span className="mt-1 block text-violet-800">أضف وصف وتكلفة كل بند؛ سيُخصم إجمالي البنود فقط، ويبقى الباقي مستحقًا للتحويل للمالك.</span>
+                <span className="mt-1 block text-violet-800">أضف وصف وتكلفة كل بند؛ سيُخصم إجمالي البنود فقط، ويبقى الباقي مستحقًا للتحويل للمالك. حدد الوحدة التي يخصها كل بند أو اتركه صيانة عامة للعقار.</span>
               </span>
             </label>
             {settleWithBuildingMaintenance && (
               <MaintenanceExpenseItemsEditor
                 items={maintenanceExpenseItems}
                 onChange={setMaintenanceExpenseItems}
+                units={buildingUnits}
               />
             )}
           </div>
@@ -525,6 +528,9 @@ export default function UnitDetails() {
 
   const building = data.buildings.find((b) => b.id === unit.buildingId);
   const buildingUnitIds = new Set(data.units.filter((item) => item.buildingId === unit.buildingId).map((item) => item.id));
+  const buildingUnits = data.units
+    .filter((item) => item.buildingId === unit.buildingId)
+    .map((item) => ({ id: item.id, name: item.name }));
   const officeFeeSuggestions = markReceived ? data.payments
     .map((payment) => normalizePaymentFinancials(payment))
     .filter((payment) => payment.id !== markReceived.id
@@ -2180,6 +2186,7 @@ export default function UnitDetails() {
           feeSuggestions={officeFeeSuggestions}
           repairSuggestions={maintenanceSuggestions}
           earlierOutstandingPayments={earlierOutstandingPayments}
+          buildingUnits={buildingUnits}
           onConfirm={async (receivedDate, method, feePercent, notes, settlements, repairIds, settleWithBuildingMaintenance, maintenanceExpenseItems) => {
             const duplicate = findPotentialDuplicateReceivedPayments(data, normalizePaymentFinancials({
               ...markReceived,
@@ -2296,18 +2303,24 @@ export default function UnitDetails() {
                     deductedFromPaymentId: markReceived.id,
                     notes: `${repair.notes || ""}\nتم خصم الفاتورة من دفعة ${unit.name} بتاريخ ${receivedDate}.`.trim(),
                   })),
-                ...maintenanceExpenseItems.map((item) => ({
-                  id: genId(),
-                  buildingId: unit.buildingId,
-                  description: item.description,
-                  repairDate: receivedDate,
-                  cost: item.cost,
-                  status: "completed" as const,
-                  notes: `بند صيانة عام للعقار خُصم من دفعة ${unit.name}.`,
-                  createdAt: new Date().toISOString(),
-                  isDeductedFromOwnerTransfer: true,
-                  deductedFromPaymentId: markReceived.id,
-                })),
+                ...maintenanceExpenseItems.map((item) => {
+                  const itemUnit = item.unitId ? data.units.find((u) => u.id === item.unitId) : undefined;
+                  return {
+                    id: genId(),
+                    buildingId: unit.buildingId,
+                    unitId: itemUnit?.id,
+                    description: item.description,
+                    repairDate: receivedDate,
+                    cost: item.cost,
+                    status: "completed" as const,
+                    notes: itemUnit
+                      ? `بند صيانة لوحدة ${itemUnit.name} خُصم من دفعة ${unit.name}.`
+                      : `بند صيانة عام للعقار خُصم من دفعة ${unit.name}.`,
+                    createdAt: new Date().toISOString(),
+                    isDeductedFromOwnerTransfer: true,
+                    deductedFromPaymentId: markReceived.id,
+                  };
+                }),
               ],
               collectionFeeSettlements: [
                 ...prev.collectionFeeSettlements,

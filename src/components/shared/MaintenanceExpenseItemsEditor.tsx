@@ -2,6 +2,13 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatMoney } from "@/data/helpers";
 import {
   createMaintenanceExpenseItemDraft,
@@ -9,12 +16,19 @@ import {
   MaintenanceExpenseItemDraft,
 } from "@/data/maintenanceExpenseItems";
 
+const GENERAL_BUILDING_VALUE = "__building__";
+
 export default function MaintenanceExpenseItemsEditor({
   items,
   onChange,
+  units = [],
 }: {
   items: MaintenanceExpenseItemDraft[];
   onChange: (items: MaintenanceExpenseItemDraft[]) => void;
+  /** Units of the same building/property, so each item can be attributed to a
+   * specific unit instead of always being recorded as general building
+   * maintenance. */
+  units?: Array<{ id: string; name: string }>;
 }) {
   const total = items.reduce((sum, item) => sum + Math.max(0, Number(item.cost) || 0), 0);
 
@@ -71,6 +85,29 @@ export default function MaintenanceExpenseItemsEditor({
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
+          {units.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <Label className="text-[11px]">يخص</Label>
+              <Select
+                value={item.unitId || GENERAL_BUILDING_VALUE}
+                onValueChange={(value) => onChange(items.map((current) =>
+                  current.id === item.id
+                    ? { ...current, unitId: value === GENERAL_BUILDING_VALUE ? undefined : value }
+                    : current
+                ))}
+              >
+                <SelectTrigger className="h-9 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={GENERAL_BUILDING_VALUE}>صيانة عامة للعقار</SelectItem>
+                  {units.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       ))}
       <p className="rounded-xl bg-violet-100 px-3 py-2 text-xs font-bold text-violet-900">

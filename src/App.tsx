@@ -73,11 +73,17 @@ function AutomaticBackupManager() {
   latestData.current = data;
 
   useEffect(() => {
+    // Depending on `data` here restarted this timer on every single store
+    // update anywhere in the app (adding a payment, editing a tenant, etc.),
+    // which happens far more often than every 2.5s during normal use — so
+    // the timer kept getting cancelled and rescheduled and effectively never
+    // fired. Run once on mount and read the latest data via the ref instead,
+    // matching the stable interval effect below.
     const timer = window.setTimeout(() => {
       void runAutomaticBackupIfDue(latestData.current);
     }, 2500);
     return () => window.clearTimeout(timer);
-  }, [data]);
+  }, []);
 
   useEffect(() => {
     let listener: { remove: () => Promise<void> } | undefined;

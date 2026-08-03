@@ -248,6 +248,14 @@ export default function Payments() {
   }, [data, markReceived, mrDate]);
   const eligibleRecurringBills = eligibleRepairs.filter(isRecurringBillRepair);
   const eligibleMaintenanceRepairs = eligibleRepairs.filter((repair) => !isRecurringBillRepair(repair));
+  const markReceivedBuildingUnits = useMemo(() => {
+    if (!markReceived) return [];
+    const targetUnit = data.units.find((unit) => unit.id === markReceived.unitId);
+    if (!targetUnit) return [];
+    return data.units
+      .filter((unit) => unit.buildingId === targetUnit.buildingId)
+      .map((unit) => ({ id: unit.id, name: unit.name }));
+  }, [data, markReceived]);
   const eligibleOfficeFees = useMemo(() => {
     if (!markReceived) return [];
     const sourceUnit = data.units.find((unit) => unit.id === markReceived.unitId);
@@ -428,18 +436,24 @@ export default function Payments() {
             deductedFromPaymentId: markReceived.id,
             notes: `${repair.notes || ""}\nتم خصم الفاتورة من دفعة ${sourceUnit?.name || ""} بتاريخ ${mrDate}.`.trim(),
           })),
-        ...normalizedMaintenanceExpenseItems.map((item) => ({
-          id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-          buildingId: sourceUnit?.buildingId,
-          description: item.description,
-          repairDate: mrDate,
-          cost: item.cost,
-          status: "completed" as const,
-          notes: `بند صيانة عام للعقار خُصم من دفعة ${sourceUnit?.name || ""}.`,
-          createdAt: new Date().toISOString(),
-          isDeductedFromOwnerTransfer: true,
-          deductedFromPaymentId: markReceived.id,
-        })),
+        ...normalizedMaintenanceExpenseItems.map((item) => {
+          const itemUnit = item.unitId ? data.units.find((unit) => unit.id === item.unitId) : undefined;
+          return {
+            id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+            buildingId: sourceUnit?.buildingId,
+            unitId: itemUnit?.id,
+            description: item.description,
+            repairDate: mrDate,
+            cost: item.cost,
+            status: "completed" as const,
+            notes: itemUnit
+              ? `بند صيانة لوحدة ${itemUnit.name} خُصم من دفعة ${sourceUnit?.name || ""}.`
+              : `بند صيانة عام للعقار خُصم من دفعة ${sourceUnit?.name || ""}.`,
+            createdAt: new Date().toISOString(),
+            isDeductedFromOwnerTransfer: true,
+            deductedFromPaymentId: markReceived.id,
+          };
+        }),
       ],
       collectionFeeSettlements: [
         ...prev.collectionFeeSettlements,
@@ -1052,18 +1066,19 @@ export default function Payments() {
                       setDeductOfficeFees(false);
                       setSelectedFeeSettlementAmounts({});
                     }
-                    setMaintenanceExpenseItems(event.target.checked ? [createMaintenanceExpenseItemDraft()] : []);
+                    setMaintenanceExpenseItems(event.target.checked ? [createMaintenanceExpenseItemDraft(markReceived?.unitId)] : []);
                   }}
                 />
                 <span>
                   <span className="block font-bold text-violet-900">خصم بنود صيانة يدوية من الدفعة</span>
-                  <span className="mt-1 block text-violet-800">أضف وصف وتكلفة كل بند؛ سيُخصم إجمالي البنود فقط ويبقى الباقي للتحويل للمالك.</span>
+                  <span className="mt-1 block text-violet-800">أضف وصف وتكلفة كل بند؛ سيُخصم إجمالي البنود فقط ويبقى الباقي للتحويل للمالك. حدد الوحدة التي يخصها كل بند أو اتركه صيانة عامة للعقار.</span>
                 </span>
               </label>
               {settleWithBuildingMaintenance && (
                 <MaintenanceExpenseItemsEditor
                   items={maintenanceExpenseItems}
                   onChange={setMaintenanceExpenseItems}
+                  units={markReceivedBuildingUnits}
                 />
               )}
             </div>

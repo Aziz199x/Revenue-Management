@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { openSms, requestAutomaticSmsPermission, sendAutomaticSms } from "@/utils/sms";
+import { validatePhone } from "@/utils/whatsapp";
 import { showError, showSuccess } from "@/utils/toast";
 
 interface Props {
@@ -16,7 +17,20 @@ interface Props {
 }
 
 export default function SmsPreview({ open, onOpenChange, phones, message }: Props) {
-  const uniquePhones = Array.from(new Set(phones.filter(Boolean)));
+  // Different raw formats of the same number (e.g. "053 882 4240" and
+  // "966538824240") must collapse to a single entry — dedupe by the
+  // normalized identity, not the raw string.
+  const uniquePhones = (() => {
+    const seenNormalized = new Set<string>();
+    const result: string[] = [];
+    for (const candidate of phones.filter(Boolean)) {
+      const key = validatePhone(candidate) ?? candidate.trim();
+      if (seenNormalized.has(key)) continue;
+      seenNormalized.add(key);
+      result.push(candidate);
+    }
+    return result;
+  })();
   const [selectedPhones, setSelectedPhones] = useState(uniquePhones);
   const [editedMessage, setEditedMessage] = useState(message);
   const [currentIndex, setCurrentIndex] = useState(0);

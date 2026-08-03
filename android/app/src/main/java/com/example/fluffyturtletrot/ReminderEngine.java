@@ -411,7 +411,19 @@ public final class ReminderEngine {
     private static String formatArabicDate(String isoDate) {
         Calendar cal = parseIsoDate(isoDate);
         if (cal == null) return isoDate;
-        SimpleDateFormat fmt = new SimpleDateFormat("d MMM yyyy", new Locale("ar", "SA"));
+        // Plain Locale("ar", "SA") lets ICU pick the device's default calendar
+        // and numbering system for the SA region, which on many devices is the
+        // Hijri calendar with Eastern Arabic-Indic digits (e.g. "٢٠٢٦/٩/٣٠").
+        // Force the Gregorian calendar and Latin digits explicitly, matching
+        // the "ar-SA-u-nu-latn-ca-gregory" locale already used on the JS side,
+        // so scheduled native notifications show the same date format.
+        Locale arabicGregorianLatin = new Locale.Builder()
+                .setLanguage("ar")
+                .setRegion("SA")
+                .setUnicodeLocaleKeyword("nu", "latn")
+                .setUnicodeLocaleKeyword("ca", "gregory")
+                .build();
+        SimpleDateFormat fmt = new SimpleDateFormat("d MMM yyyy", arabicGregorianLatin);
         return fmt.format(cal.getTime());
     }
 
