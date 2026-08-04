@@ -120,6 +120,27 @@ export function isSignedIn(): boolean {
   return !!getConnectedEmail() && !needsGoogleReconnect();
 }
 
+/**
+ * Actively verifies the stored session against Google instead of trusting
+ * the locally cached "connected" flag — previously the connected badge only
+ * updated after the user tapped upload/restore and hit a failure. Never
+ * triggers an interactive sign-in: if there is no stored token at all this
+ * just reports the disconnected/expired state without prompting anything.
+ */
+export async function verifyGoogleConnection(): Promise<GoogleConnectionStatus> {
+  const tokens = getTokens();
+  const email = tokens?.email || getConnectedEmail();
+  if (!email || !tokens?.accessToken) {
+    return { email, state: email ? "expired" : "disconnected" };
+  }
+  try {
+    await getValidGoogleAccessToken();
+    return { email, state: "connected" };
+  } catch {
+    return { email: getConnectedEmail(), state: getConnectedEmail() ? "expired" : "disconnected" };
+  }
+}
+
 export async function signIn(options: { forceAccountSelection?: boolean } = {}): Promise<string> {
   if (!Capacitor.isNativePlatform()) {
     throw new Error("يتطلب تسجيل الدخول جهازًا فعليًا");
@@ -154,14 +175,23 @@ export async function signIn(options: { forceAccountSelection?: boolean } = {}):
 
     const user = await GoogleAuth.signIn();
     let accessToken = user.authentication.accessToken;
-    let refreshToken: string | undefined;
+    // Google only returns a refresh_token on the account's first consent for
+    // this app; a later reconnect of the SAME account (very common — this is
+    // exactly what happens when the user taps "reconnect" after a session
+    // expired) normally gets no refresh_token back at all. Falling back to
+    // undefined here used to silently discard a perfectly valid existing
+    // refresh token, guaranteeing the next hourly access-token expiry would
+    // hard-fail again — a likely cause of the frequent disconnects. Keep the
+    // previous one when re-authenticating the same email.
+    const previousTokensForSameAccount = getTokens()?.email === user.email ? getTokens() : null;
+    let refreshToken: string | undefined = previousTokensForSameAccount?.refreshToken;
     let expiresAt = Date.now() + 55 * 60 * 1000;
     const email = user.email;
     if (user.serverAuthCode) {
       try {
         const token = await exchangeGoogleAuthCode(user.serverAuthCode);
         accessToken = token.access_token || accessToken;
-        refreshToken = token.refresh_token || undefined;
+        refreshToken = token.refresh_token || refreshToken;
         expiresAt = Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000;
       } catch (error) {
         console.warn("[Google Drive] offline token exchange failed; using the current access token", error);

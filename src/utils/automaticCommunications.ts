@@ -46,6 +46,10 @@ const HOUR = 3_600_000;
 // The manager checks every five minutes. Keep one extra polling interval so a
 // small timer delay does not turn an on-time run into a missed occurrence.
 const SCHEDULE_WINDOW_MS = 10 * 60_000;
+// Catch-up should not fire a message that lands too close to the next
+// legitimately scheduled one. If less than this much time remains before the
+// next anchored slot, skip the immediate catch-up and just wait for it.
+const MIN_GAP_BEFORE_NEXT_OCCURRENCE_MS = 6 * HOUR;
 let running: Promise<CommunicationLog[]> | null = null;
 
 export function isCommunicationOnline(): boolean {
@@ -310,8 +314,11 @@ function wasRecentlyAttempted(
 type ScheduleKind = "paymentReminder" | "overduePayment" | "contractExpiry";
 
 function scheduleIsActive(data: AppData, now: Date): boolean {
+  // There is no separate master switch anymore — enabling any one channel
+  // (email/WhatsApp/SMS) below is what turns automatic sending on for that
+  // channel. This only gates the optional date range.
   const settings = data.settings.automaticCommunications;
-  if (!settings?.enabled) return false;
+  if (!settings) return false;
   const today = localDate(now);
   if (settings.activeFrom && today < settings.activeFrom) return false;
   if (settings.activeUntil && today > settings.activeUntil) return false;
@@ -384,15 +391,16 @@ function scheduledOccurrenceFor(
     firstOccurrence.getTime() + Math.floor(elapsed / frequencyMs) * frequencyMs,
   );
   const delay = now.getTime() - latestOccurrence.getTime();
+  if (delay < SCHEDULE_WINDOW_MS) return latestOccurrence;
 
-  // Normal scheduling is allowed only around an actual occurrence. Catch-up
-  // widens the window after a missed occurrence; it never sends before one.
-  return (
-    delay < SCHEDULE_WINDOW_MS
-    || data.settings.automaticCommunications.sendMissedAsSoonAsPossible
-  )
-    ? latestOccurrence
-    : null;
+  // The occurrence was missed. Catch-up only fires it immediately if the
+  // next anchored slot is still comfortably far away — otherwise a message
+  // sent now would land within hours of the next legitimately scheduled
+  // one, so it is better to just let the schedule catch itself up normally.
+  if (!data.settings.automaticCommunications.sendMissedAsSoonAsPossible) return null;
+  const nextOccurrence = latestOccurrence.getTime() + frequencyMs;
+  const gapUntilNext = nextOccurrence - now.getTime();
+  return gapUntilNext >= MIN_GAP_BEFORE_NEXT_OCCURRENCE_MS ? latestOccurrence : null;
 }
 
 export function buildAutomaticCommunicationJobs(data: AppData, now = new Date(), force = false): AutomaticCommunicationJob[] {

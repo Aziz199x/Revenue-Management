@@ -253,7 +253,11 @@ function AutomaticCommunicationManager() {
       }
     };
     const run = async () => {
-      if (!active || !latestData.current.settings.automaticCommunications?.enabled) return;
+      // No separate master switch anymore — buildAutomaticCommunicationJobs
+      // already returns nothing unless a specific channel (email/WhatsApp/
+      // SMS) is enabled, so there is nothing extra to gate here besides the
+      // component being mounted.
+      if (!active || !latestData.current.settings.automaticCommunications) return;
       const pendingJobs = buildAutomaticCommunicationJobs(latestData.current);
       if (pendingJobs.length === 0) return;
       if (!isCommunicationOnline()) {

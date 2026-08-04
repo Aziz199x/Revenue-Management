@@ -305,8 +305,8 @@ export default function AutomaticCommunicationsSettingsPage() {
   };
 
   const runNow = async () => {
-    if (!settings.enabled) {
-      showError("فعّل الإرسال التلقائي أولًا");
+    if (!settings.emailEnabled && !settings.whatsappEnabled && !settings.smsEnabled) {
+      showError("فعّل قناة إرسال واحدة على الأقل (بريد أو واتساب أو SMS) أولًا");
       return;
     }
     if (!isCommunicationOnline()) {
@@ -363,16 +363,6 @@ export default function AutomaticCommunicationsSettingsPage() {
       <SettingsSubPageHeader title="الإرسال التلقائي" subtitle="جدولة البريد وWhatsApp Business وSMS وتوثيق النتائج" />
       <div className="mx-auto max-w-[1450px] space-y-4 p-4 lg:grid lg:grid-cols-[minmax(360px,0.9fr)_minmax(430px,1.1fr)] lg:items-start lg:gap-4 lg:space-y-0 lg:[direction:ltr]">
         <section className="space-y-4 rounded-3xl border border-border bg-card p-4 lg:col-start-2 lg:[direction:rtl]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-bold">تفعيل جدول الإرسال</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                المفتاح الرئيسي للإرسال التلقائي. يلتزم بالوقت والتكرار المحددين، ولا يعوض موعدًا فائتًا إلا إذا كان الخيار الأصفر مفعّلًا.
-              </p>
-            </div>
-            <Switch checked={settings.enabled} onCheckedChange={(enabled) => updateSchedule({ enabled })} />
-          </div>
-
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-muted p-3">
               <div className="flex items-center justify-between">
@@ -414,24 +404,24 @@ export default function AutomaticCommunicationsSettingsPage() {
           </div>
 
           <div className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-3 ${
-            settings.enabled
+            settings.sendMissedAsSoonAsPossible
               ? "border-amber-300 bg-amber-50"
               : "border-border bg-muted/40"
           }`}>
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <Clock3 className={`h-4 w-4 ${settings.enabled ? "text-amber-700" : "text-muted-foreground"}`} />
+                <Clock3 className={`h-4 w-4 ${settings.sendMissedAsSoonAsPossible ? "text-amber-700" : "text-muted-foreground"}`} />
                 <Label>الإرسال في أقرب وقت عند فوات الموعد</Label>
                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                  settings.enabled
+                  settings.sendMissedAsSoonAsPossible
                     ? "bg-amber-200 text-amber-900"
                     : "bg-muted text-muted-foreground"
                 }`}>
-                  {settings.enabled ? "تعويض الموعد الفائت" : "غير فعّال حتى تشغيل الجدول"}
+                  {settings.sendMissedAsSoonAsPossible ? "تعويض الموعد الفائت" : "متوقف"}
                 </span>
               </div>
-              <p className={`mt-1 text-[10px] leading-4 ${settings.enabled ? "text-amber-900" : "text-muted-foreground"}`}>
-                لا يفعّل الجدول ولا يقدّم رسالة قبل موعدها الأصلي. عند تشغيله تُعوض الخانة التي فاتت عند أول فتح للتطبيق أو عودة الإنترنت؛ وقد يحدث ذلك قبل موعد اليوم التالي. عند إيقافه تنتظر الرسالة خانتها المجدولة التالية.
+              <p className={`mt-1 text-[10px] leading-4 ${settings.sendMissedAsSoonAsPossible ? "text-amber-900" : "text-muted-foreground"}`}>
+                لا يفعّل الجدول ولا يقدّم رسالة قبل موعدها الأصلي. عند تشغيله تُعوض الخانة التي فاتت عند أول فتح للتطبيق أو عودة الإنترنت — إلا إذا كان الوقت المتبقي على الإرسال المجدول التالي أقل من 6 ساعات، فعندها تنتظر خانتها المجدولة بدل التعويض الفوري. عند إيقافه تنتظر الرسالة خانتها المجدولة التالية دائمًا.
               </p>
             </div>
             <Switch

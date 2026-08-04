@@ -53,6 +53,7 @@ import {
   listBackups,
   downloadBackup,
   clearTokens,
+  verifyGoogleConnection,
   BackupFileInfo,
 } from "@/utils/googleDrive";
 import { validateBackupJson, createEmergencySnapshot, getEmergencySnapshot, clearEmergencySnapshot } from "@/utils/backupData";
@@ -129,6 +130,18 @@ export default function BackupPage() {
   useEffect(() => {
     setSignedIn(isSignedIn());
     setEmail(getConnectedEmail());
+    // The cached flag above only reflects the last known failure/success; it
+    // doesn't detect a session that broke silently since the page was last
+    // opened. Actively re-verify against Google in the background whenever
+    // this page is opened, instead of only discovering it's broken the next
+    // time the user taps upload/restore.
+    let cancelled = false;
+    void verifyGoogleConnection().then((status) => {
+      if (cancelled) return;
+      setSignedIn(status.state === "connected");
+      setEmail(status.email);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const handleSignIn = async () => {

@@ -21,6 +21,8 @@ import {
   MessageCircle,
   MessageSquareText,
   CalendarClock,
+  Filter,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -479,6 +481,9 @@ export default function UnitDetails() {
   const [markReceived, setMarkReceived] = useState<Payment | null>(null);
   const [showAllContractPayments, setShowAllContractPayments] = useState(false);
   const [showReceivedPayments, setShowReceivedPayments] = useState(false);
+  const [paymentContractFilter, setPaymentContractFilter] = useState<string>("all");
+  const [paymentFromMonth, setPaymentFromMonth] = useState<string>("");
+  const [paymentToMonth, setPaymentToMonth] = useState<string>("");
   const [ejarImportOpen, setEjarImportOpen] = useState(false);
   const [pendingContractUpdate, setPendingContractUpdate] = useState<{
     original: Contract;
@@ -585,16 +590,33 @@ export default function UnitDetails() {
   const allUnreceivedPayments = cleanPayments.filter((payment) => !isPaymentPaid(payment));
   const receivedPayments = cleanPayments.filter((payment) => isPaymentPaid(payment));
   const pendingOwnerTransferPayments = receivedPayments.filter((payment) => !payment.ownerTransferred);
-  const visiblePayments = [
-    ...(showAllContractPayments ? allUnreceivedPayments : collapsedUnreceivedPayments),
-    ...(showReceivedPayments ? receivedPayments : pendingOwnerTransferPayments),
-  ]
-    .filter((payment, index, list) => list.findIndex((item) => item.id === payment.id) === index)
-    .sort((a, b) => (b.dueDateGregorian || b.nextDueDate || b.paymentDate)
-      .localeCompare(a.dueDateGregorian || a.nextDueDate || a.paymentDate));
   const contracts = data.contracts
     .filter((c) => c.unitId === unit.id && !c.deletedAt)
     .sort((a, b) => b.endDate.localeCompare(a.endDate));
+  const paymentMonthKey = (payment: Payment) =>
+    (payment.dueDateGregorian || payment.nextDueDate || payment.paymentDate || "").slice(0, 7);
+  const paymentsFilterActive = paymentContractFilter !== "all" || !!paymentFromMonth || !!paymentToMonth;
+  const filteredContractPayments = cleanPayments
+    .filter((payment) => paymentContractFilter === "all" || payment.contractId === paymentContractFilter)
+    .filter((payment) => {
+      const monthKey = paymentMonthKey(payment);
+      if (paymentFromMonth && monthKey < paymentFromMonth) return false;
+      if (paymentToMonth && monthKey > paymentToMonth) return false;
+      return true;
+    })
+    .sort((a, b) => (b.dueDateGregorian || b.nextDueDate || b.paymentDate)
+      .localeCompare(a.dueDateGregorian || a.nextDueDate || a.paymentDate));
+  const visiblePayments = (
+    paymentsFilterActive
+      ? filteredContractPayments
+      : [
+          ...(showAllContractPayments ? allUnreceivedPayments : collapsedUnreceivedPayments),
+          ...(showReceivedPayments ? receivedPayments : pendingOwnerTransferPayments),
+        ]
+  )
+    .filter((payment, index, list) => list.findIndex((item) => item.id === payment.id) === index)
+    .sort((a, b) => (b.dueDateGregorian || b.nextDueDate || b.paymentDate)
+      .localeCompare(a.dueDateGregorian || a.nextDueDate || a.paymentDate));
   const currentLessorCapacity = contracts.find((contract) => isActiveContract(contract))?.lessorCapacity ?? "owner";
   const bills = data.bills
     .filter((b) => b.unitId === unit.id)
@@ -1001,26 +1023,85 @@ export default function UnitDetails() {
             <Button className="w-full rounded-xl" onClick={() => setPaymentOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> تسجيل دفعة إيجار
             </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={showAllContractPayments ? "secondary" : "outline"}
-                size="sm"
-                className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
-                onClick={() => setShowAllContractPayments((current) => !current)}
-              >
-                {showAllContractPayments ? "إخفاء المستقبلية" : "كل دفعات العقد"}
-              </Button>
-              <Button
-                variant={showReceivedPayments ? "secondary" : "outline"}
-                size="sm"
-                className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
-                onClick={() => setShowReceivedPayments((current) => !current)}
-              >
-                {showReceivedPayments ? "إخفاء المستلمة" : `الدفعات المستلمة (${receivedPayments.length})`}
-              </Button>
+            <div className="space-y-2 rounded-2xl border border-border bg-muted/30 p-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground">
+                <Filter className="h-3.5 w-3.5" />
+                فلترة الدفعات حسب العقد أو الفترة
+              </div>
+              <Select value={paymentContractFilter} onValueChange={setPaymentContractFilter}>
+                <SelectTrigger className="h-9 rounded-xl text-xs">
+                  <SelectValue placeholder="كل العقود" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل العقود</SelectItem>
+                  {contracts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {`عقد ${formatDate(c.startDate)} - ${formatDate(c.endDate)}${isActiveContract(c) ? "" : " (منتهٍ)"}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">من شهر</Label>
+                  <Input
+                    type="month"
+                    value={paymentFromMonth}
+                    onChange={(e) => setPaymentFromMonth(e.target.value)}
+                    className="h-9 rounded-xl text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">إلى شهر</Label>
+                  <Input
+                    type="month"
+                    value={paymentToMonth}
+                    onChange={(e) => setPaymentToMonth(e.target.value)}
+                    className="h-9 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+              {paymentsFilterActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full rounded-xl text-xs text-muted-foreground"
+                  onClick={() => {
+                    setPaymentContractFilter("all");
+                    setPaymentFromMonth("");
+                    setPaymentToMonth("");
+                  }}
+                >
+                  <X className="ml-1 h-3.5 w-3.5" /> إلغاء الفلترة ({filteredContractPayments.length} دفعة)
+                </Button>
+              )}
             </div>
+            {!paymentsFilterActive && (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={showAllContractPayments ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
+                  onClick={() => setShowAllContractPayments((current) => !current)}
+                >
+                  {showAllContractPayments ? "إخفاء المستقبلية" : "كل دفعات العقد"}
+                </Button>
+                <Button
+                  variant={showReceivedPayments ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-9 min-w-0 rounded-xl px-2 text-[11px]"
+                  onClick={() => setShowReceivedPayments((current) => !current)}
+                >
+                  {showReceivedPayments ? "إخفاء المستلمة" : `الدفعات المستلمة (${receivedPayments.length})`}
+                </Button>
+              </div>
+            )}
             {visiblePayments.length === 0 ? (
-              <EmptyState icon={Wallet} title="لا توجد دفعات تحتاج إجراء" description="استخدم الزرين أعلاه لعرض الدفعات المستقبلية أو المستلمة" />
+              <EmptyState
+                icon={Wallet}
+                title="لا توجد دفعات تحتاج إجراء"
+                description={paymentsFilterActive ? "لا توجد دفعات مطابقة لهذه الفلترة" : "استخدم الزرين أعلاه لعرض الدفعات المستقبلية أو المستلمة"}
+              />
             ) : (
               visiblePayments.map((p) => {
                 const st = effectiveStatus(p);
