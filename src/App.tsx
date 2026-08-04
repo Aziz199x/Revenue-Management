@@ -352,7 +352,16 @@ function AutomaticCommunicationManager() {
       void appStateListener?.remove();
       void smsStatusListener?.remove();
     };
-  }, [data.settings.automaticCommunications, update]);
+    // Intentionally mount-only: `run()` always reads the live settings via
+    // `latestData.current`, so it never needs the effect itself to restart.
+    // Depending on `data.settings.automaticCommunications` used to tear down
+    // and rebuild this timer (clearing the 5-minute interval and re-arming a
+    // fresh 1.5s startup delay) every time a message was sent successfully
+    // (which updates `lastRunAt` on that same settings object) or any
+    // automatic-communication setting changed — starving the periodic check
+    // the same way the backup timer used to be starved by a `[data]` dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return null;
 }
 

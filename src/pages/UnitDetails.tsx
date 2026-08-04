@@ -589,7 +589,31 @@ export default function UnitDetails() {
   const collapsedUnreceivedPayments = getVisiblePaymentsByContract(cleanPayments);
   const allUnreceivedPayments = cleanPayments.filter((payment) => !isPaymentPaid(payment));
   const receivedPayments = cleanPayments.filter((payment) => isPaymentPaid(payment));
-  const pendingOwnerTransferPayments = receivedPayments.filter((payment) => !payment.ownerTransferred);
+  const OWNER_TRANSFER_AUTO_HIDE_MS = 3 * 24 * 60 * 60 * 1000;
+  const paymentHasRequiredTransferEvidence = (payment: Payment) => {
+    const attachments = data.evidenceAttachments.filter(
+      (item) => item.entityType === "payment" && item.entityId === payment.id,
+    );
+    const hasReceipt = attachments.some((item) => item.kind === "payment_receipt");
+    if (payment.ownerSettledByMaintenance) return hasReceipt;
+    const hasTransfer = attachments.some((item) => item.kind === "owner_transfer");
+    return hasReceipt && hasTransfer;
+  };
+  const isPastOwnerTransferAutoHideWindow = (payment: Payment) => {
+    const referenceDate = payment.ownerTransferDate || payment.paymentDate;
+    if (!referenceDate) return false;
+    return Date.now() - new Date(referenceDate).getTime() > OWNER_TRANSFER_AUTO_HIDE_MS;
+  };
+  // A received payment stays visible in the default list even after being
+  // transferred to the owner, so it is not lost sight of before the receipt
+  // and transfer proofs are attached. It only drops out once both proofs are
+  // on file, or automatically after 3 days (still reachable via "الدفعات المستلمة").
+  const pendingOwnerTransferPayments = receivedPayments.filter((payment) => {
+    if (!payment.ownerTransferred) return true;
+    if (paymentHasRequiredTransferEvidence(payment)) return false;
+    if (isPastOwnerTransferAutoHideWindow(payment)) return false;
+    return true;
+  });
   const contracts = data.contracts
     .filter((c) => c.unitId === unit.id && !c.deletedAt)
     .sort((a, b) => b.endDate.localeCompare(a.endDate));
