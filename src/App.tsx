@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { StoreProvider, useStore } from "@/data/store";
 import { mergeCommunicationLogs } from "@/data/communicationLogs";
+import { buildReminderRoute } from "@/data/helpers";
 import { syncScheduledNotifications } from "@/utils/notifications";
 import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
@@ -49,7 +50,18 @@ function NotificationChecker() {
   latestData.current = data;
 
   useEffect(() => {
-    syncScheduledNotifications(data);
+    // Debounced on purpose: a cold start can produce a burst of back-to-back
+    // `data` reference changes in a few hundred ms (initial localStorage load,
+    // then SQLite hydration, then whichever manager settles first). Without
+    // this delay, every single one of those changes re-triggered this effect
+    // and re-ran the native reminder-plan sync (a synchronous JSON build over
+    // every reminder plus a native bridge call) back to back — pegging the
+    // main thread and making the app feel frozen right after opening it from
+    // a notification tap, before it ever got a chance to settle.
+    const timer = window.setTimeout(() => {
+      void syncScheduledNotifications(latestData.current);
+    }, 800);
+    return () => window.clearTimeout(timer);
   }, [data]);
 
   useEffect(() => {
@@ -182,7 +194,23 @@ function AutomaticCommunicationManager() {
     let active = true;
     let appStateListener: { remove: () => Promise<void> } | undefined;
     let smsStatusListener: { remove: () => Promise<void> } | undefined;
-    const notify = async (title: string, body: string, kind: "success" | "warning" = "success") => {
+    // Every locally-scheduled notification must carry a route so tapping it
+    // always lands on the relevant page instead of doing nothing (the
+    // native reminder engine already does this for its own notifications —
+    // this covers the ad-hoc ones this manager schedules for send results).
+    const routeForLog = (log?: { paymentId?: string; contractId?: string }): string | undefined => {
+      if (!log) return undefined;
+      if (log.paymentId) {
+        const payment = latestData.current.payments.find((p) => p.id === log.paymentId);
+        if (payment) return buildReminderRoute("rent", payment.unitId, payment.id);
+      }
+      if (log.contractId) {
+        const contract = latestData.current.contracts.find((c) => c.id === log.contractId);
+        if (contract) return buildReminderRoute("contract", contract.unitId, contract.id);
+      }
+      return undefined;
+    };
+    const notify = async (title: string, body: string, kind: "success" | "warning" = "success", route?: string) => {
       if (kind === "warning") toast.warning(title, { description: body });
       else toast.success(title, { description: body });
       if (!Capacitor.isNativePlatform()) return;
@@ -196,6 +224,7 @@ function AutomaticCommunicationManager() {
             title,
             body,
             schedule: { at: new Date(Date.now() + 500) },
+            extra: { route: route || "/settings/communications" },
           }],
         });
       } catch (error) {
@@ -242,13 +271,15 @@ function AutomaticCommunicationManager() {
         communicationLogs: transform(latestData.current.communicationLogs || []),
       };
       pendingSmsUpdates.current.delete(event.requestId);
+      const log = latestData.current.communicationLogs.find((item) => item.id === event.requestId);
       if (event.status === "failed") {
-        await notify("فشل إرسال SMS", event.error || "تحقق من الشريحة والتغطية والرصيد.", "warning");
+        await notify("فشل إرسال SMS", event.error || "تحقق من الشريحة والتغطية والرصيد.", "warning", routeForLog(log));
       } else {
-        const log = latestData.current.communicationLogs.find((item) => item.id === event.requestId);
         await notify(
           `تم إشعار ${log?.tenantName || "المستأجر"}`,
           `تم إرسال SMS للوحدة ${log?.unitName || "غير محددة"}.`,
+          "success",
+          routeForLog(log),
         );
       }
     };
@@ -309,6 +340,8 @@ function AutomaticCommunicationManager() {
           await notify(
             `تم إشعار ${log.tenantName || "المستأجر"}`,
             `تم الإرسال عبر ${channel} للوحدة ${log.unitName || "غير محددة"}.`,
+            "success",
+            routeForLog(log),
           );
         }
         for (const log of logs.filter((item) => item.status === "queued")) {
@@ -316,6 +349,7 @@ function AutomaticCommunicationManager() {
             `جاري التحقق من SMS: ${log.tenantName || "المستأجر"}`,
             `لن تتكرر رسالة الوحدة ${log.unitName || "غير محددة"} خلال مهلة التحقق أو قبل انتهاء الفترة المحددة.`,
             "warning",
+            routeForLog(log),
           );
         }
         const failures = logs.filter((item) => item.status === "failed");
