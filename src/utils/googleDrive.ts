@@ -335,10 +335,20 @@ export async function getValidGoogleAccessToken(): Promise<string> {
     }
 
     if (verifyResp.status === 401) {
-      clearTokens();
-      throw new Error(
-        "Google session expired. Please reconnect your Google account.",
-      );
+      // The cached access token looked valid locally (expiresAt hadn't
+      // passed yet) but Google already rejected it — this happens on clock
+      // drift or early invalidation and does NOT mean the refresh token is
+      // dead. Try one real refresh-token-based renewal before giving up;
+      // immediately wiping the whole session here (as this used to do) is
+      // exactly what forced a full reconnect every couple of hours even
+      // though the refresh token itself was still perfectly usable.
+      try {
+        return await refreshAccessToken();
+      } catch {
+        throw new Error(
+          "Google session expired. Please reconnect your Google account.",
+        );
+      }
     }
 
     if (verifyResp.status === 403) {
@@ -434,7 +444,7 @@ export async function getValidGoogleAccessToken(): Promise<string> {
   }
 }
 
-async function driveFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function driveFetch(path: string, options: RequestInit = {}, isRetry = false): Promise<Response> {
   const token = await getValidToken();
   const url = `https://www.googleapis.com/drive/v3${path}`;
   console.log('[GoogleDrive] Request:', options.method || 'GET', url);
@@ -452,7 +462,18 @@ async function driveFetch(path: string, options: RequestInit = {}): Promise<Resp
     console.error(`[GoogleDrive] Response ${resp.status}:`, body);
 
     if (resp.status === 401) {
-      clearTokens();
+      // A 401 here means Google rejected a token `getValidToken()` believed
+      // was still fresh. Try one real refresh before treating the session
+      // as dead — this is the same "verify then immediately wipe everything"
+      // pattern that used to force a full reconnect every couple of hours.
+      if (!isRetry) {
+        try {
+          await refreshAccessToken();
+          return driveFetch(path, options, true);
+        } catch {
+          // fall through to the error below
+        }
+      }
       throw new Error("انتهت صلاحية الجلسة، الرجاء تسجيل الدخول مرة أخرى");
     }
 
@@ -562,7 +583,7 @@ export async function deleteBackup(fileId: string): Promise<void> {
   await driveFetch(`/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
 }
 
-export async function downloadBackup(fileId: string): Promise<string> {
+export async function downloadBackup(fileId: string, isRetry = false): Promise<string> {
   const token = await getValidToken();
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   console.log('[GoogleDrive] Download:', url);
@@ -576,7 +597,16 @@ export async function downloadBackup(fileId: string): Promise<string> {
     console.error(`[GoogleDrive] Download failed (${resp.status}):`, body);
 
     if (resp.status === 401) {
-      clearTokens();
+      // Same rationale as driveFetch: try one real refresh before declaring
+      // the session dead instead of wiping it on the first rejected token.
+      if (!isRetry) {
+        try {
+          await refreshAccessToken();
+          return downloadBackup(fileId, true);
+        } catch {
+          // fall through to the error below
+        }
+      }
       throw new Error("Google session expired. Please reconnect your Google account.");
     }
 

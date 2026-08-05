@@ -12,6 +12,8 @@ import {
   HardDrive,
   Trash2,
   Database,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -113,6 +115,7 @@ export default function BackupPage() {
   });
 
   const [signingIn, setSigningIn] = useState(false);
+  const [renewing, setRenewing] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -156,6 +159,30 @@ export default function BackupPage() {
       showError(e instanceof Error ? e.message : "تعذر ربط حساب Google");
     } finally {
       setSigningIn(false);
+    }
+  };
+
+  // Distinct from "تغيير حساب Google": this never forces the account picker
+  // or clears the Google SDK session — it only tries to silently renew the
+  // existing access token (fresh access token via the stored refresh token),
+  // which is exactly what a session that "expired" from simple inactivity
+  // needs, without making the user re-pick their account every time.
+  const handleRenewSession = async () => {
+    if (renewing) return;
+    setRenewing(true);
+    try {
+      const status = await verifyGoogleConnection();
+      setSignedIn(status.state === "connected");
+      setEmail(status.email);
+      if (status.state === "connected") {
+        showSuccess("تم تجديد الجلسة بنجاح");
+      } else {
+        showError("تعذر تجديد الجلسة تلقائيًا. استخدم \"تغيير حساب Google\" لإعادة الربط يدويًا");
+      }
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "تعذر تجديد الجلسة");
+    } finally {
+      setRenewing(false);
     }
   };
 
@@ -429,7 +456,7 @@ export default function BackupPage() {
             </div>
           </div>
 
-          {!signedIn ? (
+          {!email ? (
             <Button
               className="w-full rounded-xl"
               onClick={handleSignIn}
@@ -442,6 +469,36 @@ export default function BackupPage() {
               )}
               {signingIn ? "جاري تسجيل الدخول..." : "ربط حساب Google"}
             </Button>
+          ) : !signedIn ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-medium">{email}</p>
+                  <p className="text-xs text-amber-700">انتهت صلاحية الجلسة، جدّدها بدون تبديل الحساب</p>
+                </div>
+              </div>
+
+              <Button
+                className="w-full rounded-xl text-xs"
+                onClick={handleRenewSession}
+                disabled={renewing || signingIn}
+              >
+                {renewing ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="ml-1 h-3.5 w-3.5" />}
+                {renewing ? "جاري تجديد الجلسة..." : "تجديد الجلسة"}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl text-xs"
+                onClick={handleSignIn}
+                disabled={signingIn || renewing}
+              >
+                {signingIn ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <Cloud className="ml-1 h-3.5 w-3.5" />}
+                {signingIn ? "جاري اختيار الحساب..." : "تغيير حساب Google"}
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-2 rounded-2xl bg-muted p-3">
@@ -459,16 +516,28 @@ export default function BackupPage() {
                 </div>
               )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full rounded-xl text-xs"
-                onClick={handleSignIn}
-                disabled={signingIn || loggingOut || uploading || restoring}
-              >
-                {signingIn ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <Cloud className="ml-1 h-3.5 w-3.5" />}
-                {signingIn ? "جاري اختيار الحساب..." : "تغيير حساب Google"}
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full min-w-0 rounded-xl px-2 text-[0.7rem] leading-tight sm:text-xs"
+                  onClick={handleRenewSession}
+                  disabled={renewing || signingIn || loggingOut}
+                >
+                  {renewing ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="ml-1 h-3.5 w-3.5" />}
+                  {renewing ? "جاري التجديد..." : "تجديد الجلسة"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full min-w-0 rounded-xl px-2 text-[0.7rem] leading-tight sm:text-xs"
+                  onClick={handleSignIn}
+                  disabled={signingIn || loggingOut || uploading || restoring || renewing}
+                >
+                  {signingIn ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <Cloud className="ml-1 h-3.5 w-3.5" />}
+                  {signingIn ? "جاري الاختيار..." : "تغيير الحساب"}
+                </Button>
+              </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <Button

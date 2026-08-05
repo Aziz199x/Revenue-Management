@@ -294,9 +294,19 @@ function wasRecentlyAttempted(
   // together. A normal delay inside the run window does not shift the next
   // occurrence, while a very late catch-up can intentionally skip a nearby
   // occurrence and resume at the following anchored slot.
+  //
+  // The cooldown floor must be measured from the PREVIOUS occurrence's
+  // anchored slot (its `scheduledFor`), not from when it actually went out
+  // (`createdAt`). Otherwise a message that goes out late (e.g. scheduled
+  // for 10:00 but actually sent at 11:00 because the app was opened an hour
+  // late) permanently drags every future occurrence an hour later too,
+  // instead of the schedule catching back up to its fixed daily time.
   const latestDelivered = matching.find((log) => log.status === "sent" || log.status === "queued");
   if (latestDelivered) {
-    const nextAllowedSlot = new Date(latestDelivered.createdAt).getTime()
+    const previousAnchor = latestDelivered.scheduledFor
+      ? new Date(latestDelivered.scheduledFor).getTime()
+      : new Date(latestDelivered.createdAt).getTime();
+    const nextAllowedSlot = previousAnchor
       + cooldown
       - (retryFailedNow ? 0 : SCHEDULE_WINDOW_MS);
     if (scheduledAt < nextAllowedSlot) return true;
