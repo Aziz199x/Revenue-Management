@@ -56,6 +56,7 @@ import {
   downloadBackup,
   clearTokens,
   verifyGoogleConnection,
+  renewGoogleSession,
   BackupFileInfo,
 } from "@/utils/googleDrive";
 import { validateBackupJson, createEmergencySnapshot, getEmergencySnapshot, clearEmergencySnapshot } from "@/utils/backupData";
@@ -171,7 +172,7 @@ export default function BackupPage() {
     if (renewing) return;
     setRenewing(true);
     try {
-      const status = await verifyGoogleConnection();
+      const status = await renewGoogleSession();
       setSignedIn(status.state === "connected");
       setEmail(status.email);
       if (status.state === "connected") {

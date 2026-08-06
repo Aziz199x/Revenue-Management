@@ -303,13 +303,19 @@ function wasRecentlyAttempted(
   // instead of the schedule catching back up to its fixed daily time.
   const latestDelivered = matching.find((log) => log.status === "sent" || log.status === "queued");
   if (latestDelivered) {
-    const previousAnchor = latestDelivered.scheduledFor
-      ? new Date(latestDelivered.scheduledFor).getTime()
-      : new Date(latestDelivered.createdAt).getTime();
-    const nextAllowedSlot = previousAnchor
-      + cooldown
-      - (retryFailedNow ? 0 : SCHEDULE_WINDOW_MS);
-    if (scheduledAt < nextAllowedSlot) return true;
+    if (latestDelivered.scheduledFor) {
+      const previousAnchor = new Date(latestDelivered.scheduledFor).getTime();
+      const nextAllowedSlot = previousAnchor
+        + cooldown
+        - (retryFailedNow ? 0 : SCHEDULE_WINDOW_MS);
+      if (scheduledAt < nextAllowedSlot) return true;
+    } else {
+      // Legacy log with no anchor recorded. Its actual send time can only
+      // have covered occurrences at or before that moment — it must never
+      // block a LATER anchored slot, otherwise one anchorless record
+      // permanently freezes the schedule for that recipient.
+      if (scheduledAt <= new Date(latestDelivered.createdAt).getTime()) return true;
+    }
   }
 
   const latestFailure = sameOccurrence.find((log) => log.status === "failed")
@@ -386,7 +392,6 @@ function scheduledOccurrenceFor(
 ): Date | null {
   const rule = resolvedSchedule(data, kind);
   if (!rule.enabled) return null;
-  if (force) return now;
 
   const activeFrom = data.settings.automaticCommunications.activeFrom;
   const scheduleStartDate = activeFrom && activeFrom > firstEligibleDate
@@ -394,6 +399,19 @@ function scheduledOccurrenceFor(
     : firstEligibleDate;
   const firstOccurrence = scheduledTime(scheduleStartDate, rule.sendTime);
   const elapsed = now.getTime() - firstOccurrence.getTime();
+
+  // A manual "فحص المستحق وإرساله الآن" bypasses the timing gates below, but it
+  // must still be recorded against the ANCHORED slot rather than the moment the
+  // button was pressed. Stamping the press time here used to become that log's
+  // `scheduledFor`, which then pushed the following day's cooldown floor to the
+  // press time + 24h — so every manual check dragged the whole schedule later
+  // and the user's chosen send time (e.g. 10:00) was never honoured again.
+  if (force) {
+    if (elapsed < 0) return now;
+    const frequencyMs = Math.max(1, rule.frequencyHours) * HOUR;
+    return new Date(firstOccurrence.getTime() + Math.floor(elapsed / frequencyMs) * frequencyMs);
+  }
+
   if (elapsed < 0) return null;
 
   const frequencyMs = Math.max(1, rule.frequencyHours) * HOUR;

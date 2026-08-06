@@ -141,6 +141,23 @@ export async function verifyGoogleConnection(): Promise<GoogleConnectionStatus> 
   }
 }
 
+/**
+ * Forces a silent renewal of the stored session, without ever opening the
+ * account picker. This is what the "تجديد الجلسة" button calls — unlike
+ * verifyGoogleConnection() it does not settle for a token that merely looks
+ * valid locally, it actually mints a fresh one through the native session.
+ */
+export async function renewGoogleSession(): Promise<GoogleConnectionStatus> {
+  const email = getTokens()?.email || getConnectedEmail();
+  if (!email) return { email: null, state: "disconnected" };
+  try {
+    await refreshAccessToken();
+    return { email: getConnectedEmail(), state: "connected" };
+  } catch {
+    return { email: getConnectedEmail(), state: "expired" };
+  }
+}
+
 export async function signIn(options: { forceAccountSelection?: boolean } = {}): Promise<string> {
   if (!Capacitor.isNativePlatform()) {
     throw new Error("يتطلب تسجيل الدخول جهازًا فعليًا");
@@ -230,8 +247,56 @@ export async function signIn(options: { forceAccountSelection?: boolean } = {}):
   }
 }
 
+/**
+ * Silently renews the access token through the native Google Sign-In session.
+ *
+ * This is the durable path and the reason the connection used to die after
+ * roughly an hour. `exchangeGoogleAuthCode()` posts to Google's token endpoint
+ * WITHOUT a client_secret — which Google rejects for this client type — so a
+ * `refresh_token` was almost never actually obtained, leaving nothing but the
+ * ~1 hour access token and no way to renew it. `GoogleAuth.refresh()` instead
+ * asks the Android account manager for a fresh token against the device's
+ * already-signed-in Google account: no refresh token, no client secret and no
+ * user interaction required, and it keeps working for as long as the account
+ * stays added on the device.
+ */
+async function refreshViaNativeSession(): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  const current = getTokens();
+  if (!current?.email) return null;
+  try {
+    const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+    await GoogleAuth.initialize({
+      clientId: CLIENT_ID,
+      scopes: SCOPES,
+      grantOfflineAccess: true,
+    });
+    const auth = await GoogleAuth.refresh();
+    const accessToken = auth?.accessToken;
+    if (!accessToken) return null;
+    saveTokens({
+      ...current,
+      accessToken,
+      refreshToken: auth.refreshToken || current.refreshToken,
+      // The native call does not report a lifetime; Google's tokens are one
+      // hour, so keep a small safety margin and renew again after ~55 min.
+      expiresAt: Date.now() + 55 * 60 * 1000,
+    });
+    return accessToken;
+  } catch (error) {
+    console.warn("[Google Drive] native silent refresh failed", error);
+    return null;
+  }
+}
+
 async function refreshAccessToken(): Promise<string> {
   const current = getTokens();
+
+  // Preferred: silent native renewal (works without a refresh token).
+  const nativeToken = await refreshViaNativeSession();
+  if (nativeToken) return nativeToken;
+
+  // Fallback: standard refresh-token grant, when one was actually stored.
   if (current?.refreshToken) {
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -242,28 +307,21 @@ async function refreshAccessToken(): Promise<string> {
         grant_type: "refresh_token",
       }),
     });
-    if (!response.ok) {
-      // The refresh token itself was rejected (revoked, password changed,
-      // app access revoked, etc.) — this is a real, persistent problem, not
-      // a normal hourly expiry. Flag it so the "connected" badge and the
-      // automatic backup scheduler both stop treating this session as usable
-      // until the user reconnects.
-      markNeedsReconnect();
-      throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
+    if (response.ok) {
+      const token = await response.json();
+      const refreshed: StoredTokens = {
+        ...current,
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token || current.refreshToken,
+        expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
+      };
+      saveTokens(refreshed);
+      return refreshed.accessToken;
     }
-    const token = await response.json();
-    const refreshed: StoredTokens = {
-      ...current,
-      accessToken: token.access_token,
-      refreshToken: token.refresh_token || current.refreshToken,
-      expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
-    };
-    saveTokens(refreshed);
-    return refreshed.accessToken;
   }
-  // Legacy sessions did not store a refresh token. Never refresh them through
-  // the plugin's global active account because it may currently be the Gmail
-  // sender rather than the Drive backup account.
+
+  // Both renewal paths failed — the device account is gone or access was
+  // revoked. Only now is this a real, persistent problem worth surfacing.
   markNeedsReconnect();
   throw new Error("انتهت صلاحية حساب Google Drive. أعد ربطه من صفحة النسخ الاحتياطي");
 }

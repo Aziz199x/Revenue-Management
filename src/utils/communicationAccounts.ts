@@ -104,10 +104,12 @@ export function getGmailAccountStatus() {
   if (!account?.email || !account.accessToken) {
     return { email: account?.email || null, state: account?.email ? "expired" as const : "disconnected" as const };
   }
-  return {
-    email: account.email,
-    state: Date.now() < account.expiresAt ? "connected" as const : "expired" as const,
-  };
+  // Deliberately NOT a raw expiresAt comparison. The access token expires
+  // every hour by design and is now renewed silently through the native
+  // session, so treating that as "expired" made this report a disconnected
+  // account hourly — which in turn made the manual check reset emailProvider
+  // to null and quietly switch automatic email sending off.
+  return { email: account.email, state: "connected" as const };
 }
 
 export async function connectGmail(): Promise<string> {
@@ -167,36 +169,72 @@ export function disconnectGmail(): void {
   localStorage.removeItem(GMAIL_KEY);
 }
 
+/**
+ * Silent native renewal for the Gmail sender account. Same rationale as the
+ * Drive one: the authorization-code exchange above runs without a
+ * client_secret, so a refresh_token is rarely obtained and the sender account
+ * would otherwise go dead about an hour after connecting — silently breaking
+ * automatic email sending until the user manually reconnected.
+ */
+async function refreshGmailViaNativeSession(): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  const account = readJson<GmailAccount>(GMAIL_KEY);
+  if (!account?.email) return null;
+  try {
+    const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+    await GoogleAuth.initialize({
+      clientId: GOOGLE_CLIENT_ID,
+      scopes: GMAIL_SCOPES,
+      grantOfflineAccess: true,
+    });
+    const auth = await GoogleAuth.refresh();
+    if (!auth?.accessToken) return null;
+    writeJson(GMAIL_KEY, {
+      ...account,
+      accessToken: auth.accessToken,
+      refreshToken: auth.refreshToken || account.refreshToken,
+      expiresAt: Date.now() + 55 * 60 * 1000,
+    } satisfies GmailAccount);
+    return auth.accessToken;
+  } catch (error) {
+    console.warn("[Gmail] native silent refresh failed", error);
+    return null;
+  }
+}
+
 async function getValidGmailAccessToken(): Promise<string> {
   const account = readJson<GmailAccount>(GMAIL_KEY);
   if (!account?.accessToken || !account.email) {
     throw new Error("اربط حساب Gmail من إعدادات الإرسال أولًا");
   }
   if (Date.now() < account.expiresAt) return account.accessToken;
-  if (!account.refreshToken) {
-    throw new Error("انتهت صلاحية حساب Gmail. أعد ربط حساب الإرسال من الإعدادات");
+
+  const nativeToken = await refreshGmailViaNativeSession();
+  if (nativeToken) return nativeToken;
+
+  if (account.refreshToken) {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        refresh_token: account.refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+    if (response.ok) {
+      const token = await response.json();
+      const refreshed: GmailAccount = {
+        ...account,
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token || account.refreshToken,
+        expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
+      };
+      writeJson(GMAIL_KEY, refreshed);
+      return refreshed.accessToken;
+    }
   }
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      refresh_token: account.refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!response.ok) {
-    throw new Error("انتهت صلاحية حساب Gmail. أعد ربط حساب الإرسال من الإعدادات");
-  }
-  const token = await response.json();
-  const refreshed: GmailAccount = {
-    ...account,
-    accessToken: token.access_token,
-    refreshToken: token.refresh_token || account.refreshToken,
-    expiresAt: Date.now() + Math.max(60, Number(token.expires_in) || 3300) * 1000,
-  };
-  writeJson(GMAIL_KEY, refreshed);
-  return refreshed.accessToken;
+  throw new Error("انتهت صلاحية حساب Gmail. أعد ربط حساب الإرسال من الإعدادات");
 }
 
 export async function sendGmailEmail(to: string, subject: string, body: string): Promise<void> {
