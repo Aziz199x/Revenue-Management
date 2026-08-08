@@ -1,4 +1,4 @@
-import { AppData, Payment, Contract, Tenant, PaymentStatus, RentPeriod, RentPeriodNew, ContractDurationType, EjarImportPayment, Building, Unit, PaymentReceiveMethod, CollectionFeeStatus, Repair } from "./types";
+import { AppData, Payment, Contract, Tenant, PaymentStatus, RentPeriod, RentPeriodNew, ContractDurationType, EjarImportPayment, Building, Unit, PaymentReceiveMethod, CollectionFeeStatus, Repair, RepairStatus } from "./types";
 import { genId } from "./store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
 import { normalizeId } from "./unitStatus";
@@ -1221,6 +1221,73 @@ export function findOverlappingPayments(
     }
   }
   return conflicts.sort((a, b) => a.overlapStart.localeCompare(b.overlapStart));
+}
+
+/**
+ * Keeps the maintenance ledger in sync with a tenant request's
+ * "add cost to the maintenance log" switch.
+ *
+ * This used to be implemented only on the request DETAILS page, so toggling the
+ * switch while editing a request from the unit page (or creating an already
+ * completed request from the requests page) silently did nothing: no repair was
+ * written, the maintenance tab stayed empty, and because the deduction
+ * suggestions when receiving a payment are built from the repairs list, the
+ * request's cost never showed up there either.
+ *
+ * Idempotent: safe to call on every create/edit. Returns the repairs array
+ * unchanged when nothing needs to happen.
+ */
+export function syncRequestMaintenanceRepair(
+  repairs: Repair[],
+  request: {
+    id: string;
+    unitId?: string;
+    buildingId?: string;
+    title: string;
+    typeLabel: string;
+    cost?: number;
+    technicianName?: string;
+    notes?: string;
+    requestDate: string;
+    actualCompletionDate?: string;
+    status: string;
+    addedToRepairs?: boolean;
+  },
+): Repair[] {
+  const existing = repairs.find((repair) => repair.requestId === request.id);
+  const shouldExist = request.addedToRepairs === true
+    && request.status === "completed"
+    && Number(request.cost) > 0;
+
+  if (!shouldExist) {
+    // Never silently delete a cost that has already been settled against a
+    // payment or an owner transfer — only withdraw an untouched entry.
+    if (existing && !existing.isDeductedFromOwnerTransfer && !existing.deductedFromPaymentId) {
+      return repairs.filter((repair) => repair.id !== existing.id);
+    }
+    return repairs;
+  }
+
+  const fields = {
+    unitId: request.unitId || undefined,
+    buildingId: request.buildingId || undefined,
+    description: `طلب مستأجر: ${request.title} (${request.typeLabel})`,
+    repairDate: request.actualCompletionDate || request.requestDate,
+    cost: Number(request.cost) || 0,
+    contractor: request.technicianName,
+    status: "completed" as RepairStatus,
+    notes: request.notes,
+    requestId: request.id,
+  };
+
+  if (existing) {
+    // Keep an already-linked entry aligned with later edits to the request.
+    return repairs.map((repair) => (repair.id === existing.id ? { ...repair, ...fields } : repair));
+  }
+  return [
+    ...repairs,
+    { id: genId(), createdAt: new Date().toISOString(), expenseKind: "maintenance" as const, ...fields },
+  ];
 }
 
 export function generatePaymentDueDates(startDate: string, endDate: string, paymentCycle: string): string[] {

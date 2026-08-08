@@ -93,6 +93,7 @@ import {
   findPotentialDuplicateReceivedPayments,
   findOverlappingPayments,
   getPaymentCoveragePeriod,
+  syncRequestMaintenanceRepair,
   findEarlierUnreceivedPayments,
   getRemainingPaymentAmount,
   restoreMaintenanceDeductionsForPayment,
@@ -484,6 +485,8 @@ export default function UnitDetails() {
   const [showAllContractPayments, setShowAllContractPayments] = useState(false);
   const [showReceivedPayments, setShowReceivedPayments] = useState(false);
   const [paymentContractFilter, setPaymentContractFilter] = useState<string>("all");
+  // Shared contract filter for the maintenance / requests / bills tabs.
+  const [recordsContractFilter, setRecordsContractFilter] = useState<string>("all");
   const [paymentFromMonth, setPaymentFromMonth] = useState<string>("");
   const [paymentToMonth, setPaymentToMonth] = useState<string>("");
   const [ejarImportOpen, setEjarImportOpen] = useState(false);
@@ -644,15 +647,33 @@ export default function UnitDetails() {
     .sort((a, b) => (b.dueDateGregorian || b.nextDueDate || b.paymentDate)
       .localeCompare(a.dueDateGregorian || a.nextDueDate || a.paymentDate));
   const currentLessorCapacity = contracts.find((contract) => isActiveContract(contract))?.lessorCapacity ?? "owner";
-  const bills = data.bills
+  // Maintenance, requests and bills are dated records with no contract link of
+  // their own, so they are attributed to whichever contract period covers their
+  // date. This lets each tab be reviewed one tenancy at a time.
+  const selectedRecordsContract = recordsContractFilter === "all"
+    ? undefined
+    : contracts.find((c) => c.id === recordsContractFilter);
+  const withinSelectedContract = (date?: string) => {
+    if (!selectedRecordsContract || !date) return true;
+    const day = String(date).slice(0, 10);
+    return day >= selectedRecordsContract.startDate && day <= selectedRecordsContract.endDate;
+  };
+  const contractPeriodLabel = (c: Contract) =>
+    `${formatDate(c.startDate)} - ${formatDate(c.endDate)}${isActiveContract(c) ? "" : " (منتهٍ)"}`;
+
+  const allBills = data.bills
     .filter((b) => b.unitId === unit.id)
     .sort((a, b) => b.billDate.localeCompare(a.billDate));
-  const repairs = data.repairs
+  const allRepairs = data.repairs
     .filter((r) => r.unitId === unit.id)
     .sort((a, b) => b.repairDate.localeCompare(a.repairDate));
-  const requests = data.tenantRequests
+  const allRequests = data.tenantRequests
     .filter((r) => r.unitId === unit.id)
     .sort((a, b) => b.requestDate.localeCompare(a.requestDate));
+
+  const bills = allBills.filter((b) => withinSelectedContract(b.billDate));
+  const repairs = allRepairs.filter((r) => withinSelectedContract(r.repairDate));
+  const requests = allRequests.filter((r) => withinSelectedContract(r.requestDate));
   const earlierOutstandingPayments = markReceived
     ? findEarlierUnreceivedPayments(data, markReceived)
     : [];
@@ -660,6 +681,49 @@ export default function UnitDetails() {
   const maintenanceTotal = repairs
     .filter((r) => r.status !== "cancelled")
     .reduce((s, r) => s + r.cost, 0);
+
+  // One filter control reused by the maintenance, requests and bills tabs.
+  // Hidden when the unit has no contracts, since there would be nothing to
+  // filter by.
+  const ContractRecordsFilter = ({ count, total, noun }: { count: number; total: number; noun: string }) => {
+    if (contracts.length === 0) return null;
+    return (
+      <div className="space-y-1.5 rounded-2xl border border-border bg-muted/30 p-2.5">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground">
+          <Filter className="h-3.5 w-3.5" />
+          عرض حسب فترة العقد
+        </div>
+        <Select value={recordsContractFilter} onValueChange={setRecordsContractFilter}>
+          <SelectTrigger className="h-9 rounded-xl text-xs">
+            <SelectValue placeholder="كل الفترات" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل الفترات</SelectItem>
+            {contracts.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {contractPeriodLabel(c)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedRecordsContract && (
+          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span>
+              {count} من {total} {noun}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-xl px-2 text-[11px]"
+              onClick={() => setRecordsContractFilter("all")}
+            >
+              <X className="ml-1 h-3 w-3" /> إلغاء
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const deleteUnit = () => {
     update((prev) => ({
@@ -1663,8 +1727,13 @@ export default function UnitDetails() {
             <Button className="w-full rounded-xl" onClick={() => setRequestOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة طلب مستأجر
             </Button>
+            <ContractRecordsFilter count={requests.length} total={allRequests.length} noun="طلب" />
             {requests.length === 0 ? (
-              <EmptyState icon={ClipboardList} title="لا توجد طلبات" description="أضف طلبات المستأجر من هنا" />
+              <EmptyState
+                icon={ClipboardList}
+                title="لا توجد طلبات"
+                description={selectedRecordsContract ? "لا توجد طلبات ضمن فترة هذا العقد" : "أضف طلبات المستأجر من هنا"}
+              />
             ) : (
               requests.map((r) => (
                 <div
@@ -1713,8 +1782,13 @@ export default function UnitDetails() {
             <Button className="w-full rounded-xl" onClick={() => setBillOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة فاتورة
             </Button>
+            <ContractRecordsFilter count={bills.length} total={allBills.length} noun="فاتورة" />
             {bills.length === 0 ? (
-              <EmptyState icon={Zap} title="لا توجد فواتير مسجلة" />
+              <EmptyState
+                icon={Zap}
+                title="لا توجد فواتير مسجلة"
+                description={selectedRecordsContract ? "لا توجد فواتير ضمن فترة هذا العقد" : undefined}
+              />
             ) : (
               bills.map((b) => (
                 <div
@@ -1760,14 +1834,21 @@ export default function UnitDetails() {
           {/* Repairs */}
           <TabsContent value="repairs" className="mt-4 space-y-3 min-[500px]:col-start-2 min-[500px]:row-start-1 min-[500px]:mt-0 min-[500px]:[direction:rtl]">
             <div className="flex items-center justify-between rounded-2xl bg-secondary px-4 py-3">
-              <span className="text-sm font-semibold text-secondary-foreground">إجمالي تكاليف الصيانة</span>
+              <span className="text-sm font-semibold text-secondary-foreground">
+                {selectedRecordsContract ? "إجمالي الصيانة خلال العقد" : "إجمالي تكاليف الصيانة"}
+              </span>
               <span className="font-bold text-primary">{formatMoney(maintenanceTotal)}</span>
             </div>
             <Button className="w-full rounded-xl" onClick={() => setRepairOpen(true)}>
               <Plus className="ml-1 h-4 w-4" /> إضافة صيانة
             </Button>
+            <ContractRecordsFilter count={repairs.length} total={allRepairs.length} noun="عملية" />
             {repairs.length === 0 ? (
-              <EmptyState icon={Wrench} title="لا توجد أعمال صيانة" />
+              <EmptyState
+                icon={Wrench}
+                title="لا توجد أعمال صيانة"
+                description={selectedRecordsContract ? "لا توجد صيانة ضمن فترة هذا العقد" : undefined}
+              />
             ) : (
               repairs.map((r) => {
                 const deductedPayment = r.deductedFromPaymentId
@@ -2252,9 +2333,17 @@ export default function UnitDetails() {
             update((prev) => ({
               ...prev,
               tenantRequests: [...prev.tenantRequests, req],
+              repairs: syncRequestMaintenanceRepair(prev.repairs, {
+                ...req,
+                typeLabel: REQUEST_TYPE_LABELS[req.type],
+              }),
             }));
             setRequestOpen(false);
-            showSuccess("تمت إضافة الطلب");
+            showSuccess(
+              req.addedToRepairs && req.status === "completed" && Number(req.cost) > 0
+                ? "تمت إضافة الطلب وتسجيل تكلفته في سجل الصيانة"
+                : "تمت إضافة الطلب",
+            );
           }}
         />
       </FormSheet>
@@ -2270,14 +2359,21 @@ export default function UnitDetails() {
             buildingName={building?.name}
             unitName={unit.name}
             onSubmit={(values) => {
+              const updated = { ...editRequest, ...values, updatedAt: new Date().toISOString() };
               update((prev) => ({
                 ...prev,
-                tenantRequests: prev.tenantRequests.map((r) =>
-                  r.id === editRequest.id ? { ...r, ...values, updatedAt: new Date().toISOString() } : r,
-                ),
+                tenantRequests: prev.tenantRequests.map((r) => (r.id === editRequest.id ? updated : r)),
+                repairs: syncRequestMaintenanceRepair(prev.repairs, {
+                  ...updated,
+                  typeLabel: REQUEST_TYPE_LABELS[updated.type],
+                }),
               }));
               setEditRequest(null);
-              showSuccess("تم حفظ التعديلات");
+              showSuccess(
+                updated.addedToRepairs && updated.status === "completed" && Number(updated.cost) > 0
+                  ? "تم حفظ التعديلات وتحديث سجل الصيانة"
+                  : "تم حفظ التعديلات",
+              );
             }}
           />
         )}

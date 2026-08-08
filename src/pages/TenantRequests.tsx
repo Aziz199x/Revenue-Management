@@ -16,7 +16,7 @@ import FormSheet from "@/components/shared/FormSheet";
 import StatusBadge from "@/components/shared/StatusBadge";
 import TenantRequestForm from "@/components/forms/TenantRequestForm";
 import { useStore, genId } from "@/data/store";
-import { formatDate } from "@/data/helpers";
+import { formatDate, syncRequestMaintenanceRepair } from "@/data/helpers";
 import {
   REQUEST_TYPE_LABELS,
   REQUEST_STATUS_LABELS,
@@ -219,9 +219,17 @@ export default function TenantRequests() {
             update((prev) => ({
               ...prev,
               tenantRequests: [...prev.tenantRequests, req],
+              repairs: syncRequestMaintenanceRepair(prev.repairs, {
+                ...req,
+                typeLabel: REQUEST_TYPE_LABELS[req.type],
+              }),
             }));
             setRequestOpen(false);
-            showSuccess("تمت إضافة الطلب");
+            showSuccess(
+              req.addedToRepairs && req.status === "completed" && Number(req.cost) > 0
+                ? "تمت إضافة الطلب وتسجيل تكلفته في سجل الصيانة"
+                : "تمت إضافة الطلب",
+            );
           }}
         />
       </FormSheet>

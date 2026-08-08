@@ -17,14 +17,14 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormSheet from "@/components/shared/FormSheet";
 import TenantRequestForm from "@/components/forms/TenantRequestForm";
-import { useStore, genId } from "@/data/store";
-import { formatDate, formatMoney } from "@/data/helpers";
+import { useStore } from "@/data/store";
+import { formatDate, formatMoney, syncRequestMaintenanceRepair } from "@/data/helpers";
 import {
   REQUEST_TYPE_LABELS,
   REQUEST_STATUS_LABELS,
   REQUEST_PRIORITY_LABELS,
 } from "@/data/labels";
-import { TenantRequest, Repair, RepairStatus } from "@/data/types";
+import { TenantRequest } from "@/data/types";
 import { showSuccess } from "@/utils/toast";
 
 export default function RequestDetails() {
@@ -62,20 +62,13 @@ export default function RequestDetails() {
 
   const addToRepairs = () => {
     if (!req.cost || req.cost <= 0) return;
-    const repair: Repair = {
-      id: genId(),
-      unitId: req.unitId,
-      description: `طلب مستأجر: ${req.title} (${REQUEST_TYPE_LABELS[req.type]})`,
-      repairDate: req.actualCompletionDate || req.requestDate,
-      cost: req.cost,
-      contractor: req.technicianName,
-      status: "completed" as RepairStatus,
-      notes: req.notes,
-      createdAt: new Date().toISOString(),
-    };
     update((prev) => ({
       ...prev,
-      repairs: [...prev.repairs, repair],
+      repairs: syncRequestMaintenanceRepair(prev.repairs, {
+        ...req,
+        addedToRepairs: true,
+        typeLabel: REQUEST_TYPE_LABELS[req.type],
+      }),
       tenantRequests: prev.tenantRequests.map((r) =>
         r.id === req.id ? { ...r, addedToRepairs: true } : r,
       ),
@@ -221,31 +214,21 @@ export default function RequestDetails() {
           buildingName={building?.name}
           unitName={unit?.name}
           onSubmit={(values) => {
+            const updated = { ...req, ...values, updatedAt: new Date().toISOString() };
             update((prev) => ({
               ...prev,
-              tenantRequests: prev.tenantRequests.map((r) =>
-                r.id === req.id ? { ...r, ...values, updatedAt: new Date().toISOString() } : r,
-              ),
+              tenantRequests: prev.tenantRequests.map((r) => (r.id === req.id ? updated : r)),
+              repairs: syncRequestMaintenanceRepair(prev.repairs, {
+                ...updated,
+                typeLabel: REQUEST_TYPE_LABELS[updated.type],
+              }),
             }));
-            if (values.addedToRepairs && !req.addedToRepairs && values.cost && values.cost > 0) {
-              const repair: Repair = {
-                id: genId(),
-                unitId: req.unitId,
-                description: `طلب مستأجر: ${req.title} (${REQUEST_TYPE_LABELS[req.type]})`,
-                repairDate: values.actualCompletionDate || req.requestDate,
-                cost: values.cost,
-                contractor: values.technicianName,
-                status: "completed" as RepairStatus,
-                notes: values.notes,
-                createdAt: new Date().toISOString(),
-              };
-              update((prev) => ({
-                ...prev,
-                repairs: [...prev.repairs, repair],
-              }));
-            }
             setEditOpen(false);
-            showSuccess("تم حفظ التعديلات");
+            showSuccess(
+              updated.addedToRepairs && updated.status === "completed" && Number(updated.cost) > 0
+                ? "تم حفظ التعديلات وتحديث سجل الصيانة"
+                : "تم حفظ التعديلات",
+            );
           }}
         />
       </FormSheet>

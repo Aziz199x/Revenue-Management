@@ -454,6 +454,8 @@ export interface Repair {
   expenseKind?: "maintenance" | "recurring_bill";
   recurringBillId?: string;
   recurringYearMonth?: string;
+  /** Set when this maintenance record was generated from a tenant request. */
+  requestId?: string;
 }
 
 export interface RecurringBuildingBill {
