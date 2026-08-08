@@ -660,6 +660,7 @@ function reminderTitle(r: ReminderItem): string {
   if (r.kind === "rent") return "موعد سداد الإيجار";
   if (r.kind === "maintenance") return "طلب صيانة معلق";
   if (r.kind === "owner_transfer") return "تحويل للمالك مطلوب";
+  if (r.kind === "payment_conflict") return "تعارض في فترة الإيجار";
   return r.title;
 }
 
@@ -682,6 +683,11 @@ function reminderBody(r: ReminderItem): string {
   }
   if (r.kind === "owner_transfer") {
     return `دفعة مستلمة للوحدة ${r.unitName || r.subtitle} بقيمة ${(r.amount ?? 0).toLocaleString("en-US")} ر.س لم تُحوّل للمالك بعد.`;
+  }
+  if (r.kind === "payment_conflict") {
+    // A conflict is not "late" — describing it with the generic overdue
+    // wording below would be misleading.
+    return r.subtitle;
   }
   const prefix = r.title === "موعد سداد الإيجار" ? "دفعة إيجار" : r.title;
   if (r.days < 0) return `${prefix}: ${r.subtitle} — متأخر منذ ${-r.days} يوم`;
@@ -706,10 +712,17 @@ function buildDesiredNotifications(data: AppData): DesiredNotification[] {
         ? (r.reminderWindow ?? data.settings.contractReminderDays)
         : data.settings.rentReminderDays;
 
-    // Skip if too far in the future
-    if (r.days > windowDays) continue;
-    // Skip stale non-rent reminders older than a few days
-    if (r.days < -3 && r.kind !== "rent" && r.kind !== "owner_transfer") continue;
+    // Skip if too far in the future (a period conflict is a standing data
+    // problem rather than a dated event, so it is never "too early").
+    if (r.days > windowDays && r.kind !== "payment_conflict") continue;
+    // Skip stale non-rent reminders older than a few days. Conflicts are
+    // excluded: an overlap that began months ago is still unresolved today.
+    if (
+      r.days < -3
+      && r.kind !== "rent"
+      && r.kind !== "owner_transfer"
+      && r.kind !== "payment_conflict"
+    ) continue;
 
     const times = buildReminderScheduleTimes(r, data.settings);
     for (const at of times) {
@@ -1313,6 +1326,7 @@ function checkAndNotifyWeb(data: AppData) {
       (r.days >= 0 && r.days <= windowDays) ||
       (r.kind === "rent" && r.days < 0) ||
       (r.kind === "owner_transfer") ||
+      (r.kind === "payment_conflict") ||
       (r.kind !== "rent" && r.days < 0 && r.days >= -3);
     if (!shouldNotify) continue;
     if (notified[r.id] === today) continue;

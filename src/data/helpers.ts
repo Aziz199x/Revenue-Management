@@ -828,7 +828,7 @@ export function requestStats(data: AppData) {
 
 export interface ReminderItem {
   id: string;
-  kind: "rent" | "contract" | "eviction" | "maintenance" | "bill" | "request" | "owner_transfer";
+  kind: "rent" | "contract" | "eviction" | "maintenance" | "bill" | "request" | "owner_transfer" | "payment_conflict";
   title: string;
   subtitle: string;
   date: string;
@@ -909,6 +909,39 @@ export function collectReminders(data: AppData): ReminderItem[] {
       paymentId: p.id,
       route: buildReminderRoute("owner_transfer", p.unitId, p.id),
     });
+  }
+
+  // Overlapping rental periods. Reported once per pair (not twice) so the
+  // reminder list shows one actionable entry per real conflict, and tapping it
+  // opens the unit's payments tab focused on the offending installment.
+  const reportedConflictPairs = new Set<string>();
+  for (const p of data.payments) {
+    if (p.deletedAt || String(p.status) === "cancelled") continue;
+    for (const conflict of findOverlappingPayments(data, p)) {
+      const pairKey = [p.id, conflict.payment.id].sort().join("|");
+      if (reportedConflictPairs.has(pairKey)) continue;
+      reportedConflictPairs.add(pairKey);
+      const unit = data.units.find((item) => normalizeId(item.id) === normalizeId(p.unitId));
+      const building = data.buildings.find((item) => item.id === unit?.buildingId);
+      const conflictDue = paymentDueDateValue(conflict.payment);
+      items.push({
+        id: `payment-conflict-${pairKey}`,
+        kind: "payment_conflict",
+        title: "تعارض في فترة الإيجار",
+        subtitle: `${unit?.name || "وحدة غير محددة"}${building ? ` · ${building.name}` : ""} · `
+          + `دفعتان تغطيان ${formatDate(conflict.overlapStart)} - ${formatDate(conflict.overlapEnd)}`
+          + ` (${formatDate(paymentDueDateValue(p))} و${formatDate(conflictDue)})`,
+        date: conflict.overlapStart,
+        days: daysUntil(conflict.overlapStart),
+        unitId: p.unitId,
+        unitName: unit?.name,
+        tenantName: p.tenantName,
+        amount: getPaymentAmount(p),
+        paymentId: p.id,
+        contractId: p.contractId,
+        route: buildReminderRoute("rent", p.unitId, p.id),
+      });
+    }
   }
 
   for (const c of data.contracts) {

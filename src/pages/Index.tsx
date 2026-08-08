@@ -52,6 +52,7 @@ const kindIcons = {
   request: ClipboardList,
   eviction: Gavel,
   owner_transfer: Send,
+  payment_conflict: AlertTriangle,
 };
 
 const kindColors = {
@@ -62,6 +63,7 @@ const kindColors = {
   request: "bg-purple-100 text-purple-700",
   eviction: "bg-red-100 text-red-700",
   owner_transfer: "bg-cyan-100 text-cyan-700",
+  payment_conflict: "bg-orange-100 text-orange-700",
 };
 
 export default function Index() {
@@ -118,7 +120,17 @@ export default function Index() {
     .filter((c) => c.status === "upcoming" && c.days <= homeUpcomingDays)
     .slice(0, homeMaxItems);
   const overduePayments = paymentCards.filter((c) => c.status === "overdue").slice(0, homeMaxItems);
-  const generalReminders = reminders.filter((reminder) => reminder.kind !== "rent").slice(0, homeMaxItems);
+  // Period conflicts are data-integrity problems (double-charged or duplicated
+  // installments), so they are pinned above the routine reminders instead of
+  // being pushed out of the list by the item limit.
+  const generalReminders = reminders
+    .filter((reminder) => reminder.kind !== "rent")
+    .sort((a, b) => {
+      const aConflict = a.kind === "payment_conflict" ? 0 : 1;
+      const bConflict = b.kind === "payment_conflict" ? 0 : 1;
+      return aConflict - bConflict;
+    })
+    .slice(0, homeMaxItems);
   const pendingOwnerTransfers = dashboardData.payments
     .filter((payment) => !payment.deletedAt && isPaymentPaid(payment) && !payment.ownerTransferred);
   const pendingOwnerTransferAmount = pendingOwnerTransfers.reduce(
