@@ -1105,6 +1105,91 @@ export function addMonthsClamped(date: Date, months: number): Date {
   return result;
 }
 
+/**
+ * The rental period an installment actually covers.
+ *
+ * Derived from the contract's payment cycle (a semi-annual installment covers
+ * six months, a quarterly one covers three, ...) instead of guessing from
+ * "whichever payment happens to come next in the list". That guess produced
+ * nonsense periods on multi-month contracts — a semi-annual installment due
+ * 25 Oct would be described as covering 25 Oct → 23 Nov purely because some
+ * other (often duplicated) record happened to sit at 24 Nov.
+ *
+ * Priority: explicit imported rentalPeriod > contract cycle > single month.
+ */
+export function getPaymentCoveragePeriod(
+  data: Pick<AppData, "payments" | "contracts">,
+  payment: Payment,
+): { start: string; end: string; months: number } {
+  const start = paymentDueDateValue(payment);
+
+  // An Ejar-imported schedule carries its own authoritative period.
+  if (payment.rentalPeriod?.includes(" - ")) {
+    const [rawStart, rawEnd] = payment.rentalPeriod.split(" - ").map((item) => item.trim());
+    if (rawStart && rawEnd && parseLocalDate(rawStart) && parseLocalDate(rawEnd)) {
+      const s = parseLocalDate(rawStart)!;
+      const e = parseLocalDate(rawEnd)!;
+      const months = Math.max(
+        1,
+        Math.round((e.getTime() - s.getTime()) / (30.44 * 86_400_000)),
+      );
+      return { start: rawStart, end: rawEnd, months };
+    }
+  }
+
+  const contract = payment.contractId
+    ? data.contracts.find((item) => item.id === payment.contractId)
+    : undefined;
+  const cycle = contract?.paymentFrequency || "monthly";
+  const months = cycle === "imported_schedule"
+    ? 1
+    : getPaymentIntervalMonths(cycle as RentPeriodNew);
+
+  const startDate = parseLocalDate(start);
+  if (!startDate) return { start, end: start, months };
+  // The period runs up to the day before the next installment falls due.
+  const end = formatLocalDate(
+    new Date(addMonthsClamped(startDate, months).getTime() - 86_400_000),
+  );
+  return { start, end, months };
+}
+
+export interface PaymentPeriodConflict {
+  payment: Payment;
+  overlapStart: string;
+  overlapEnd: string;
+}
+
+/**
+ * Finds other installments of the same unit whose covered rental period
+ * overlaps this one — the case the old duplicate check could never catch,
+ * because it only compared a single report month and an identical amount.
+ * A six-month prepaid installment overlapping three monthly ones, or two
+ * schedules left behind after a contract's start date was edited, are both
+ * reported here regardless of amount or paid/unpaid status.
+ */
+export function findOverlappingPayments(
+  data: Pick<AppData, "payments" | "contracts">,
+  candidate: Payment,
+): PaymentPeriodConflict[] {
+  const isCancelled = (p: Payment) => String(p.status) === "cancelled";
+  if (candidate.deletedAt || isCancelled(candidate)) return [];
+  const own = getPaymentCoveragePeriod(data, candidate);
+  const conflicts: PaymentPeriodConflict[] = [];
+
+  for (const other of data.payments) {
+    if (other.id === candidate.id || other.deletedAt || isCancelled(other)) continue;
+    if (normalizeId(other.unitId) !== normalizeId(candidate.unitId)) continue;
+    const period = getPaymentCoveragePeriod(data, other);
+    const overlapStart = own.start > period.start ? own.start : period.start;
+    const overlapEnd = own.end < period.end ? own.end : period.end;
+    if (overlapStart <= overlapEnd) {
+      conflicts.push({ payment: other, overlapStart, overlapEnd });
+    }
+  }
+  return conflicts.sort((a, b) => a.overlapStart.localeCompare(b.overlapStart));
+}
+
 export function generatePaymentDueDates(startDate: string, endDate: string, paymentCycle: string): string[] {
   const start = parseLocalDate(startDate);
   const end = parseLocalDate(endDate);
@@ -1317,20 +1402,56 @@ export function regenerateUnpaidPayments(
   tenantPhone?: string,
 ): Payment[] {
   const newPayments = generatePaymentsFromContract(contract, buildingName, unitName, tenantName, tenantId, tenantPhone);
-  const paidPayments = existingPayments.filter(
-    (p) => p.status === "paid" || p.status === "partial",
-  );
-  const newPaidPayments = paidPayments.map((pp) => {
-    const match = newPayments.find(
-      (np) => np.paymentDate === pp.paymentDate && np.contractId === pp.contractId,
+  const paidPayments = existingPayments
+    .filter((p) => (p.status === "paid" || p.status === "partial") && !p.deletedAt)
+    .sort((a, b) => paymentDueDateValue(a).localeCompare(paymentDueDateValue(b)));
+
+  // Re-align received installments onto the NEW schedule by their position in
+  // the sequence, not by an exact due-date match.
+  //
+  // Matching on an identical `paymentDate` meant that editing the contract's
+  // start date (which shifts every due date) matched nothing at all: the
+  // already-received installments were kept on their old dates AND a complete
+  // new schedule was appended, leaving two overlapping sets of payments for
+  // the same rental period. Aligning by sequence instead moves each received
+  // installment onto its corresponding new slot, preserving the money and
+  // audit fields while correcting the dates.
+  const takenSlots = new Set<number>();
+  const realignedPaid = paidPayments.map((paid, index) => {
+    let slotIndex = newPayments.findIndex(
+      (np, i) => !takenSlots.has(i) && paymentDueDateValue(np) === paymentDueDateValue(paid),
     );
-    if (match) {
-      return { ...match, ...pp };
+    if (slotIndex < 0 && paid.paymentNumber) {
+      const byNumber = newPayments.findIndex(
+        (np, i) => !takenSlots.has(i) && np.paymentNumber === paid.paymentNumber,
+      );
+      if (byNumber >= 0) slotIndex = byNumber;
     }
-    return pp;
+    if (slotIndex < 0 && index < newPayments.length && !takenSlots.has(index)) {
+      slotIndex = index;
+    }
+    if (slotIndex < 0) return paid;
+
+    takenSlots.add(slotIndex);
+    const slot = newPayments[slotIndex];
+    // Keep the received record's identity and money, take the corrected
+    // schedule fields from the newly generated slot.
+    return {
+      ...paid,
+      paymentDate: slot.paymentDate,
+      nextDueDate: slot.nextDueDate,
+      dueDateGregorian: slot.dueDateGregorian,
+      dueDateHijri: slot.dueDateHijri,
+      paymentDeadlineGregorian: slot.paymentDeadlineGregorian,
+      paymentDeadlineHijri: slot.paymentDeadlineHijri,
+      rentalPeriod: slot.rentalPeriod ?? paid.rentalPeriod,
+      paymentNumber: slot.paymentNumber,
+      contractId: contract.id,
+    };
   });
-  const unpaidNew = newPayments.filter(
-    (np) => !paidPayments.some((pp) => pp.paymentDate === np.paymentDate),
+
+  const unpaidNew = newPayments.filter((_, index) => !takenSlots.has(index));
+  return [...realignedPaid, ...unpaidNew].sort((a, b) =>
+    paymentDueDateValue(a).localeCompare(paymentDueDateValue(b)),
   );
-  return [...newPaidPayments, ...unpaidNew];
 }

@@ -57,6 +57,7 @@ import {
   clearTokens,
   verifyGoogleConnection,
   renewGoogleSession,
+  restoreGoogleSessionFromNativeStorage,
   BackupFileInfo,
 } from "@/utils/googleDrive";
 import { validateBackupJson, createEmergencySnapshot, getEmergencySnapshot, clearEmergencySnapshot } from "@/utils/backupData";
@@ -136,15 +137,18 @@ export default function BackupPage() {
     setEmail(getConnectedEmail());
     // The cached flag above only reflects the last known failure/success; it
     // doesn't detect a session that broke silently since the page was last
-    // opened. Actively re-verify against Google in the background whenever
-    // this page is opened, instead of only discovering it's broken the next
-    // time the user taps upload/restore.
+    // opened. Restore any natively-mirrored session first (in case the
+    // WebView's localStorage was wiped), then actively re-verify against
+    // Google in the background, instead of only discovering a broken session
+    // the next time the user taps upload/restore.
     let cancelled = false;
-    void verifyGoogleConnection().then((status) => {
-      if (cancelled) return;
-      setSignedIn(status.state === "connected");
-      setEmail(status.email);
-    });
+    void restoreGoogleSessionFromNativeStorage()
+      .then(() => verifyGoogleConnection())
+      .then((status) => {
+        if (cancelled) return;
+        setSignedIn(status.state === "connected");
+        setEmail(status.email);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -517,28 +521,19 @@ export default function BackupPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full min-w-0 rounded-xl px-2 text-[0.7rem] leading-tight sm:text-xs"
-                  onClick={handleRenewSession}
-                  disabled={renewing || signingIn || loggingOut}
-                >
-                  {renewing ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="ml-1 h-3.5 w-3.5" />}
-                  {renewing ? "جاري التجديد..." : "تجديد الجلسة"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full min-w-0 rounded-xl px-2 text-[0.7rem] leading-tight sm:text-xs"
-                  onClick={handleSignIn}
-                  disabled={signingIn || loggingOut || uploading || restoring || renewing}
-                >
-                  {signingIn ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <Cloud className="ml-1 h-3.5 w-3.5" />}
-                  {signingIn ? "جاري الاختيار..." : "تغيير الحساب"}
-                </Button>
-              </div>
+              {/* No "renew session" button while healthy: the token is renewed
+                  silently in the background, so offering it here only invited
+                  pointless taps. It appears solely in the expired state above. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl text-xs"
+                onClick={handleSignIn}
+                disabled={signingIn || loggingOut || uploading || restoring}
+              >
+                {signingIn ? <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin" /> : <Cloud className="ml-1 h-3.5 w-3.5" />}
+                {signingIn ? "جاري اختيار الحساب..." : "تغيير حساب Google"}
+              </Button>
 
               <div className="grid grid-cols-2 gap-2">
                 <Button

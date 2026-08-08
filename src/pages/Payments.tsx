@@ -34,7 +34,7 @@ import {
 } from "@/data/maintenanceExpenseItems";
 import { genId, useStore } from "@/data/store";
 import { isCorruptedArabic } from "@/utils/ejarParser";
-import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
+import { formatMoney, formatDate, effectiveStatus, daysUntil, getPaymentAmount, getVisiblePaymentsByContract, getResolvedCollectionFeePercent, getPaymentCollectionFeePercent, normalizePaymentFinancials, getPaymentReceiveMethod, calculateNetAmountToTransferToOwner, EJAR_COLLECTION_FEE_REASON, getPaymentMaintenanceDeductionAmount, getPaymentMaintenanceDeductions, getCollectionFeeRemainingAmount, getCollectionFeeSettledAmount, getPaymentReportMonth, shouldAutoTransferEjarPayment, getPaymentLessorCapacity, findPotentialDuplicateReceivedPayments, findOverlappingPayments, getPaymentCoveragePeriod, isPaymentPaid, findEarlierUnreceivedPayments, getRemainingPaymentAmount } from "@/data/helpers";
 import { COLLECTION_FEE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_RECEIVE_METHOD_LABELS } from "@/data/labels";
 import { PaymentStatus, PaymentMethod, Payment, PaymentReceiveMethod } from "@/data/types";
 import { showSuccess, showError } from "@/utils/toast";
@@ -661,6 +661,8 @@ export default function Payments() {
           rows.map(({ payment: p, unit, building, tenant, tenantName, status }) => {
             const maintenanceNote = paymentMaintenanceNote(p);
             const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
+            const periodConflicts = findOverlappingPayments(data, p);
+            const coverage = getPaymentCoveragePeriod(data, p);
             const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
             const tenantEmails = getTenantEmailAddresses(tenant);
             const tenantPhones = Array.from(new Set([
@@ -788,6 +790,22 @@ export default function Payments() {
                 <p className="rounded-xl border border-red-200 bg-red-50 p-2 text-xs font-bold text-red-700">
                   تحذير: يوجد استلام آخر بنفس الشهر والمبلغ لهذه الوحدة. راجع السجل المكرر.
                 </p>
+              )}
+              {periodConflicts.length > 0 && (
+                <div className="space-y-1 rounded-xl border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">
+                  <p className="font-bold">تعارض في فترة الإيجار ({periodConflicts.length})</p>
+                  <p>
+                    فترة هذه الدفعة: {formatDate(coverage.start)} إلى {formatDate(coverage.end)}
+                    {coverage.months > 1 ? ` (${coverage.months} أشهر)` : ""}
+                  </p>
+                  {periodConflicts.slice(0, 3).map((conflict) => (
+                    <p key={conflict.payment.id}>
+                      تتداخل مع دفعة {formatMoney(conflict.payment.amount)} المستحقة{" "}
+                      {formatDate(conflict.payment.dueDateGregorian || conflict.payment.paymentDate)}
+                      {" "}({isPaymentPaid(conflict.payment) ? "مستلمة" : "غير مستلمة"})
+                    </p>
+                  ))}
+                </div>
               )}
 
               {(status === "unpaid" || status === "overdue") && (

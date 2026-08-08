@@ -91,6 +91,8 @@ import {
   isPaymentPaid,
   shouldAutoTransferEjarPayment,
   findPotentialDuplicateReceivedPayments,
+  findOverlappingPayments,
+  getPaymentCoveragePeriod,
   findEarlierUnreceivedPayments,
   getRemainingPaymentAmount,
   restoreMaintenanceDeductionsForPayment,
@@ -1132,6 +1134,8 @@ export default function UnitDetails() {
                 const maintenanceDeductions = getPaymentMaintenanceDeductions(data, p.id);
                 const maintenanceDeductionAmount = getPaymentMaintenanceDeductionAmount(data, p);
                 const duplicateReceipts = findPotentialDuplicateReceivedPayments(data, p);
+                const periodConflicts = findOverlappingPayments(data, p);
+                const coverage = getPaymentCoveragePeriod(data, p);
                 const visibleNotes = paymentNotesWithoutGeneratedMaintenance(p);
                 const paymentTenant = data.tenants.find((item) => item.id === p.tenantId) || tenant;
                 const paymentEmails = getTenantEmailAddresses(paymentTenant);
@@ -1244,6 +1248,29 @@ export default function UnitDetails() {
                       <p className="rounded-xl border border-red-200 bg-red-50 p-2 text-xs font-bold text-red-700">
                         تحذير: يوجد استلام آخر بنفس الشهر والمبلغ لهذه الوحدة. راجع السجل المكرر قبل متابعة التحويل.
                       </p>
+                    )}
+
+                    {periodConflicts.length > 0 && (
+                      <div className="space-y-1 rounded-xl border border-orange-300 bg-orange-50 p-2 text-xs text-orange-900">
+                        <p className="font-bold">
+                          تعارض في فترة الإيجار ({periodConflicts.length})
+                        </p>
+                        <p>
+                          فترة هذه الدفعة: {formatDate(coverage.start)} إلى {formatDate(coverage.end)}
+                          {coverage.months > 1 ? ` (${coverage.months} أشهر)` : ""}
+                        </p>
+                        {periodConflicts.slice(0, 3).map((conflict) => (
+                          <p key={conflict.payment.id}>
+                            تتداخل مع دفعة {formatMoney(conflict.payment.amount)} المستحقة{" "}
+                            {formatDate(conflict.payment.dueDateGregorian || conflict.payment.paymentDate)}
+                            {" "}({isPaymentPaid(conflict.payment) ? "مستلمة" : "غير مستلمة"}) خلال{" "}
+                            {formatDate(conflict.overlapStart)} - {formatDate(conflict.overlapEnd)}
+                          </p>
+                        ))}
+                        <p className="font-semibold">
+                          راجع الدفعات المتداخلة أو عدّل العقد لتصحيح الجدول قبل الاستلام أو التحويل.
+                        </p>
+                      </div>
                     )}
 
                     {visibleNotes && (
@@ -2462,8 +2489,38 @@ export default function UnitDetails() {
             <p className="text-sm leading-relaxed text-muted-foreground whitespace-normal overflow-wrap-break-word">
               تم تعديل العقد. توجد دفعات مدفوعة مرتبطة بهذا العقد. هل تريد إعادة إنشاء الدفعات غير المدفوعة فقط؟
             </p>
+            {(() => {
+              if (!pendingContractUpdate) return null;
+              const updatedContract: Contract = { ...pendingContractUpdate.original, ...pendingContractUpdate.updated };
+              const startChanged = updatedContract.startDate !== pendingContractUpdate.original.startDate;
+              const endChanged = updatedContract.endDate !== pendingContractUpdate.original.endDate;
+              const cycleChanged = updatedContract.paymentFrequency !== pendingContractUpdate.original.paymentFrequency;
+              const receivedCount = payments.filter(
+                (p) => p.contractId === updatedContract.id && !p.deletedAt && isPaymentPaid(p),
+              ).length;
+              if (!startChanged && !endChanged && !cycleChanged) return null;
+              return (
+                <div className="space-y-1 rounded-xl border border-orange-300 bg-orange-50 p-2.5 text-xs text-orange-900">
+                  <p className="font-bold">تنبيه: تغيّر جدول الدفعات</p>
+                  {startChanged && (
+                    <p>
+                      تاريخ البداية: {formatDate(pendingContractUpdate.original.startDate)} ← {formatDate(updatedContract.startDate)}
+                    </p>
+                  )}
+                  {endChanged && (
+                    <p>
+                      تاريخ النهاية: {formatDate(pendingContractUpdate.original.endDate)} ← {formatDate(updatedContract.endDate)}
+                    </p>
+                  )}
+                  <p>
+                    سيتم إعادة محاذاة {receivedCount} دفعة مستلمة على المواعيد الجديدة مع الحفاظ على مبالغها وإثباتاتها،
+                    ولن تُنشأ دفعات مكررة تتعارض مع الفترات المستلمة.
+                  </p>
+                </div>
+              );
+            })()}
             <p className="text-xs leading-relaxed text-muted-foreground whitespace-normal overflow-wrap-break-word">
-              لن يتم تعديل الدفعات التي تم استلامها مسبقاً.
+              تُحفظ مبالغ الدفعات المستلمة وإثباتاتها كما هي، ويُصحَّح تاريخ استحقاقها ليطابق الجدول الجديد.
             </p>
             <div className="flex flex-col gap-2 w-full mt-4 sm:flex-row sm:flex-row-reverse">
               <Button

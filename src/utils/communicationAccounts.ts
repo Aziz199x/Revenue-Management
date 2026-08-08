@@ -117,16 +117,13 @@ export async function connectGmail(): Promise<string> {
     throw new Error("يتطلب ربط Gmail استخدام تطبيق Android");
   }
   const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-  await GoogleAuth.initialize({
-    clientId: GOOGLE_CLIENT_ID,
-    scopes: GMAIL_SCOPES,
-    grantOfflineAccess: true,
-  });
-  try {
-    await GoogleAuth.signOut();
-  } catch (error) {
-    console.warn("[Gmail] unable to clear the account picker session", error);
-  }
+  // NOTE: deliberately no GoogleAuth.signOut() here.
+  //
+  // The Google Sign-In plugin holds ONE shared native session for the whole
+  // app. Signing out to force the account picker for Gmail also destroyed the
+  // Drive backup session, because Drive's silent renewal relies on
+  // getLastSignedInAccount(). That is why connecting or reconnecting the email
+  // sender kept knocking Google Drive offline a short while later.
   await GoogleAuth.initialize({
     clientId: GOOGLE_CLIENT_ID,
     scopes: GMAIL_SCOPES,

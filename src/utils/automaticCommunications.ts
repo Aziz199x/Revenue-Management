@@ -13,6 +13,7 @@ import {
   hasContinuingContractForUnit,
   isPaymentPaid,
   paymentDueDateValue,
+  getPaymentCoveragePeriod,
 } from "@/data/helpers";
 import { fillTemplate, validatePhone } from "@/utils/whatsapp";
 import { sendAutomaticSms } from "@/utils/sms";
@@ -161,21 +162,13 @@ function fillTenantTemplate(
 }
 
 function paymentPeriod(data: AppData, payment: Payment): { start: string; end: string } {
-  const start = paymentDueDateValue(payment);
-  const next = data.payments
-    .filter((item) =>
-      item.id !== payment.id
-      && item.unitId === payment.unitId
-      && (!payment.contractId || item.contractId === payment.contractId)
-      && paymentDueDateValue(item) > start
-    )
-    .sort((a, b) => paymentDueDateValue(a).localeCompare(paymentDueDateValue(b)))[0];
-  if (next) return { start, end: addDays(paymentDueDateValue(next), -1) };
-  if (payment.rentalPeriod?.includes(" - ")) {
-    const [periodStart, periodEnd] = payment.rentalPeriod.split(" - ").map((item) => item.trim());
-    if (periodStart && periodEnd) return { start: periodStart, end: periodEnd };
-  }
-  return { start, end: addDays(start, 29) };
+  // Always describe the period the installment actually covers, taken from the
+  // contract's payment cycle. Previously this ended the period at "the next
+  // payment in the list minus one day", so on a semi-annual contract a message
+  // would claim the six-month installment covered only 25 Oct → 23 Nov because
+  // an unrelated (often duplicated) record happened to sit right after it.
+  const { start, end } = getPaymentCoveragePeriod(data, payment);
+  return { start, end };
 }
 
 function templateVars(data: AppData, payment: Payment, tenant: Tenant | undefined) {

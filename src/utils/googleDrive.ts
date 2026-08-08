@@ -36,11 +36,74 @@ function getTokens(): StoredTokens | null {
   }
 }
 
+const NATIVE_TOKEN_FILE = "google_drive_session.json";
+
+/**
+ * Mirrors the session to a real file in the app's private data directory.
+ *
+ * localStorage lives inside the Android WebView's storage, which the system
+ * (and "clear cache" style cleanups, and some WebView/app updates) can evict
+ * independently of the app's own data. When that happened the session simply
+ * vanished and the user saw yet another logout. The file below survives all of
+ * that, so the connection persists the way the user expects.
+ */
+async function persistTokensNatively(tokens: StoredTokens): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+    await Filesystem.writeFile({
+      path: NATIVE_TOKEN_FILE,
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+      data: JSON.stringify(tokens),
+    });
+  } catch (error) {
+    console.warn("[Google Drive] unable to mirror session to native storage", error);
+  }
+}
+
+async function clearNativeTokens(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    await Filesystem.deleteFile({ path: NATIVE_TOKEN_FILE, directory: Directory.Data });
+  } catch {
+    // nothing stored yet — nothing to clear
+  }
+}
+
+/**
+ * Restores the session from native storage when the WebView's localStorage has
+ * been wiped. Call once on startup, before anything reads the connection state.
+ */
+export async function restoreGoogleSessionFromNativeStorage(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (getTokens()?.accessToken) return;
+  try {
+    const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+    const file = await Filesystem.readFile({
+      path: NATIVE_TOKEN_FILE,
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+    });
+    const raw = typeof file.data === "string" ? file.data : "";
+    if (!raw) return;
+    const tokens = JSON.parse(raw) as StoredTokens;
+    if (!tokens?.email) return;
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+    localStorage.setItem(ACCOUNT_KEY, tokens.email);
+    console.log("[Google Drive] session restored from native storage");
+  } catch {
+    // no mirrored session available
+  }
+}
+
 function saveTokens(tokens: StoredTokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
   localStorage.setItem(ACCOUNT_KEY, tokens.email);
   // A successful sign-in or refresh proves the credentials work again.
   localStorage.removeItem(NEEDS_RECONNECT_KEY);
+  void persistTokensNatively(tokens);
 }
 
 /**
@@ -89,6 +152,7 @@ export function clearTokens() {
   } catch (error) {
     console.warn("[Google Logout] unable to clear one or more local token keys:", error);
   }
+  void clearNativeTokens();
 }
 
 export function getConnectedEmail(): string | null {
@@ -154,7 +218,16 @@ export async function renewGoogleSession(): Promise<GoogleConnectionStatus> {
     await refreshAccessToken();
     return { email: getConnectedEmail(), state: "connected" };
   } catch {
-    return { email: getConnectedEmail(), state: "expired" };
+    // Silent renewal is impossible (device account removed or access revoked).
+    // Re-authenticate interactively WITHOUT forcing the account picker, so the
+    // user simply re-approves the same account through Google's own prompts
+    // rather than having to hunt for it in a chooser.
+    try {
+      await signIn();
+      return { email: getConnectedEmail(), state: "connected" };
+    } catch {
+      return { email: getConnectedEmail(), state: "expired" };
+    }
   }
 }
 

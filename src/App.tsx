@@ -13,6 +13,7 @@ import { setupStatusBar } from "@/utils/statusBar";
 import { hasOpenModal, dismissTopModal } from "@/utils/modalStack";
 import { toast } from "sonner";
 import { runAutomaticBackupIfDue } from "@/utils/automaticBackup";
+import { restoreGoogleSessionFromNativeStorage } from "@/utils/googleDrive";
 import {
   buildAutomaticCommunicationJobs,
   isCommunicationOnline,
@@ -86,6 +87,10 @@ function AutomaticBackupManager() {
   latestData.current = data;
 
   const runBackup = async () => {
+    // Recover a session that the WebView's localStorage may have lost before
+    // deciding whether Drive is usable — otherwise a wiped WebView store looks
+    // exactly like a revoked account and stops automatic uploads for good.
+    await restoreGoogleSessionFromNativeStorage();
     const result = await runAutomaticBackupIfDue(latestData.current);
     // Previously a failed Drive upload was only logged to the console, so an
     // expired/revoked Google session left "automatic" backups silently
